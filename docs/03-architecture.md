@@ -73,10 +73,10 @@ The part most FSM products get wrong; it drives the architecture.
 
 Both target APIs are HansaWorld-register style (verified against Excellent Books API docs; Standard ERP's REST API is the same family):
 - `GET /api/1/<Register>?updates_after=<seq>` — delta reads with `@sequence` high-water marks
-- `deletes_after=<seq>` — tombstones for base registers
 - `filter.Field=value`, `offset/limit` — targeted reads
 - `POST /api/1/<Register>` — record creation
-- Excellent Books additionally exposes `WebExcellentAPI.hal?action=...` incl. `windowactions` field-trigger simulation — used to get ERP-computed values (prices, VAT) without reimplementing ERP logic.
+- Deletions: detected by periodic key-sweep reconciliation, not by the API's `deletes_after` (unreliable in practice)
+- `WebExcellentAPI.hal?action=...` is an optional second tier (not all installations have it); when present it adds `windowactions` field-trigger simulation (ERP-computed prices/VAT), activities, and ERP document PDF download. Never a hard dependency.
 
 One adapter framework, two configurations. Details and register mapping: `04-erp-sync.md`.
 

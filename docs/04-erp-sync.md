@@ -12,12 +12,18 @@ Both ERPs expose the HansaWorld-style register API. Verified from Excellent Book
 
 - `GET /api/1/<Register>` — list; `filter.Field=value`, `sort`, `range`, `offset`/`limit`
 - `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark
-- `?deletes_after=<seq>` — IDs of deleted records (base registers)
 - `POST /api/1/<Register>` — create/update records
 - Records carry `UUID` and `@url`
 - Caveat from docs: sequence numbers may reset after ERP version upgrades → adapter must detect regression and fall back to full reconciliation.
 
-Excellent Books extra: `WebExcellentAPI.hal?action=...` single-endpoint API, notably `windowactions` (simulate field change, get all ERP-computed fields back — e.g. correct price, VAT, account derivation) and `getrecordlinks`. Use this instead of duplicating pricing/VAT logic in the app.
+**Deletion detection.** The API's `deletes_after` parameter exists but is unreliable in practice — do **not** build on it. Instead: nightly (and on demand) key-sweep reconciliation per register — page through record IDs/UUIDs with plain list calls, diff against our stored `erpRefs`, tombstone what disappeared. The same sweep doubles as the recovery path for sequence resets. Between sweeps a record deleted in the ERP may linger in the app for up to a day; acceptable for master data, and service documents are guarded anyway (an approved worksheet must never be silently deleted by sync — flag, don't delete).
+
+### Two API tiers
+
+`api-docs.excellent.ee` documents two APIs; the adapter must treat them as separate capability tiers:
+
+1. **REST register API** (`/api/1/...`) — the baseline. Present on all installations. **The adapter must be fully functional with this API alone.**
+2. **WebExcellentAPI** (`WebExcellentAPI.hal?action=...`) — newer, optional; not all customers have it. Detected per tenant (capability flag in adapter config, verified by probe at setup). When present, it unlocks enhancements: `windowactions` (simulate a field change, get ERP-computed fields back — prices, VAT, account derivation), `getrecordlinks`, activities, PDF download of ERP documents. Every feature built on it needs a graceful fallback or is hidden for tenants without it.
 
 ## Register mapping
 
@@ -60,7 +66,7 @@ Master data: customers, items, prices, stock levels, employees, known serial num
 
 ## Pricing & invoicing boundary
 
-The app shows prices for informational purposes (role-gated); the ERP owns pricing truth. On worksheet approval the adapter lets the ERP compute final prices (via `windowactions` on Excellent Books; via ERP-side defaulting on Standard ERP) and reads results back. The app never generates invoices.
+The app shows prices for informational purposes (role-gated); the ERP owns pricing truth. Baseline flow (REST tier only): on worksheet approval the adapter POSTs the record and reads the created record back with ERP-computed prices/VAT. Tenants with WebExcellentAPI get the nicer variant — `windowactions` pre-computes values before posting, so the manager sees final prices at approval time. The app never generates invoices.
 
 ## Standalone mode
 
