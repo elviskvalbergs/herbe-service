@@ -43,6 +43,7 @@ Verified register codes (from API docs) vs. to-confirm (service module codes dif
 | Stock level | stock/item-status lookup or report API | confirm |
 | Stock transaction (consumption, van transfer) | Stock Depreciation / Stock Movement | confirm code |
 | Invoice (status back-link only) | `IVVc` | verified (seen in docs) |
+| Booking | Activities `ActVc` (Standard ERP; Excellent Books via WebExcellentAPI where available) | decided |
 
 ## Sync flows
 
@@ -52,6 +53,7 @@ Master data: customers, items, prices, stock levels, employees, known serial num
 ### Outbound (app → ERP), event-driven
 - New customer / service item created in field → pushed immediately (with duplicate-check by reg. number / serial before create).
 - Service order created in app → pushed on creation, ERP number stored back into `erpRefs`.
+- Booking created/moved on the dispatch board → written as an Activity (`ActVc`) on the technician's ERP calendar (mapped by the user's ERP identity link; activity type per adapter config). Inbound: activities of the mapped types poll on the fast cadence and update/create bookings, so a schedule change made in the ERP (or in herbe.calendar) shows on the technician's phone.
 - Worksheet → pushed when **Approved** by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time). Stock consumption posts as the ERP-appropriate stock transaction. Invoice is then created **in the ERP** by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history.
 - Attachments: pushed as record links where the ERP supports it; otherwise the app remains the system of record for media and the ERP record carries a deep link into herbe.service.
 

@@ -57,6 +57,8 @@ Status flow: `Draft → Assigned → Accepted → In progress → Paused (reason
 ### Booking (planning)
 Scheduling wrapper: worksheet (or service order) × technician × time window, with all-day/estimate flags. Kept separate from Worksheet so a job can be re-planned or split across days without touching the work facts. This is what the dispatch board and technician calendar render.
 
+Bookings sync two-way with Standard ERP **Activities (`ActVc`)**: each booking is stored as an activity on the linked technician's ERP calendar (activity type/symbol per adapter config), so ERP-side calendars and herbe.calendar see the same schedule. Activities created/moved in the ERP for the mapped activity types flow back as bookings. For Excellent Books, activity access goes through WebExcellentAPI where the tenant has it; otherwise bookings stay app-local.
+
 ### ChecklistTemplate
 Reusable forms attached by item type, work type, or customer contract: sections, field types (bool, number with min/max, text, photo-required, selection), required-on-completion flags. Versioned; results always reference the template version.
 
@@ -83,4 +85,5 @@ See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to
 | Service orders | shared | yes (two-way) |
 | Worksheets, time, media, checklists, signatures | app | yes; pushed to ERP on approval |
 | Invoices | ERP | never — read-only status back-link |
-| Users, roles, bookings, checklist templates | app | yes; not synced to ERP |
+| Bookings | app | yes; mirrored two-way as Standard ERP Activities (`ActVc`) |
+| Users, roles, checklist templates | app | yes; not synced to ERP |
