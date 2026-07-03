@@ -1,0 +1,890 @@
+<title>herbe.service — Spec</title>
+<style>
+  :root {
+    --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --topbar-h: 3.25rem;
+    --sidebar-w: 232px;
+    --toc-w: 216px;
+
+    /* dark (default) */
+    --bg: #10161a;
+    --bg-elevated: #151d22;
+    --surface: #1a2429;
+    --surface-2: #212d33;
+    --border: #2a373e;
+    --border-strong: #3a4a52;
+    --text: #e6ece8;
+    --text-dim: #9db0aa;
+    --text-faint: #6d8079;
+    --accent: #d69a4a;
+    --accent-strong: #eeb56b;
+    --accent-ink: #241a0a;
+    --moss: #86ab73;
+    --cross: #b96a5c;
+    --code-bg: #121a1d;
+    --shadow: 0 8px 28px rgba(0,0,0,.35);
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f4f0;
+      --bg-elevated: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #e9ede6;
+      --border: #d8ddd2;
+      --border-strong: #c2c9ba;
+      --text: #1b241e;
+      --text-dim: #56635a;
+      --text-faint: #7c887f;
+      --accent: #a86a24;
+      --accent-strong: #8c5518;
+      --accent-ink: #fbf1e2;
+      --moss: #4d7a3d;
+      --cross: #a1483a;
+      --code-bg: #eceee7;
+      --shadow: 0 8px 28px rgba(30,35,25,.10);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #10161a; --bg-elevated: #151d22; --surface: #1a2429; --surface-2: #212d33;
+    --border: #2a373e; --border-strong: #3a4a52; --text: #e6ece8; --text-dim: #9db0aa;
+    --text-faint: #6d8079; --accent: #d69a4a; --accent-strong: #eeb56b; --accent-ink: #241a0a;
+    --moss: #86ab73; --cross: #b96a5c; --code-bg: #121a1d; --shadow: 0 8px 28px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f2f4f0; --bg-elevated: #ffffff; --surface: #ffffff; --surface-2: #e9ede6;
+    --border: #d8ddd2; --border-strong: #c2c9ba; --text: #1b241e; --text-dim: #56635a;
+    --text-faint: #7c887f; --accent: #a86a24; --accent-strong: #8c5518; --accent-ink: #fbf1e2;
+    --moss: #4d7a3d; --cross: #a1483a; --code-bg: #eceee7; --shadow: 0 8px 28px rgba(30,35,25,.10);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-strong); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+  }
+
+  .shell { display: flex; flex-direction: column; min-height: 100%; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    height: var(--topbar-h);
+    display: flex; align-items: center; gap: .75rem;
+    padding: 0 1.1rem;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: .5rem; white-space: nowrap; }
+  .brand-mark {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    letter-spacing: .01em;
+  }
+  .brand-sep { color: var(--text-faint); }
+  .brand-sub {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .topbar-spacer { flex: 1; }
+  .ticket {
+    font-family: var(--font-mono);
+    font-size: .7rem;
+    letter-spacing: .04em;
+    color: var(--text-dim);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    padding: .3rem .55rem;
+    white-space: nowrap;
+  }
+  .ticket b { color: var(--accent-strong); font-weight: 600; }
+
+  /* ---------- Body grid ---------- */
+  .body-grid {
+    display: grid;
+    grid-template-areas: "nav" "main";
+    grid-template-columns: 1fr;
+    flex: 1;
+    min-width: 0;
+  }
+  @media (min-width: 860px) {
+    .body-grid { grid-template-areas: "nav main"; grid-template-columns: var(--sidebar-w) minmax(0,1fr); }
+  }
+  @media (min-width: 1220px) {
+    .body-grid { grid-template-areas: "nav main toc"; grid-template-columns: var(--sidebar-w) minmax(0,1fr) var(--toc-w); }
+  }
+
+  /* ---------- Nav ---------- */
+  nav.sidenav {
+    grid-area: nav;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: .3rem;
+    padding: .6rem .75rem;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: var(--topbar-h); z-index: 15;
+    -webkit-overflow-scrolling: touch;
+  }
+  nav.sidenav::-webkit-scrollbar { display: none; }
+  .nav-group-label { display: none; }
+  .nav-item {
+    font: inherit;
+    display: flex; align-items: center; gap: .5rem;
+    background: transparent; border: none;
+    color: var(--text-dim);
+    padding: .5rem .7rem;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+  }
+  .nav-item .nav-num {
+    font-family: var(--font-mono);
+    font-size: .7rem;
+    color: var(--text-faint);
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface-2); }
+  .nav-item.active { color: var(--accent-strong); border-bottom-color: var(--accent); background: var(--surface-2); }
+  .nav-item.active .nav-num { color: var(--accent); }
+
+  @media (min-width: 860px) {
+    nav.sidenav {
+      flex-direction: column;
+      align-items: stretch;
+      height: calc(100vh - var(--topbar-h));
+      position: sticky; top: var(--topbar-h);
+      border-bottom: none;
+      border-right: 1px solid var(--border);
+      padding: 1.1rem .75rem;
+      overflow-y: auto;
+    }
+    .nav-group-label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: .68rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      padding: .9rem .7rem .35rem;
+    }
+    .nav-group-label:first-child { padding-top: .2rem; }
+    .nav-item { border-bottom: none; border-left: 3px solid transparent; border-radius: 0 5px 5px 0; }
+    .nav-item.active { border-left-color: var(--accent); border-bottom-color: transparent; }
+  }
+
+  /* ---------- Main / article ---------- */
+  main.main-scroll {
+    grid-area: main;
+    min-width: 0;
+    padding: 2.2rem 1.25rem 5rem;
+  }
+  .doc-panel { max-width: 68ch; margin: 0 auto; }
+
+  .doc-panel h1 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1.2;
+    margin: 0 0 .3rem;
+    text-wrap: balance;
+  }
+  .meta-status {
+    font-family: var(--font-mono);
+    font-size: .78rem;
+    color: var(--text-faint);
+    margin: 0 0 2rem;
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .doc-panel h2 {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    margin: 2.4rem 0 .9rem;
+    text-wrap: balance;
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: .55rem;
+  }
+  .doc-panel > h2:first-of-type { margin-top: 1.6rem; }
+  .doc-panel h3 {
+    font-family: var(--font-display);
+    font-size: 1.12rem;
+    margin: 1.8rem 0 .6rem;
+  }
+  .doc-panel p, .doc-panel li { color: var(--text); }
+  .doc-panel p { margin: 0 0 1.05rem; }
+  .doc-panel ul, .doc-panel ol { margin: 0 0 1.1rem; padding-left: 1.3rem; }
+  .doc-panel li { margin-bottom: .45rem; }
+  .doc-panel li:last-child { margin-bottom: 0; }
+  .doc-panel strong { font-weight: 600; color: var(--text); }
+  .doc-panel em { font-style: italic; color: var(--text-dim); }
+  .doc-panel blockquote {
+    margin: 0 0 1.1rem;
+    padding: .2rem 0 .2rem 1rem;
+    border-left: 3px solid var(--accent);
+    color: var(--text-dim);
+  }
+  .doc-panel blockquote p { margin: 0; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: .86em;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: .1em .35em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    margin: 0 0 1.3rem;
+  }
+  pre code {
+    background: none; border: none; padding: 0;
+    font-size: .82rem; line-height: 1.55;
+    white-space: pre;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 0 0 1.4rem; border: 1px solid var(--border); border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: .87rem; }
+  th, td { padding: .6rem .8rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+  thead th {
+    font-family: var(--font-mono);
+    font-size: .68rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface); }
+  td code, th code { white-space: nowrap; }
+
+  .tick { font-weight: 600; }
+  .tick-1 { color: var(--text-dim); }
+  .tick-2 { color: var(--moss); }
+  .tick-3 { color: var(--moss); text-shadow: 0 0 0 currentColor; }
+  .cross { color: var(--cross); opacity: .75; }
+
+  /* Phase heading treatment (roadmap.md) */
+  .phase-h { align-items: center; }
+  .phase-chip {
+    font-family: var(--font-mono);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--accent-ink);
+    background: var(--accent);
+    padding: .22rem .55rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .phase-title { font-family: var(--font-display); }
+  .phase-dur {
+    font-family: var(--font-mono);
+    font-size: .74rem;
+    color: var(--text-faint);
+    font-weight: 400;
+  }
+
+  /* Goal / Exit callouts */
+  .callout {
+    position: relative;
+    margin: 0 0 1.1rem;
+    padding: .7rem .9rem .7rem 2.7rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: .95rem;
+  }
+  .callout-label {
+    position: absolute;
+    left: .85rem; top: .68rem;
+    font-family: var(--font-mono);
+    font-size: .64rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+  }
+  .callout-goal { border-left: 3px solid var(--accent); }
+  .callout-exit { border-left: 3px solid var(--moss); }
+  .callout-exit .callout-label { color: var(--moss); }
+
+  /* ---------- TOC ---------- */
+  aside.toc {
+    grid-area: toc;
+    display: none;
+  }
+  @media (min-width: 1220px) {
+    aside.toc {
+      display: block;
+      padding: 2.2rem 1rem 2rem 0;
+      position: sticky;
+      top: var(--topbar-h);
+      align-self: start;
+      height: calc(100vh - var(--topbar-h));
+      overflow-y: auto;
+    }
+    .toc-heading {
+      font-family: var(--font-mono);
+      font-size: .68rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      margin: 0 0 .7rem;
+      padding-left: .7rem;
+    }
+    #toc-list { display: flex; flex-direction: column; gap: .05rem; }
+    .toc-link {
+      display: block;
+      color: var(--text-dim);
+      font-size: .82rem;
+      line-height: 1.4;
+      padding: .3rem .7rem;
+      border-left: 2px solid transparent;
+    }
+    .toc-link.toc-sub { padding-left: 1.3rem; font-size: .78rem; }
+    .toc-link:hover { color: var(--text); text-decoration: none; }
+    .toc-link.active { color: var(--accent-strong); border-left-color: var(--accent); }
+  }
+</style>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">herbe<span style="color:var(--accent-strong)">.</span>service</span>
+      <span class="brand-sep">·</span>
+      <span class="brand-sub">Spec &amp; competitive analysis</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="ticket">SPEC&nbsp;<b>v0.1</b>&nbsp;· 2026&#8209;07&#8209;03</div>
+  </header>
+
+  <div class="body-grid">
+    <nav class="sidenav" id="sidenav">
+<div class="nav-group-label">Spec</div>
+<button class="nav-item" data-doc="overview" type="button"><span class="nav-num">00</span><span class="nav-label">Overview</span></button>
+<button class="nav-item" data-doc="competitive" type="button"><span class="nav-num">01</span><span class="nav-label">Competitive analysis</span></button>
+<button class="nav-item" data-doc="datamodel" type="button"><span class="nav-num">02</span><span class="nav-label">Data model</span></button>
+<button class="nav-item" data-doc="architecture" type="button"><span class="nav-num">03</span><span class="nav-label">Architecture</span></button>
+<button class="nav-item" data-doc="erpsync" type="button"><span class="nav-num">04</span><span class="nav-label">ERP sync</span></button>
+<button class="nav-item" data-doc="users" type="button"><span class="nav-num">05</span><span class="nav-label">Users & auth</span></button>
+<button class="nav-item" data-doc="roadmap" type="button"><span class="nav-num">06</span><span class="nav-label">Roadmap</span></button>
+<div class="nav-group-label">Research appendix</div>
+<button class="nav-item" data-doc="r1" type="button"><span class="nav-num">A1</span><span class="nav-label">Frontu & AllDevice</span></button>
+<button class="nav-item" data-doc="r2" type="button"><span class="nav-num">A2</span><span class="nav-label">Dynamics 365 & Salesforce</span></button>
+<button class="nav-item" data-doc="r3" type="button"><span class="nav-num">A3</span><span class="nav-label">IFS, Odoo, Acumatica</span></button>
+    </nav>
+
+    <main class="main-scroll" id="main-scroll">
+<article class="doc-panel" data-doc="overview" hidden><h1>herbe.service</h1>
+<p>Field service management app in the <strong>herbe</strong> suite (herbe.app). Standalone-capable, with two-way sync to <strong>Standard ERP</strong> and <strong>Excellent Books</strong> over their REST APIs.</p>
+<p>For service companies: service orders in, planned work on a board, technicians executing worksheets offline in the field (parts, time, checklists, photos, signatures), manager approval, invoicing in the ERP.</p>
+<h2>Documents</h2>
+<div class="table-wrap"><table><thead><tr><th>Doc</th><th>Content</th></tr></thead><tbody><tr><td><a href="docs/01-competitive-analysis.md">01-competitive-analysis.md</a></td><td>Feature analysis of Frontu, Dynamics 365 FS, Salesforce FS, IFS FSM, AllDevice, Odoo FS, Acumatica FS — and what herbe.service adopts</td></tr><tr><td><a href="docs/02-data-model.md">02-data-model.md</a></td><td>Entities, statuses, ownership rules</td></tr><tr><td><a href="docs/03-architecture.md">03-architecture.md</a></td><td>Offline-first PWA, sync engine, backend</td></tr><tr><td><a href="docs/04-erp-sync.md">04-erp-sync.md</a></td><td>Two-way Standard ERP / Excellent Books integration</td></tr><tr><td><a href="docs/05-users-auth.md">05-users-auth.md</a></td><td>Separate user store, Entra ID SSO, ERP identity links, roles</td></tr><tr><td><a href="docs/06-roadmap.md">06-roadmap.md</a></td><td>Features split by development phases</td></tr><tr><td><a href="docs/research/">docs/research/</a></td><td>Raw competitor research notes (appendix)</td></tr></tbody></table></div>
+<h2>Product principles</h2>
+<ol><li><strong>Technician first.</strong> Every field-facing screen works offline, in sunlight, with gloves-on tap targets. Call, navigate, photograph, scan — one tap each.</li><li><strong>Standalone by default, integrated by configuration.</strong> No ERP required to run; adapters are per-tenant add-ons.</li><li><strong>The ERP owns money.</strong> Prices, VAT, invoices are ERP truth; the app owns the work facts.</li><li><strong>History is the product.</strong> Full service history per serial number, offline, including pre-app ERP history.</li><li><strong>Suite-consistent.</strong> Design system, UX patterns, and technical components shared with the other herbe apps (see open items in the roadmap regarding repository access).</li></ol>
+</article>
+<article class="doc-panel" data-doc="competitive" hidden><h1>herbe.service — Competitive Feature Analysis</h1>
+<p class="meta-status">Status: v0.1 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators (vendor sites partially blocked from the research environment; findings corroborated across sources — details and source lists in <a href="research/">docs/research/</a>).</p>
+<p>Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Field Service, IFS FSM / IFS Cloud Service Management, AllDevice, Odoo Field Service, Acumatica Field Service.</p>
+<h2>Product capsules</h2>
+<p><strong>Frontu</strong> (LT, ex-Tasker) — technician-first FSM for SMBs, closest to our target segment. Work order pool with technician self-assignment, post-completion admin approval, offline Android app, QR/NFC arrival confirmation per customer object, customer portal, recurring work orders from templates, warehouse add-on with per-technician stock, named ERP connectors + open API. Modular paid add-ons; ~€20–30/user/mo.</p>
+<p><strong>Dynamics 365 Field Service</strong> (~$105/user/mo) — the reference enterprise data model: Work Order → Incident Types (templates bundling tasks, products, services, skills) → Resource Requirement → Booking. Fixed 6-state WO lifecycle + custom substatuses + independent booking statuses. Schedule board with assistant and optimization add-in, truck-as-warehouse with full PO/RMA loop, agreements auto-generating WOs and invoices, IoT alert→WO, Copilot, customer portal with self-scheduling and technician tracking.</p>
+<p><strong>Salesforce Field Service</strong> (~$165–380/user/mo) — cleanest separation of <em>what</em> (WorkOrder) from <em>when/who</em> (ServiceAppointment); configurable status state machine; scheduling = hard rules + weighted objectives; strongest packaged preventive maintenance (calendar, criteria, and usage/meter-based rules); offline-first mobile with "briefcase" data priming; Appointment Assistant (Uber-style tracking, no-login self-scheduling); AI work summaries.</p>
+<p><strong>IFS FSM</strong> — enterprise best-of-breed for complex service: Request → Scope → Task → Assignment with separate status machines; always-on continuous schedule optimization (PSO); van + 3PL stock, loan/exchange, full RMA/depot repair; contract/SLA entitlement engine; component-level and supplier warranties. Designed to sync standalone to foreign ERPs — validates our peer-system sync approach.</p>
+<p><strong>AllDevice</strong> (EE) — simplicity-focused CMMS, not FSM. Hierarchical device tree, PM by interval / runtime counters / sensor readings with predictive drift of next-service dates, QR label → asset history, min-stock → auto purchase orders, flat pricing, all features in every plan. Gaps: no dispatch, portal, signatures, invoicing — shows where CMMS ends and FSM begins.</p>
+<p><strong>Odoo Field Service</strong> — FSM as a thin extension of Project (and being absorbed into Planning as of 19.2). Intake from sale order/helpdesk/email, Gantt/map views, worksheet templates, signature → instant invoice, van stock as default-warehouse-per-user. <strong>No offline mobile</strong> — its biggest gap and our clearest edge. Single-database "integration": invoice built directly from the linked sale order.</p>
+<p><strong>Acumatica Field Service</strong> — FSM embedded in cloud ERP. Service Order → Appointment(s); order <em>types</em> configure workflow and billing target; equipment with component-level warranties; contracts auto-generating PM orders; route optimization + live GPS; <strong>billing cycles</strong> per customer (per appointment / per order / grouped); offline only partial.</p>
+<h2>Feature matrix (condensed)</h2>
+<div class="table-wrap"><table><thead><tr><th>Domain</th><th>Frontu</th><th>D365</th><th>SFS</th><th>IFS</th><th>AllDevice</th><th>Odoo</th><th>Acumatica</th><th>herbe.service</th></tr></thead><tbody><tr><td>Offline-first mobile</td><td><span class="tick tick-1">✔</span> (Android)</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td>partial</td><td><span class="cross">✖</span></td><td>partial</td><td><strong><span class="tick tick-1">✔</span> core requirement</strong></td></tr><tr><td>Order vs assignment separation</td><td>partial</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> (ServiceOrder/Worksheet/Booking)</td></tr><tr><td>Dispatch board + map</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> Phase 2</td></tr><tr><td>Route/schedule optimization</td><td><span class="cross">✖</span></td><td>add-in</td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td>Phase 4</td></tr><tr><td>Van/tech stock</td><td>add-on</td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> Phase 2 (ERP-backed)</td></tr><tr><td>Checklists/inspections</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> Phase 1 basic → 2 builder</td></tr><tr><td>Signature + service report PDF</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> Phase 1</td></tr><tr><td>QR/NFC on assets</td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span> Phase 2</td></tr><tr><td>Asset/serial service history</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-1">✔</span> Phase 1, incl. ERP-era history</td></tr><tr><td>Contracts + recurring PM</td><td><span class="tick tick-1">✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-3">✔✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td>workaround</td><td><span class="tick tick-2">✔✔</span></td><td>Phase 3 (calendar) → 4 (meter)</td></tr><tr><td>Customer portal + tracking</td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-3">✔✔✔</span></td><td><span class="tick tick-1">✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td>Phase 3</td></tr><tr><td>Invoicing</td><td>via ERP</td><td>built-in</td><td>built-in</td><td>built-in</td><td><span class="cross">✖</span></td><td>built-in</td><td>built-in <span class="tick tick-2">✔✔</span></td><td><strong>always in ERP</strong></td></tr><tr><td>Two-way sync to foreign ERP</td><td>connectors</td><td>BC-native</td><td><span class="cross">✖</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td>n/a</td><td><strong><span class="tick tick-2">✔✔</span> core differentiator</strong></td></tr><tr><td>AI assist</td><td><span class="cross">✖</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="tick tick-2">✔✔</span></td><td><span class="cross">✖</span></td><td><span class="cross">✖</span></td><td><span class="tick tick-1">✔</span></td><td>Phase 4</td></tr></tbody></table></div>
+<h2>Design decisions taken from this analysis</h2>
+<ol><li><strong>Adopt the three-document spine</strong> (Salesforce/D365 pattern): ServiceOrder (what), Worksheet (done facts), Booking (when/who). Products that conflate them (Odoo, AllDevice) can't re-plan without corrupting work records.</li><li><strong>Incident-type-style templates later, checklist templates first.</strong> D365 Incident Types (bundled tasks+parts+skills per fault type) are powerful but heavy; start with checklist templates per item/work type (Phase 1–2), grow toward work templates (Phase 3).</li><li><strong>Configurable status machine, fixed core states</strong> (Salesforce lesson): keep our canonical states, allow tenant substatuses and pause reasons — not free-form workflows.</li><li><strong>Technician self-assignment pool</strong> (Frontu) — cheap to build, loved by small teams that don't have a dispatcher.</li><li><strong>QR labels on service items</strong> (Frontu + AllDevice): scan → item card, history, start work. Doubles as arrival confirmation. High value/effort ratio.</li><li><strong>Offline "briefcase" priming</strong> (Salesforce): explicit "download my work" scope, not lazy caching.</li><li><strong>Approval step before invoicing</strong> (Frontu, and our own flow): worksheet Approved is the sync trigger to ERP — matches Acumatica/Odoo's finding that field docs and billing docs must stay separate documents.</li><li><strong>Billing cycles stay out</strong>: Acumatica's per-customer billing grouping is exactly the kind of logic that belongs in the ERP, not in us. We only guarantee clean, itemized worksheet data.</li><li><strong>PM in three tiers</strong> (Salesforce taxonomy): calendar-based (Phase 3) → criteria/usage-meter (Phase 4, with AllDevice-style predictive drift) → IoT (out of scope until real demand).</li><li><strong>Uber-style tracking + self-scheduling</strong> are the current customer-experience bar (SFS Appointment Assistant, D365 portal). Phase 3 delivers the 80%: status notifications, "technician on the way" with ETA, confirm/reschedule links — without live map tracking initially.</li><li><strong>Where we win</strong>: the only technician-first, offline-first app with <em>native, two-way, register-level</em> Standard ERP / Excellent Books sync — Odoo has no offline, Frontu's connectors are shallow, enterprise suites cost 5–15× more and assume their own ERP.</li></ol>
+</article>
+<article class="doc-panel" data-doc="datamodel" hidden><h1>herbe.service — Data Model</h1>
+<p class="meta-status">Status: draft v0.1 (2026-07-03)</p>
+<p>The model follows the Standard ERP Service Orders module vocabulary (Service Orders, Work Sheets, Items, Serial Numbers) so that mapping to both ERPs stays close to 1:1, while adding app-side entities the ERPs don't have (bookings, checklists, media, sync metadata).</p>
+<h2>Entity overview</h2>
+<pre><code>Customer 1──* Site 1──* ServiceItem
+Customer 1──* ServiceOrder 1──* ServiceOrderRow ──&gt; ServiceItem
+ServiceOrder 1──* Worksheet 1──* WorksheetRow ──&gt; Item
+Worksheet 1──* TimeEntry, 1──* Media, 1──0..1 Signature, 1──* ChecklistResult
+Worksheet *──1 User (assignee)
+Booking *──1 Worksheet, *──1 User        (planning)
+Item 1──* StockLevel *──1 StockLocation  (incl. van stock)
+ServiceItem 1──* HistoryEvent            (derived service history)
+User 1──* IdentityLink                   (Azure AD, Standard ERP, Excellent Books)
+</code></pre>
+<h2>Core entities</h2>
+<h3>Customer</h3>
+<p>Synced from ERP (master: ERP). Fields: code, name, reg. number, VAT number, addresses, phones, emails, contact persons, payment terms (read-only), notes, classification. App-side extras: geo-coordinates per address, "call/navigate" quick actions derive from these fields.</p>
+<h3>Site (service address)</h3>
+<p>A customer can have many service locations. Fields: address, geo-point, access instructions (gate codes, keys — visible offline to the assigned technician only), on-site contact. Standard ERP models this loosely (delivery addresses / objects); the app keeps Sites first-class and maps to ERP address rows.</p>
+<h3>ServiceItem (the thing being serviced)</h3>
+<p>The customer's installed equipment, identified by serial number. Fields: serial number, item code (link to Item catalog), make/model, name, customer, site, installation date, warranty start/end, service contract link, meter/counter values, status (active / inactive / replaced), photos, documents (manuals, instructions). Maps to Standard ERP Known Serial Numbers / serviced-item records (register code to confirm per ERP version).</p>
+<h3>Item (catalog: spare parts and services)</h3>
+<p>Synced from ERP register <code>INVc</code> (verified in Excellent Books REST API). Two kinds relevant here:</p>
+<ul><li><strong>Stocked items</strong> (spare parts): tracked per StockLocation, optionally serial-numbered.</li><li><strong>Service items</strong> (labor/testing/travel): no stock, priced per unit/hour.</li></ul>
+<p>Fields: code, name, unit, base price, price lists (<code>PLVc</code>), classifiers (<code>DIVc</code>), barcode/EAN, default supplier.</p>
+<h3>StockLocation &amp; StockLevel</h3>
+<p>Locations: main warehouse, technician vans (one per field user), supplier/consignment. StockLevel = item × location × quantity (+ reserved). Master for quantities is the ERP; the app caches levels for offline lookup and records consumption/transfer transactions that sync back.</p>
+<h3>ServiceOrder</h3>
+<p>The demand: "customer X needs work on service items A, B". Fields: number (app-local + ERP number after sync), customer, site, contact, description of fault/request, priority, requested/promised dates, status, orderer, salesperson/manager, related contract, rows.</p>
+<ul><li><strong>ServiceOrderRow</strong>: service item (serial number), reported symptom, requested work type.</li></ul>
+<p>Status flow: <code>New → Accepted → Planned → In progress → Work done → Confirmed → Invoiced → Closed</code> (+ <code>Cancelled</code>). "Invoiced" is set by ERP sync-back, never in the app.</p>
+<h3>Worksheet (the work-done fact)</h3>
+<p>One or more per ServiceOrder; the technician's working document. Fields: service order link, service item(s), assignee, status, planned vs actual time, work description, fault/cause/remedy codes, internal notes, customer-visible notes.</p>
+<ul><li><strong>WorksheetRow</strong>: item (spare part or service), quantity, stock location it came from, price/discount (visibility role-gated), serial number of the used/replaced part.</li><li><strong>TimeEntry</strong>: start/stop or manual; type (work / travel / waiting); normal vs overtime; feeds both invoicing and payroll-side reporting.</li><li><strong>ChecklistResult</strong>: filled form instance (see ChecklistTemplate), incl. measured values / test results with pass/fail bounds.</li><li><strong>Media</strong>: photos (before/after tags), documents, short video/audio notes; EXIF time+geo kept.</li><li><strong>Signature</strong>: customer name, signature image, timestamp, geo-point; locks the worksheet content it signs.</li></ul>
+<p>Status flow: <code>Draft → Assigned → Accepted → In progress → Paused (reason: parts/access/other) → Done → Approved → Synced/Invoiced</code> (+ <code>Rejected</code> back to technician with comment).</p>
+<h3>Booking (planning)</h3>
+<p>Scheduling wrapper: worksheet (or service order) × technician × time window, with all-day/estimate flags. Kept separate from Worksheet so a job can be re-planned or split across days without touching the work facts. This is what the dispatch board and technician calendar render.</p>
+<p>Bookings sync two-way with Standard ERP <strong>Activities (<code>ActVc</code>)</strong>: each booking is stored as an activity on the linked technician's ERP calendar (activity type/symbol per adapter config), so ERP-side calendars and herbe.calendar see the same schedule. Activities created/moved in the ERP for the mapped activity types flow back as bookings. For Excellent Books, activity access goes through WebExcellentAPI where the tenant has it; otherwise bookings stay app-local.</p>
+<h3>ChecklistTemplate</h3>
+<p>Reusable forms attached by item type, work type, or customer contract: sections, field types (bool, number with min/max, text, photo-required, selection), required-on-completion flags. Versioned; results always reference the template version.</p>
+<h3>HistoryEvent (service history)</h3>
+<p>Denormalized, append-only view per ServiceItem and per Customer: every completed worksheet, part replacement, measurement, status change. Built server-side from synced facts (including pre-app history imported from the ERP) so the technician sees full history offline even for work done directly in ERP.</p>
+<h3>User, Role, IdentityLink</h3>
+<p>See <code>05-users-auth.md</code>. Users are app-local; IdentityLink rows connect a user to Microsoft Entra ID (OIDC subject), a Standard ERP person (<code>EmplVc</code>-style code), and/or an Excellent Books employee.</p>
+<h2>Sync metadata (on every synced entity)</h2>
+<ul><li><code>id</code> — client-generated UUID (idempotency key)</li><li><code>erpRefs[]</code> — per-ERP: register, record id/UUID, last known <code>@sequence</code></li><li><code>syncState</code> — <code>local / pending / synced / conflict</code></li><li><code>updatedAt</code>, <code>updatedBy</code>, <code>deletedAt</code> (tombstone)</li><li><code>origin</code> — <code>app / standard-erp / excellent-books</code></li></ul>
+<h2>Master-data ownership</h2>
+<div class="table-wrap"><table><thead><tr><th>Entity</th><th>Master</th><th>App may edit?</th></tr></thead><tbody><tr><td>Customers, Items, Price lists</td><td>ERP</td><td>create-new + limited fields (phones, geo, notes), synced back</td></tr><tr><td>Stock levels</td><td>ERP</td><td>via stock transactions only</td></tr><tr><td>Service items</td><td>shared</td><td>yes (two-way)</td></tr><tr><td>Service orders</td><td>shared</td><td>yes (two-way)</td></tr><tr><td>Worksheets, time, media, checklists, signatures</td><td>app</td><td>yes; pushed to ERP on approval</td></tr><tr><td>Invoices</td><td>ERP</td><td>never — read-only status back-link</td></tr><tr><td>Bookings</td><td>app</td><td>yes; mirrored two-way as Standard ERP Activities (<code>ActVc</code>)</td></tr><tr><td>Users, roles, checklist templates</td><td>app</td><td>yes; not synced to ERP</td></tr></tbody></table></div>
+</article>
+<article class="doc-panel" data-doc="architecture" hidden><h1>herbe.service — Technical Architecture</h1>
+<p class="meta-status">Status: draft v0.1 (2026-07-03)</p>
+<h2>Shape</h2>
+<pre><code>┌────────────── field devices ──────────────┐
+│ PWA (offline-first)                       │
+│  UI ── local DB (IndexedDB) ── sync client│
+│  optional Capacitor wrapper (iOS/Android) │
+└──────────────────┬────────────────────────┘
+                   │ HTTPS, delta sync + outbox
+┌──────────────────▼────────────────────────┐
+│ Vercel: Next.js app + API routes/edge fns │
+│  auth (Supabase Auth) ── sync endpoints   │
+└──────────────────┬────────────────────────┘
+                   │
+┌──────────────────▼────────────────────────┐
+│ Supabase: Postgres, Auth, Storage,        │
+│ Realtime, pg_cron / Edge Functions        │
+└───────┬───────────────────────┬───────────┘
+        │ ERP adapter           │ ERP adapter
+┌───────▼────────┐      ┌───────▼──────────┐
+│ Standard ERP   │      │ Excellent Books  │
+│ REST API       │      │ REST API +       │
+│ (registers)    │      │ WebExcellentAPI  │
+└────────────────┘      └──────────────────┘
+</code></pre>
+<p>Stack decision: <strong>Supabase (Postgres + Auth + Storage + Realtime)</strong> and <strong>Vercel</strong> hosting, matching herbe.calendar — one ops model and one auth/tenant story across the suite. To confirm once herbe.calendar's repo is available: its multi-tenant scheme (Postgres RLS vs. app-level scoping), how it structures Supabase Auth + the Entra ID provider, and whether it already has a scheduled-job pattern on Vercel worth reusing outright.</p>
+<p>Standalone mode = backend + app with no adapter configured. ERP sync is an add-on module per tenant, not a dependency of the core.</p>
+<h2>Client: PWA first, wrappers optional</h2>
+<p>Decision: build as an installable PWA; add a Capacitor wrapper only for the gaps, keeping one codebase.</p>
+<p>What the PWA covers natively today:</p>
+<ul><li><strong>Offline</strong>: Service Worker (Workbox) for app shell; IndexedDB for data (via a wrapper like Dexie or RxDB). Storage quota is ample for orders + thumbnails; full-size photos upload-and-evict.</li><li><strong>Camera</strong>: <code>&lt;input capture&gt;</code> / <code>getUserMedia</code>.</li><li><strong>Geolocation &amp; navigation</strong>: <code>geolocation</code> API; "navigate" opens Google/Apple/Waze via URL scheme; "call" via <code>tel:</code> links.</li><li><strong>Signature</strong>: canvas + pointer events.</li><li><strong>Barcode/QR</strong>: <code>BarcodeDetector</code> where available, ZXing-wasm fallback.</li><li><strong>Push</strong>: Web Push works on Android and on iOS ≥16.4 for installed PWAs.</li></ul>
+<p>Known PWA gaps → Capacitor wrapper (same web build) when needed:</p>
+<ul><li>Reliable background sync on iOS (iOS has no Background Sync API; PWA syncs on launch/foreground — acceptable for v1).</li><li>NFC tag reading (Web NFC is Android-only).</li><li>Store distribution / MDM deployment for customers who require it.</li></ul>
+<p>Frontend stack: TypeScript + the framework used by the existing herbe apps (to be confirmed against the herbe.calendar repo — reuse of the suite's design system and components is a project requirement, see README). State/query layer must be built over the local DB, not over HTTP: the network is an enhancement, never a requirement, for any technician-facing screen.</p>
+<h2>Offline sync design</h2>
+<p>The part most FSM products get wrong; it drives the architecture.</p>
+<p><strong>Downstream (server → device): delta pull.</strong> Every entity table carries a monotonic per-tenant <code>changeSeq</code>. Client stores its high-water mark and pulls <code>?after=&lt;seq&gt;</code> per entity on: app start, connectivity regained, push nudge, manual refresh. Deletes ship as tombstones. A "download my work" action pre-fetches everything the technician's next N days need — orders, worksheets, customers, sites, service items + history, item catalog, own stock levels, checklist templates, attachments (thumbnails; originals on demand/Wi-Fi).</p>
+<p><strong>Upstream (device → server): outbox.</strong> Every local mutation is an append-only operation record (client UUID, entity, op, payload, base version). Replayed in order when online; server applies idempotently by UUID (safe against retries and double-taps). Photos/signatures upload as separate resumable blob uploads referenced by the ops.</p>
+<p><strong>Conflicts.</strong> Kept rare by design: ownership rules (see data-model) mean two parties seldom edit the same fields.</p>
+<ul><li>Master data (customer, item): server wins, client re-reads.</li><li>Worksheet facts (rows, time, media, checklist values): technician wins — these are statements of physical fact.</li><li>Status transitions: guarded by a state machine server-side; an illegal transition (e.g. tech completes a worksheet a manager already rejected) is bounced back as a conflict task in the app inbox, never silently dropped.</li><li>Same-field edits: last-writer-wins per field with full audit trail; a <code>conflict</code> sync-state flags it for review.</li></ul>
+<p><strong>Time.</strong> Client clocks are untrusted: ops carry client timestamps, but ordering uses server receive order per device + causality (base versions).</p>
+<h2>Backend</h2>
+<ul><li><strong>API</strong>: Next.js API routes / edge functions on Vercel, typed REST (OpenAPI-generated clients), per-tenant isolation, all list endpoints support <code>after=&lt;changeSeq&gt;</code> deltas — the same mechanism the ERP adapters consume.</li><li><strong>Database</strong>: Supabase Postgres. Row-versioned entities, <code>changeSeq</code> via sequence + trigger; append-only tables for ops, history events, audit. Row-Level Security enforces tenant isolation at the database layer (pattern to confirm against herbe.calendar's existing RLS policies rather than reinventing).</li><li><strong>Auth</strong>: Supabase Auth — email/password, TOTP, and Microsoft Entra ID as an OIDC provider. See <code>05-users-auth.md</code>.</li><li><strong>Files</strong>: Supabase Storage; images get server-side thumbnails on upload.</li><li><strong>Realtime</strong>: Supabase Realtime pushes booking/status changes to connected dispatcher screens and can back the "conflict inbox" / sync-health live updates; it's a UX enhancement, not a substitute for the offline pull/outbox mechanism devices rely on.</li><li><strong>Background jobs</strong>: Vercel has no long-running worker process, so ERP polling, history-event building, and notification/PDF generation run as scheduled invocations — Vercel Cron hitting API routes, and/or Supabase Edge Functions on <code>pg_cron</code>, sized to finish within Vercel's function duration limits (chunk large tenants/registers across runs rather than one long job).</li><li>Multi-tenant from day one (suite pattern), EU-hosted (Supabase project region + Vercel region pinned to EU).</li></ul>
+<h2>ERP adapters</h2>
+<p>Both target APIs are HansaWorld-register style (verified against Excellent Books API docs; Standard ERP's REST API is the same family):</p>
+<ul><li><code>GET /api/1/&lt;Register&gt;?updates_after=&lt;seq&gt;</code> — delta reads with <code>@sequence</code> high-water marks</li><li><code>filter.Field=value</code>, <code>offset/limit</code> — targeted reads</li><li><code>POST /api/1/&lt;Register&gt;</code> — record creation</li><li>Deletions: detected by periodic key-sweep reconciliation, not by the API's <code>deletes_after</code> (unreliable in practice)</li><li><code>WebExcellentAPI.hal?action=...</code> is an optional second tier (not all installations have it); when present it adds <code>windowactions</code> field-trigger simulation (ERP-computed prices/VAT), activities, and ERP document PDF download. Never a hard dependency.</li></ul>
+<p>One adapter framework, two configurations. Details and register mapping: <code>04-erp-sync.md</code>.</p>
+<h2>Non-functional targets</h2>
+<ul><li>Cold start to usable worksheet list, offline: &lt; 3 s on a mid-range Android phone.</li><li>Full "download my work" for a typical week: &lt; 1 min on 4G.</li><li>Server round-trip for outbox replay after a day offline: &lt; 30 s.</li><li>All technician-critical screens function with zero connectivity; no spinner may ever block on network for cached data.</li><li>Audit: every state change attributable (who, when, from which device).</li><li>GDPR: customer personal data minimized on device, encrypted at rest (device DB), remote wipe of app data on user deactivation.</li></ul>
+</article>
+<article class="doc-panel" data-doc="erpsync" hidden><h1>herbe.service — Two-way ERP Sync (Standard ERP &amp; Excellent Books)</h1>
+<p class="meta-status">Status: draft v0.1 (2026-07-03)</p>
+<h2>Principle</h2>
+<p>The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per tenant, per adapter, direction-aware. A tenant may connect Standard ERP, Excellent Books, both (rare, e.g. migration), or none (standalone).</p>
+<h2>API family</h2>
+<p>Both ERPs expose the HansaWorld-style register API. Verified from Excellent Books API docs (api-docs.excellent.ee):</p>
+<ul><li><code>GET /api/1/&lt;Register&gt;</code> — list; <code>filter.Field=value</code>, <code>sort</code>, <code>range</code>, <code>offset</code>/<code>limit</code></li><li><code>?updates_after=&lt;seq&gt;</code> — only records changed after sequence number; response carries <code>@sequence</code> to store as the new high-water mark</li><li><code>POST /api/1/&lt;Register&gt;</code> — create/update records</li><li>Records carry <code>UUID</code> and <code>@url</code></li><li>Caveat from docs: sequence numbers may reset after ERP version upgrades → adapter must detect regression and fall back to full reconciliation.</li></ul>
+<p><strong>Deletion detection.</strong> The API's <code>deletes_after</code> parameter exists but is unreliable in practice — do <strong>not</strong> build on it. Instead: nightly (and on demand) key-sweep reconciliation per register — page through record IDs/UUIDs with plain list calls, diff against our stored <code>erpRefs</code>, tombstone what disappeared. The same sweep doubles as the recovery path for sequence resets. Between sweeps a record deleted in the ERP may linger in the app for up to a day; acceptable for master data, and service documents are guarded anyway (an approved worksheet must never be silently deleted by sync — flag, don't delete).</p>
+<h3>Two API tiers</h3>
+<p><code>api-docs.excellent.ee</code> documents two APIs; the adapter must treat them as separate capability tiers:</p>
+<ol><li><strong>REST register API</strong> (<code>/api/1/...</code>) — the baseline. Present on all installations. <strong>The adapter must be fully functional with this API alone.</strong></li><li><strong>WebExcellentAPI</strong> (<code>WebExcellentAPI.hal?action=...</code>) — newer, optional; not all customers have it. Detected per tenant (capability flag in adapter config, verified by probe at setup). When present, it unlocks enhancements: <code>windowactions</code> (simulate a field change, get ERP-computed fields back — prices, VAT, account derivation), <code>getrecordlinks</code>, activities, PDF download of ERP documents. Every feature built on it needs a graceful fallback or is hidden for tenants without it.</li></ol>
+<h2>Register mapping</h2>
+<p>Verified register codes (from API docs) vs. to-confirm (service module codes differ per version — confirm against the actual tenant ERPs during Phase 0):</p>
+<div class="table-wrap"><table><thead><tr><th>App entity</th><th>Standard ERP / Excellent Books register</th><th>Status</th></tr></thead><tbody><tr><td>Item</td><td><code>INVc</code></td><td>verified</td></tr><tr><td>Price list</td><td><code>PLVc</code></td><td>verified</td></tr><tr><td>Item classifier</td><td><code>DIVc</code></td><td>verified</td></tr><tr><td>Customer class</td><td><code>CCatVc</code></td><td>verified</td></tr><tr><td>Employee (for user linking)</td><td><code>EmplVc</code></td><td>verified</td></tr><tr><td>Customer</td><td>Contacts register (<code>CUVc</code>)</td><td>confirm</td></tr><tr><td>Customer service item / serial</td><td>Known Serial Numbers</td><td>confirm code</td></tr><tr><td>Service order</td><td>Service Orders register (Service Orders module)</td><td>confirm code</td></tr><tr><td>Worksheet</td><td>Work Sheets register</td><td>confirm code</td></tr><tr><td>Stock level</td><td>stock/item-status lookup or report API</td><td>confirm</td></tr><tr><td>Stock transaction (consumption, van transfer)</td><td>Stock Depreciation / Stock Movement</td><td>confirm code</td></tr><tr><td>Invoice (status back-link only)</td><td><code>IVVc</code></td><td>verified (seen in docs)</td></tr><tr><td>Booking</td><td>Activities <code>ActVc</code> (Standard ERP; Excellent Books via WebExcellentAPI where available)</td><td>decided</td></tr></tbody></table></div>
+<h2>Sync flows</h2>
+<h3>Inbound (ERP → app), continuous polling per register</h3>
+<p>Master data: customers, items, prices, stock levels, employees, known serial numbers, open service orders created in ERP. Poll cadence: fast registers (service orders, stock) every 1–5 min; slow (items, customers) every 15–60 min; full reconciliation nightly and on sequence reset.</p>
+<h3>Outbound (app → ERP), event-driven</h3>
+<ul><li>New customer / service item created in field → pushed immediately (with duplicate-check by reg. number / serial before create).</li><li>Service order created in app → pushed on creation, ERP number stored back into <code>erpRefs</code>.</li><li>Booking created/moved on the dispatch board → written as an Activity (<code>ActVc</code>) on the technician's ERP calendar (mapped by the user's ERP identity link; activity type per adapter config). Inbound: activities of the mapped types poll on the fast cadence and update/create bookings, so a schedule change made in the ERP (or in herbe.calendar) shows on the technician's phone.</li><li>Worksheet → pushed when <strong>Approved</strong> by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time). Stock consumption posts as the ERP-appropriate stock transaction. Invoice is then created <strong>in the ERP</strong> by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history.</li><li>Attachments: pushed as record links where the ERP supports it; otherwise the app remains the system of record for media and the ERP record carries a deep link into herbe.service.</li></ul>
+<h3>Identity &amp; idempotency</h3>
+<ul><li>Every app record stores per-ERP <code>erpRefs {register, uuid/code, seq}</code>.</li><li>Outbound ops carry the app UUID; adapter must never double-create (lookup by stored ref, then by natural key, then create).</li><li>Field-level mapping tables are configuration, not code: per-tenant register/field maps versioned in the backend, because Standard ERP installations are customized.</li></ul>
+<h3>Error handling</h3>
+<ul><li>Failed pushes go to a per-tenant dead-letter queue with human-readable reason, surfaced in a back-office "Sync health" screen (count, last success per register, retry button). Silent sync failure is the #1 trust-killer for two-way integrations — this screen is a Phase 1 deliverable, not an afterthought.</li><li>Validation mismatches (ERP rejects a row: closed period, missing account, credit-blocked customer) bounce back as actionable tasks to the service manager, with the worksheet returned to <code>Done</code> (not lost).</li></ul>
+<h2>Pricing &amp; invoicing boundary</h2>
+<p>The app shows prices for informational purposes (role-gated); the ERP owns pricing truth. Baseline flow (REST tier only): on worksheet approval the adapter POSTs the record and reads the created record back with ERP-computed prices/VAT. Tenants with WebExcellentAPI get the nicer variant — <code>windowactions</code> pre-computes values before posting, so the manager sees final prices at approval time. The app never generates invoices.</p>
+<h2>Standalone mode</h2>
+<p>No adapter configured: numbers issued from app-local series, prices from an app-maintained simple price list on Items, invoicing status features hidden. Enabling an adapter later triggers an initial-load wizard: match customers/items by natural keys, review duplicates, then switch masters per the ownership table in <code>02-data-model.md</code>.</p>
+</article>
+<article class="doc-panel" data-doc="users" hidden><h1>herbe.service — Users, Auth &amp; Roles</h1>
+<p class="meta-status">Status: draft v0.1 (2026-07-03)</p>
+<h2>Model (same pattern as herbe.calendar)</h2>
+<p>Auth runs on <strong>Supabase Auth</strong>; <code>auth.users</code> is the login record, but the app's own <code>users</code> table (tenant, role, profile, status) is what the rest of the schema references — the app-local user is data we own, not just a mirror of the auth row. External identities attach as links, not as identity itself: removing an SSO link never deletes the user or their history.</p>
+<pre><code>User (app table, FK → auth.users) ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books,
+                                                          externalId, linkedAt, linkedBy }
+</code></pre>
+<ul><li><strong>Local</strong>: Supabase Auth email/password, optional TOTP 2FA. Always available as fallback.</li><li><strong>Microsoft Entra ID (Azure)</strong>: configured as an OIDC provider in Supabase Auth; optional SCIM/Graph-driven provisioning (auto-create users from a security group, deactivate on removal).</li><li><strong>ERP link</strong>: maps the app user to the ERP employee/person code (<code>EmplVc</code>-style) so worksheets and bookings (<code>ActVc</code>) sync with the correct ERP salesperson/technician code. Fed either manually or by matching email during initial load.</li></ul>
+<p>One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy). To confirm against herbe.calendar: whether it already runs one shared Supabase Auth tenant/project across suite apps (enabling true silent SSO) or a per-app project with token exchange — this decides whether herbe.service joins that project or federates against it.</p>
+<h2>Roles</h2>
+<div class="table-wrap"><table><thead><tr><th>Role</th><th>Can</th></tr></thead><tbody><tr><td><strong>Technician</strong></td><td>see own (and optionally team) bookings/worksheets; execute worksheets: parts, time, checklists, photos, signature; create service orders/customers/service items in the field (tenant-configurable); see own van stock; see service history; prices hidden/shown per tenant policy</td></tr><tr><td><strong>Team lead</strong></td><td>technician + see/reassign team's work</td></tr><tr><td><strong>Dispatcher / Service manager</strong></td><td>all orders &amp; worksheets; plan board; approve/reject worksheets; manage checklist templates; see sync health; prices &amp; margins</td></tr><tr><td><strong>Back office</strong></td><td>read-most; customer/item edits; reports</td></tr><tr><td><strong>Admin</strong></td><td>tenant settings, users/roles, ERP adapter config, API keys</td></tr></tbody></table></div>
+<p>Permissions are capability flags grouped into these default roles (custom roles later, not v1).</p>
+<h2>Sessions &amp; devices</h2>
+<ul><li>Supabase Auth's refresh/access token pair, with refresh token lifetime extended for field devices (offline work must survive weeks without re-auth).</li><li>Device registry per user: named devices, last sync, remote sign-out (revoke the Supabase session) + local data wipe on next contact (lost phone / offboarding).</li><li>Offline PIN/biometric app-lock re-verifying the cached session locally.</li></ul>
+<h2>Multi-tenancy</h2>
+<p>Tenant = company. Users belong to one tenant (cross-tenant contractor accounts out of scope for v1). All data, adapters, and policies are tenant-scoped. Suite-level SSO: a user signed into another herbe app with the same Entra identity gets silent SSO into herbe.service.</p>
+</article>
+<article class="doc-panel" data-doc="roadmap" hidden><h1>herbe.service — Feature Roadmap by Development Phase</h1>
+<p class="meta-status">Status: v0.1 (2026-07-03). Sizing assumes a small team (2–3 devs + design shared with the suite); durations are calendar estimates, to be re-planned after Phase 0.</p>
+<h2 class="phase-h"><span class="phase-chip">Phase 0</span><span class="phase-title">Foundations</span><span class="phase-dur">4–6 weeks</span></h2>
+<p class="callout callout-goal"><span class="callout-label">Goal</span>de-risk the two hard things (offline sync, ERP mapping) before building features.</p>
+<ul><li>Access + review of the other herbe app repos and the suite design system (mirrored to GitHub); decide shared component/frontend stack accordingly</li><li>Provision Supabase project (Postgres + Auth + Storage) and Vercel project; confirm against herbe.calendar whether to join its Supabase project/Auth tenant or federate — see <code>05-users-auth.md</code></li><li>Confirm Standard ERP + Excellent Books service-module register codes and field maps against real tenant systems, incl. <code>ActVc</code> activity types for bookings (<code>04-erp-sync.md</code> table)</li><li><strong>Walking skeleton</strong>: PWA shell installable + offline, logs in via Supabase Auth (local + Entra ID), pulls Items/Customers from one ERP via <code>updates_after</code> deltas, displays them offline, one round-trip outbox op, one scheduled sync job on Vercel Cron — deployed end-to-end</li><li>Tenant model (Postgres RLS), project scaffolding, CI/CD, environments</li><li>Sync-engine spike outcomes written up as ADRs (local DB choice, conflict rules validated against real ERP behavior, sequence-reset handling, key-sweep deletion reconciliation)</li></ul>
+<p class="callout callout-exit"><span class="callout-label">Exit</span>skeleton demo on a phone in airplane mode; register map signed off.</p>
+<h2 class="phase-h"><span class="phase-chip">Phase 1</span><span class="phase-title">MVP: the core field loop</span><span class="phase-dur">10–14 weeks</span></h2>
+<p class="callout callout-goal"><span class="callout-label">Goal</span>a technician can do a full day's work offline; a manager can approve it; the ERP gets clean data. Replaces paper.</p>
+<p><strong>Master data &amp; entities</strong></p>
+<ul><li>Customers, Sites, Contacts (ERP-synced + create-in-field with duplicate check)</li><li>Service items with serial numbers, item card, documents/instructions</li><li>Item catalog (parts + services), prices (role-gated visibility)</li></ul>
+<p><strong>Service orders &amp; worksheets</strong></p>
+<ul><li>Service order CRUD, rows per service item, priorities, statuses</li><li>Worksheet execution: parts (with stock location), services, time entries (start/stop + manual, work/travel), work description, fault/cause/remedy</li><li>Photos (before/after), basic fixed checklists, customer signature with content lock</li><li>Manager approval / rejection with comment; approval triggers ERP push</li><li>Worksheet PDF service report, emailed to customer</li></ul>
+<p><strong>Mobile &amp; offline</strong></p>
+<ul><li>Offline-first PWA: "download my work" briefcase, outbox, conflict inbox</li><li>My-jobs list + simple day/week calendar of own bookings</li><li>One-tap call, one-tap navigate (Google/Apple/Waze), one-tap camera</li></ul>
+<p><strong>History</strong></p>
+<ul><li>Service history per service item and customer, offline, including imported pre-app ERP history</li></ul>
+<p><strong>Platform</strong></p>
+<ul><li>Users, roles (technician / manager / admin), Entra ID SSO, ERP identity links, device registry + remote wipe</li><li>ERP adapter #1 (the launch tenant's ERP): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back</li><li><strong>Sync health screen</strong> (per-register status, dead-letter queue, retry)</li><li>Standalone mode (no adapter) functional</li></ul>
+<p class="callout callout-exit"><span class="callout-label">Exit</span>one pilot company runs its real service work for 2+ weeks with invoices issued from ERP off synced worksheets.</p>
+<h2 class="phase-h"><span class="phase-chip">Phase 2</span><span class="phase-title">Dispatch, stock, scanning</span><span class="phase-dur">8–12 weeks</span></h2>
+<p class="callout callout-goal"><span class="callout-label">Goal</span>the planner and the warehouse join the loop.</p>
+<ul><li><strong>Dispatch board</strong>: day/week, technician rows, drag-and-drop bookings, unassigned-work pool, technician self-assignment option, reassignment</li><li><strong>Map view</strong> of the day's jobs and (coarse) technician positions</li><li>Booking notifications (push) on assign/change; pause reasons (waiting parts / no access)</li><li><strong>Van stock</strong>: per-technician location, stock lookup across all locations (incl. offline cache), transfers, consumption already flowing from Phase 1; min-stock indication</li><li><strong>Barcode/QR</strong>: scan parts into worksheet rows; printable QR labels for service items → scan opens item card/history, confirms arrival, starts work</li><li>Checklist/form <strong>template builder</strong> (field types, required rules, measured values with pass/fail bounds), templates by item/work type</li><li>ERP adapter #2 (the other ERP), adapter framework hardened into config-driven product</li><li>Time-entry review/export for payroll-side reporting</li></ul>
+<p class="callout callout-exit"><span class="callout-label">Exit</span>dispatcher plans a 5+ technician team for a week entirely in-app; parts stock in ERP matches reality.</p>
+<h2 class="phase-h"><span class="phase-chip">Phase 3</span><span class="phase-title">Contracts, recurring service, customer experience</span><span class="phase-dur">8–12 weeks</span></h2>
+<p class="callout callout-goal"><span class="callout-label">Goal</span>proactive service and a customer-facing surface.</p>
+<ul><li><strong>Service contracts/agreements</strong>: covered service items, response-time terms, price rules reference; calendar-based recurring order generation (e.g. yearly maintenance), horizon control</li><li>SLA indicators on orders (response/resolution timers, overdue flags)</li><li><strong>Customer portal</strong>: submit requests (→ service order with duplicate detection), see statuses, order/worksheet history per service item, confirm quotes for out-of-contract work</li><li>Customer notifications: booking confirmed, "technician on the way" with ETA, work-done summary + report PDF, satisfaction survey (1-tap + comment)</li><li>Work templates (incident-type-lite): fault type bundles default checklist, typical parts, estimated duration</li><li>Capacitor wrappers (iOS/Android store presence, NFC tag reading, better background behavior) — only the gaps Phase 1–2 PWA data shows we need</li><li>Reporting v1: utilization, first-time-fix rate, MTTR, revenue per technician (ERP-priced), top problem devices</li></ul>
+<p class="callout callout-exit"><span class="callout-label">Exit</span>recurring contract work generates and completes without manual creation; customers receive and confirm digitally.</p>
+<h2 class="phase-h"><span class="phase-chip">Phase 4</span><span class="phase-title">Optimization &amp; intelligence</span><span class="phase-dur">ongoing</span></h2>
+<p>Prioritize by pilot data, not upfront:</p>
+<ul><li>Scheduling assist: suggest technician/slot by skills, distance, availability; later route optimization for multi-stop days</li><li>Meter/usage-based preventive maintenance with predictive drift of due dates (AllDevice pattern)</li><li>AI assist: worksheet summary drafting, "similar past faults on this model" retrieval, voice-to-form capture</li><li>Live technician tracking link for customers; no-login self-scheduling of visits</li><li>Skills &amp; certifications registry with expiry (gates assignment suggestions)</li><li>Subcontractor/multi-company support</li><li>IoT hooks (alert → service order) if a real customer needs it</li></ul>
+<h2>Cross-cutting, every phase</h2>
+<ul><li>Suite design-language compliance; Estonian/English/Latvian/Lithuanian/Finnish/Norwegian localization readiness from Phase 1 (i18n scaffolding in Phase 0)</li><li>Accessibility of field UI: glove-sized targets, high contrast, one-hand reach</li><li>GDPR: data minimization on device, encrypted local store, retention policies</li><li>Performance budgets from <code>03-architecture.md</code> enforced in CI</li></ul>
+<h2>Open items</h2>
+<ol><li><strong>herbe suite repos &amp; design system</strong> — this environment could not reach herbe.app (network policy) or Bitbucket; Phase 0 depends on that access. Options: add the repos as GitHub mirrors to this session, or open the network policy for herbe.app/Bitbucket.</li><li>Launch-tenant choice decides adapter order (Standard ERP vs Excellent Books first).</li><li>Register codes marked "confirm" in <code>04-erp-sync.md</code>.</li><li>Pricing/packaging (per-user flat à la AllDevice vs modular à la Frontu) — product decision, not spec-blocking.</li></ol>
+</article>
+<article class="doc-panel" data-doc="r1" hidden><h1>Competitive research: Frontu (FSM) and AllDevice (CMMS)</h1>
+<p>Date: 2026-07-03 Method note: frontu.com, help.frontu.com, alldevice.com and wiki.alldevice.com are all unreachable from this environment (proxy gateway rejects CONNECT; WebFetch returns 403 for all hosts). Findings were assembled from web search results, which include indexed content from the vendors' own sites, help centers, wikis and third-party review sites (Capterra, GetApp, SourceForge, ITQlick, SoftwareAdvice, G2). Items marked "unverified" come only from third-party aggregators and should be re-checked against the live sites before publishing externally.</p>
+<p>---</p>
+<h2>1. Frontu</h2>
+<h3>Company background</h3>
+<ul><li>Founded 2013 in Kaunas, Lithuania; originally named <strong>Tasker</strong>, rebranded to Frontu in 2021. Legal entity Frontu, UAB.</li><li>Acquired by <strong>Everfield</strong> (European software holding, buy-and-hold) in Oct 2023/2024 (sources differ on exact year; Everfield's first Lithuanian acquisition, third in the Baltics).</li><li>Positioning: "technician-first" field service management. Hundreds of customers in ~16 countries. Notable segment: dealers/service organizations of heavy machinery brands (John Deere, JCB, Manitou, Linde, Hitachi, New Holland).</li><li>Platform available in 18–20+ languages.</li><li>Architecture: web app for admins/managers + mobile app for field technicians. Sold standalone or as an "ERP add-on".</li></ul>
+<h3>Core entities / data model</h3>
+<ul><li><strong>Customers (clients)</strong> with contact persons.</li><li><strong>Objects</strong> — the serviced location/asset site; each object gets a unique auto-generated QR/NFC code. Objects have responsible persons.</li><li><strong>Equipment</strong> — separate equipment level (add-on): create/edit/reassign equipment, attach jobs/materials, move equipment between object and warehouse, full equipment action history. Equipment can be referenced inside work orders ("Equipment in Work Orders").</li><li><strong>Work orders</strong> — central unit of work; typed (work order types), linked to customer + object, with jobs and materials lines (with prices and quantities).</li><li><strong>Client requests</strong> — inbound customer tickets that convert into work orders.</li><li><strong>Jobs &amp; materials</strong> — catalog items added to work orders; feed warehouse balances and pricing.</li><li><strong>Warehouse / inventory</strong> — stock, materials, tools; object-and-warehouse linkage.</li><li><strong>Templates</strong> — work order templates, reusable for periodic work orders.</li><li><strong>Custom fields</strong> (add-on).</li><li><strong>Users/roles</strong>: web Admin/User, mobile technician users, Customer role (portal), plus add-ons for <strong>contractors</strong> and <strong>shift workers</strong>.</li></ul>
+<h3>Work order lifecycle</h3>
+<ul><li>Statuses observed in help docs: <strong>Unassigned → (assigned/inactive) → In progress → Stopped → Completed → Approved</strong>, with an <strong>Overdue</strong> flag that combines with other statuses when planned completion time is exceeded.</li><li>Status transitions are constrained by current status; completed/approved work orders can't have status changed. Admin-side status changes sync live to the technician app.</li><li><strong>Unassigned pool</strong>: admins can create work orders without an assignee; technicians can self-assign via "Request work order" (order disappears from the unassigned list once claimed).</li><li><strong>Reassignment</strong> from mobile or web ("Reassign Work Order").</li><li><strong>Approval step</strong>: after completion, a web Admin/User reviews and approves ("Approving Work Orders"). Reports can be sliced by work order status.</li><li><strong>Reopen work order</strong> supported.</li><li>Work order preview, summary, copying, adding jobs/materials to existing orders.</li><li><strong>Client request → work order</strong> flow: request needs only client + object + title; when converting, all active requests/work orders on that object are shown to avoid duplicates; requests can be previewed, edited, archived, or converted. System measures request→work-order and work-order→start lead times.</li></ul>
+<h3>Mobile app</h3>
+<ul><li>Primary field UI. Frontline app is <strong>Android-first</strong> (phones/tablets); a separate <strong>Frontu FSM Customer Portal</strong> app exists on iOS App Store and Google Play (and the portal is also a PWA). (Whether the technician app has a full iOS version: unverified; marketing mentions "Android operating system for frontline workers".)</li><li><strong>Offline mode</strong>: full work order access and completion offline; data stored locally, auto-sync when connectivity returns.</li><li>Capabilities: log working hours (time tracking), capture photos, fill <strong>checklists</strong>, collect <strong>digital signatures</strong> on device (plus a "remote signature" add-on), view work order history and documents on site, see customer job history/materials/equipment/task requirements, instant report sending.</li><li><strong>NFC / QR / barcodes</strong>: scanning to identify objects/equipment; contactless arrival confirmation; barcode/ticket scanning listed on Capterra.</li><li>Real-time task updates: new tasks, status changes, and schedule updates push to the app automatically.</li><li>Route planning / navigation to task locations mentioned as features (GetApp/Capterra: route planning, navigation, job alerts).</li></ul>
+<h3>Scheduling &amp; dispatch</h3>
+<ul><li>Managers create and assign tasks in real time and track execution through pipelines.</li><li>Dynamic dispatching: adjust workloads by urgency, technician availability, location.</li><li>Calendar/schedule views in web app; automatic schedule updates to mobile. (Named "drag-and-drop dispatch board" or map-based dispatch: not confirmed in accessible sources.)</li><li>Route planning/optimization discussed heavily in Frontu's own blog as part of the offering.</li><li>No evidence of automated skills-based auto-assignment engine; assignment is manual/dispatcher-driven plus technician self-assignment from the unassigned pool.</li></ul>
+<h3>Inventory / spare parts</h3>
+<ul><li>Live stock updates of materials, tools, inventory; low-stock awareness ("always know when to put orders in").</li><li>Materials used in tasks are automatically deducted from warehouse balances; responsible employees notified when something is missing/out of stock.</li><li>Stock can be allocated across technicians (per-technician allocation ≈ van stock, described as "allocate them equally across technicians").</li><li><strong>Warehouse management</strong> is an add-on module; "Object and Warehouse" concept links serviced sites and stock.</li></ul>
+<h3>Maintenance-specific features</h3>
+<ul><li><strong>Periodic / recurring work orders</strong>: repetition rules (specific days, weekly, monthly with month counts and day-of-month/day-of-week selection), end dates, generated nightly at 04:00 UTC; can be based on saved work order templates; each generated order is independently editable.</li><li>Equipment service history at object/equipment level.</li><li>Capterra lists preventive maintenance, predictive maintenance, calibration management, service history for Frontu (aggregator claims — treat the "predictive/calibration" ones as unverified).</li><li>No meter-reading/counter-based scheduling found (contrast with AllDevice).</li></ul>
+<h3>Customer-facing features</h3>
+<ul><li><strong>Customer Portal</strong> (PWA + iOS/Android app, branded): customers manage contact persons, create/edit objects, generate QR/NFC codes, submit <strong>client requests</strong>, monitor work order completion statuses. Separate Customer role login.</li><li><strong>Notifications</strong>: browser push for new requests/work orders, completion, reassignment, cancellation, overdue; <strong>SMS/email</strong> to work order clients or object-responsible persons on creation; email to work order creator on completion.</li><li>On-site customer confirmation via digital signature; documents stored in electronic archive.</li><li>Questionnaires/surveys add-on (customer feedback).</li><li>Billing &amp; invoicing listed by Capterra; work order data includes jobs/materials with prices, feeding invoicing via ERP integrations (no evidence of native invoice generation).</li></ul>
+<h3>Integrations &amp; API</h3>
+<ul><li><strong>Frontu API</strong>: documented public API for push/pull data exchange (fully-documented API tied to the Pro plan per ITQlick).</li><li>Integration page lists <strong>Odoo</strong> (field ops, inventory, scheduling sync incl. offline), <strong>MS Dynamics NAV / AX / Business Central</strong>, Epicor, Scoro, Hanna CRM, Zapier; fleet management/GPS telematics integrations; general CRM/accounting/WMS integration claims.</li><li>Power BI add-on for custom dashboards/reports.</li><li>Marketed explicitly as a mobile front-end add-on to existing ERP/CRM.</li></ul>
+<h3>Reporting / analytics</h3>
+<ul><li>Reports section over accumulated work order data; <strong>Total report</strong>: work orders, objects, customers, jobs, materials, routes with prices and quantities.</li><li>Reports by work order status; lead-time analytics (request→order, order→start); conversion time by work order type.</li><li>General dashboard for business overview; <strong>Microsoft Power BI add-on</strong> for custom visual dashboards at larger companies.</li><li>Working time reports from technician time logs.</li></ul>
+<h3>Pricing</h3>
+<ul><li>Official pricing page exists (frontu.com/pricing) but figures are not public in search results; monthly subscription, quote-driven.</li><li>Third-party (ITQlick, dated): from ~$29/user/mo; tiers reported as free <strong>Starter</strong> (chat support, cloud hosting), <strong>Growing</strong> ~$20/user/mo (1GB storage/user), <strong>Pro</strong> ~$25/user/mo (fully-documented API). Unverified/dated.</li><li>A <strong>platform fee</strong> covers unlimited cloud storage, initial setup &amp; onboarding, and <strong>€1M business risk insurance</strong> (distinctive).</li><li>Add-ons priced separately: questionnaires/surveys, remote signature, custom fields, contractors, shift workers, equipment management, warehouse management, Power BI.</li></ul>
+<h3>Distinctive points</h3>
+<ul><li>Technician-first design philosophy; strong offline Android app.</li><li>Heavy machinery dealer niche (John Deere/JCB/etc. service networks).</li><li>€1M business risk insurance bundled into platform fee — unusual in FSM.</li><li>QR/NFC per object with contactless arrival confirmation.</li><li>Client request intake with duplicate-avoidance and lead-time analytics.</li><li>Modular add-on pricing (contractors, shift workers, equipment, warehouse, Power BI).</li><li>18–20+ languages; Baltic/Nordic + European footprint; positioned as ERP mobile front-end rather than ERP replacement.</li></ul>
+<p>Key source URLs (for re-verification):</p>
+<ul><li>https://frontu.com/field-service-management, https://frontu.com/features, https://frontu.com/pricing, https://frontu.com/integrations, https://frontu.com/integrations/frontu-api, https://frontu.com/integrations/odoo, https://frontu.com/about-us</li><li>help.frontu.com articles: 7959016 (Mobile App), 7958836 (Web App), 8039848 (Reports and Analytics), 8039871 (Periodic/Recurring WO), 8057599 (Approving WOs), 8050860 (Unassigned WO), 8036721 (Reassign), 8036805 (Reopen), 8135560 (Equipment in WOs), 8050912 (QR/NFC), 3994039 (Object and Warehouse), 8053821 (Managing Client Requests), 12459073 (Customer Portal), 8039981 (Reports by WO Status)</li><li>Aggregators: capterra.in/software/151441/tasker, getapp.com/operations-management-software/a/tasker/, itqlick.com/tasker/pricing, softwareadvice.com/crm/tasker-profile/, g2.com/products/frontu/reviews, everfield.com/our-ecosystem/frontu</li></ul>
+<p>---</p>
+<h2>2. AllDevice</h2>
+<h3>Company background</h3>
+<ul><li><strong>Alldevice OÜ</strong>, Estonia; registered 09.04.2014 (Peetri, Rae municipality, near Tallinn). Founders have 20+ years in equipment supply and maintenance services; product born from their own need for a simple maintenance tool.</li><li>Browser-based CMMS aimed at <strong>small and medium industrial organizations</strong>, also used by enterprises. Customers include Unilever, AkzoNobel, Ericsson, Neste, Fender Musical Instruments, Kliimakaubamaja; strong base in Estonia, Latvia, Lithuania, Finland, Poland. Local support teams in FI/EE/LV/LT; marketed toward UK and Europe.</li><li><strong>ISO 27001:2022 certified</strong>.</li><li>Industry pages: manufacturing, utilities, recycling/waste, chemical, electronics, cranes, packaging, property management, etc.</li></ul>
+<h3>Core entities / data model</h3>
+<ul><li><strong>Devices/assets</strong> organized in a <strong>devices tree</strong> (hierarchical asset registry); device cards with <strong>custom fields</strong> (email, date, number, dropdown; visibility and print options).</li><li><strong>Tasks / work orders</strong> — maintenance tasks generated from schedules or entered ad hoc; <strong>Task Orders</strong> = undated work orders held in a separate view until scheduled.</li><li><strong>Counters</strong> — meter readings (runtime hours, production counts, sensor readings) attached to devices.</li><li><strong>Spare parts &amp; stock</strong> — main stock plus <strong>user (personal) stock</strong>; parts linked to devices and consumed on work orders.</li><li><strong>Companies</strong> — multi-company licensing for separate data sets (service providers managing multiple clients / plants).</li><li>Documents/warranty info attached to device cards; failure/fault records.</li></ul>
+<h3>Work order lifecycle</h3>
+<ul><li>Work orders created three ways: automatically from preventive schedules/rules, manually by planners, or from <strong>fault reporting</strong> by any user on-site (mobile).</li><li>Undated "task orders" → scheduled task with date → assigned technician → in-progress updates (photos, notes) → completion/confirmation. Technicians can "create or confirm work orders while standing next to the serviced device".</li><li>Automatic <strong>reminders for overdue work</strong>; "early warnings" panel in the desktop UI.</li><li>Task numbering configurable; work order generation periods and task postponement rules in general settings.</li><li>Real-time work order status visibility for the team.</li></ul>
+<h3>Mobile app</h3>
+<ul><li>Mobile apps for <strong>iPhone, iPad and Android</strong>, plus fully browser-based access from any smart device ("no user limit tied to devices"; deliberately simplified — "removes unnecessary features").</li><li><strong>QR code scanning</strong>: scan a device label to open asset status, past repairs, changed parts, warranty info; create/confirm work orders at the machine.</li><li>Photo capture on work orders; fault reporting from the shop floor.</li><li>Offline mode: not documented in accessible sources (browser-based architecture suggests connectivity required — verify).</li><li>No signature capture, navigation, or route features found (not a field-service dispatch tool).</li></ul>
+<h3>Scheduling &amp; dispatch</h3>
+<ul><li>Preventive maintenance calendar/schedule views; task lists filtered by team/technician.</li><li>Assignment of tasks to technicians with completion-status tracking.</li><li>No dispatch board, map view, route optimization, or skills-based assignment — plant-centric CMMS, not mobile-workforce FSM.</li></ul>
+<h3>Inventory / spare parts</h3>
+<ul><li>Spare parts inventory with automatic adjustment when parts are consumed on work orders.</li><li><strong>Minimum-stock triggers generate purchase orders</strong> automatically.</li><li><strong>Main stock vs user stock</strong>: consumption can prefer the technician's personal stock and fall back to main stock (approximation of van/personal stock).</li><li>Reporting on inventory value and usage patterns; spare-parts expenditure analysis over time.</li></ul>
+<h3>Maintenance-specific features (core strength)</h3>
+<ul><li><strong>Preventive maintenance plans</strong>: recurring tasks by time interval, <strong>runtime hours/counter readings, or sensor readings</strong>.</li><li><strong>Predictive interval adjustment</strong>: with counter-based intervals the system monitors average counter growth and shifts the predicted next-task date earlier/later automatically — lightweight predictive scheduling.</li><li>Copy regular task schedules between devices (fast rollout across similar equipment).</li><li>Full <strong>device maintenance history</strong>: past repairs, changed parts, costs, warranty.</li><li><strong>Failure/fault analysis</strong>: pinpoint problematic devices, top-10 problem devices by MTBF/MTTR.</li><li>Configurable maintenance intervals, postponement rules, generation horizons.</li></ul>
+<h3>Customer-facing features</h3>
+<ul><li>Essentially none in the FSM sense: no customer portal, notifications to end customers, or invoicing links found. "Companies" multi-licensing lets a service provider keep separate client datasets, which is the closest analogue.</li><li>Fault reporting is open to any internal user (operators as internal "customers").</li></ul>
+<h3>Integrations &amp; API</h3>
+<ul><li><strong>API available</strong> (optional/paid add-on; key activation via credentials; full API docs in resources; data typically synced daily).</li><li>ERP/MRP integration use case: push spares usage, hours, and costs for inventory/billing.</li><li><strong>OEE/production integrations</strong>: documented integration with <strong>Evocon</strong> (OEE) for production counts and proactive maintenance triggers; sensor/SCADA-driven task creation supported via preset rules.</li><li>No public catalog of named ERP connectors (unlike Frontu) — integration is API-based/custom.</li></ul>
+<h3>Reporting / analytics</h3>
+<ul><li>Dashboard: problematic devices, <strong>MTTR, MTBF</strong>, costs, actual vs planned working times.</li><li>Top-10 problematic devices with MTBF/MTTR; spare-parts and additional-cost expenditure over time.</li><li>Personalized/custom work order reports; configurable printouts; maintenance history reports suitable for audits (ISO-style evidence of timely maintenance).</li></ul>
+<h3>Pricing</h3>
+<ul><li>Public, flat, capacity-based (not per-user-feature-gated): from <strong>200€/month for 5 users</strong> up to <strong>1250€/month for unlimited users</strong>. <strong>All plans include full functionality</strong> (spare parts, fault analysis, reports). Free trial/demo offered via site.</li></ul>
+<h3>Distinctive points</h3>
+<ul><li>Simplicity as the core pitch: "really easy maintenance management", built by maintenance engineers.</li><li>Counter/sensor-based scheduling with automatic predictive drift of next-service dates.</li><li>All-features-in-every-plan flat pricing; cheap unlimited-user tier vs per-user FSM pricing.</li><li>QR-label-driven asset lookup on the shop floor.</li><li>Multi-company licensing for maintenance service providers.</li><li>Estonian company, ISO 27001:2022, local Baltic/Finnish support — relevant for Baltic ERP ecosystems.</li><li>Weaknesses vs FSM tools: no customer portal, no dispatch/route/map, no signatures, offline unclear, no native invoicing.</li></ul>
+<p>Key source URLs (for re-verification):</p>
+<ul><li>https://alldevice.com/, /product/, /product/work-order/, /product/asset-maintenance/, /product/parts-inventory/, /product/mobile-cmms/, /product/reporting/, /product/integrations/, /industries/, /about/</li><li>wiki.alldevice.com: /d/functionality, /d/faq-configuring-counter-based-maintenance-intervals, /d/faq-tasks-task-numbering, /d/api, /d/reports, /d/general-settings, /d/desktop, /d/companies, /dc/mobile, /d/settings-device-card-custom-fields</li><li>Third party: sourceforge.net/software/product/Alldevice/, evocon.com/articles/evocon-alldevice-integration-cmms/, ariregister.rik.ee (company 12642583), filter.eu/service/alldevice-cmmc-solution/</li></ul>
+<p>---</p>
+<h2>3. Head-to-head observations (for the feature matrix)</h2>
+<div class="table-wrap"><table><thead><tr><th>Dimension</th><th>Frontu</th><th>AllDevice</th></tr></thead><tbody><tr><td>Category</td><td>FSM (mobile workforce)</td><td>CMMS (in-plant maintenance)</td></tr><tr><td>Central object</td><td>Work order on customer's object</td><td>Task on own device/asset</td></tr><tr><td>Customer entity</td><td>First-class (clients, portal, requests)</td><td>Absent (multi-company licensing only)</td></tr><tr><td>Mobile</td><td>Offline Android technician app + customer portal app</td><td>iOS/Android/browser, QR-centric, offline unclear</td></tr><tr><td>Recurring work</td><td>Calendar-based periodic WOs</td><td>Time + counter + sensor-based, predictive drift</td></tr><tr><td>Inventory</td><td>Warehouse add-on, technician allocation</td><td>Built-in, min-stock → purchase orders, user stock</td></tr><tr><td>Approval flow</td><td>Complete → Approve step, reopen</td><td>Confirm-at-device, overdue reminders</td></tr><tr><td>Customer comms</td><td>SMS/email/push, signatures, portal</td><td>None</td></tr><tr><td>Integrations</td><td>Named ERP connectors + open API + Power BI</td><td>Open API + OEE (Evocon), custom</td></tr><tr><td>Analytics</td><td>WO/lead-time/route/price reports, Power BI</td><td>MTTR/MTBF, fault analysis, cost trends</td></tr><tr><td>Pricing</td><td>Per-user + platform fee + paid add-ons (quote)</td><td>Flat public tiers 200€–1250€/mo, all features</td></tr></tbody></table></div>
+</article>
+<article class="doc-panel" data-doc="r2" hidden><h1>FSM Competitive Research: Microsoft Dynamics 365 Field Service vs Salesforce Field Service</h1>
+<p>Research date: 2026-07-03. Sources: microsoft.com product page, learn.microsoft.com docs (via search excerpts — direct fetch blocked by proxy), developer.salesforce.com / help.salesforce.com (via search excerpts), Trailhead, Salesforce Ben, vendor blogs, 2025–2026 release notes. Direct doc-site fetches returned 403 through the session proxy, so doc content was gathered through search result synthesis plus corroborating third-party sources; exact status values and entity names below are stable, well-documented facts.</p>
+<p>---</p>
+<h1>1. Microsoft Dynamics 365 Field Service</h1>
+<p>Built on Dataverse (Power Platform). Everything is a Dataverse table with <code>msdyn_</code> prefix; the app is a model-driven Power App. Scheduling comes from the shared <strong>Universal Resource Scheduling (URS)</strong> solution (also used by Project Operations and Customer Service).</p>
+<h2>1.1 Core entities / data model</h2>
+<div class="table-wrap"><table><thead><tr><th>Entity (logical name)</th><th>Role</th></tr></thead><tbody><tr><td>Account</td><td>Service Account (where work happens) and Billing Account (who pays) — both lookups on work order</td></tr><tr><td>Work Order (<code>msdyn_workorder</code>)</td><td>Central transaction record: type, status, substatus, priority, duration, price list, service/billing account, functional location, primary incident</td></tr><tr><td>Work Order Type (<code>msdyn_workordertype</code>)</td><td>Classification (e.g. inspection vs break-fix); drives defaults</td></tr><tr><td>Incident Type (<code>msdyn_incidenttype</code>)</td><td>Work order <strong>template</strong>: bundles service tasks, products, services, skill requirements, estimated duration. Multiple incidents per WO (primary + additional). Builds service history per asset</td></tr><tr><td>Work Order Incident</td><td>Junction: incident type applied to a WO</td></tr><tr><td>Work Order Product (<code>msdyn_workorderproduct</code>)</td><td>Part line item; Line Status Estimated/Used drives inventory decrement and billing</td></tr><tr><td>Work Order Service (<code>msdyn_workorderservice</code>)</td><td>Labor line item (billable service)</td></tr><tr><td>Work Order Service Task (<code>msdyn_workorderservicetask</code>)</td><td>Checklist step; can carry an inspection</td></tr><tr><td>Customer Asset (<code>msdyn_customerasset</code>)</td><td>Serviceable equipment at customer; <strong>hierarchical</strong> (parent/child assets); full service history; can link to IoT device; product lookup</td></tr><tr><td>Functional Location</td><td>Hierarchical "where" (campus &gt; building &gt; floor &gt; room); assets sit at functional locations; WO carries functional location</td></tr><tr><td>Agreement (<code>msdyn_agreement</code>)</td><td>Contract frame for recurring work + invoicing</td></tr><tr><td>Agreement Booking Setup / Agreement Booking Date / Agreement Booking Incident</td><td>Recurrence definition → generated dates → incident templates for auto-generated WOs</td></tr><tr><td>Agreement Invoice Setup / Invoice Date / Invoice Product</td><td>Recurring invoice generation</td></tr><tr><td>Entitlement</td><td>Discounts/pricing terms applied to WOs (per account, incident type, asset category); entitlement application rules</td></tr><tr><td>SLA / SLA KPI Instance</td><td>First-response / resolution KPIs on work orders (reuses Dynamics SLA engine)</td></tr><tr><td>Bookable Resource (<code>bookableresource</code>)</td><td>Person (user/contact), equipment, facility, crew, or pool; has skills (characteristics), territory, work hours, start/end location</td></tr><tr><td>Bookable Resource Booking (<code>bookableresourcebooking</code>)</td><td>The scheduled visit: resource + time slot + booking status; own lifecycle separate from WO</td></tr><tr><td>Resource Requirement (<code>msdyn_resourcerequirement</code>)</td><td>Auto-generated scheduling demand record kept in sync with the WO (skills, territory, time window, duration); what the schedule board/RSO actually schedules</td></tr><tr><td>Requirement Group</td><td>Multi-resource / crew requirements (e.g. 2 techs + crane)</td></tr><tr><td>Characteristic / Rating</td><td>Skills and proficiency levels on resources; skill requirements on incident types/requirements</td></tr><tr><td>Territory</td><td>Geographic grouping of resources and accounts for dispatch filtering</td></tr><tr><td>Booking Status / Work Order Substatus</td><td>Configurable status entities mapping to system states</td></tr><tr><td>Warehouse (<code>msdyn_warehouse</code>), Product Inventory</td><td>Stock locations incl. truck warehouses; qty available/allocated/on hand/on order</td></tr><tr><td>Purchase Order (+ PO Product, PO Receipt, PO Bill)</td><td>Procurement flow, can be tied to a WO</td></tr><tr><td>Inventory Transfer / Inventory Adjustment (+ products)</td><td>Warehouse-to-truck moves, shrinkage corrections</td></tr><tr><td>RMA / RMA Product / RMA Receipt, RTV</td><td>Returns: to warehouse, to vendor (RTV), or change of equipment ownership</td></tr><tr><td>Invoice</td><td>Auto-generated when WO is Posted (products Used + services)</td></tr><tr><td>IoT Device, IoT Alert, IoT Device Command</td><td>Connected Field Service entities</td></tr><tr><td>Time Off Request, Resource Pay Type, Time Entry</td><td>Workforce admin</td></tr><tr><td>Geofence, Geolocation tracking records</td><td>Location/geofencing</td></tr></tbody></table></div>
+<p>Key relationship spine: <strong>Account → Work Order → (Incidents → Service Tasks / Products / Services) → Resource Requirement → Booking(s) → Bookable Resource</strong>, with Agreement generating WOs and Customer Asset + Functional Location hanging off the WO.</p>
+<h2>1.2 Work order lifecycle</h2>
+<ul><li><strong>System status</strong> (fixed, 6): Unscheduled → Scheduled → In Progress → Completed → <strong>Posted</strong> (billed/closed) | Canceled.</li><li><strong>Substatus</strong>: unlimited org-defined values, each mapped to a system status (e.g. "Completed – awaiting review").</li><li><strong>Booking status</strong> (default): Scheduled → Traveling → In Progress → On Break → Completed | Canceled; orgs add custom booking statuses mapped to these. Technicians drive booking status from mobile; booking status changes roll up to WO system status (multiple bookings supported — one booking In Progress ⇒ WO In Progress).</li><li>WO and booking have <strong>independent but linked lifecycles</strong>; Posted stage triggers invoice generation and locks the record.</li></ul>
+<h2>1.3 Scheduling &amp; dispatch</h2>
+<ul><li><strong>Schedule Board</strong>: dispatcher Gantt (hourly/daily/weekly), map panel with routes, unscheduled requirements list, drag-and-drop booking, board tabs with filters, multi-resource view. Hourly requirements grouped by territory.</li><li><strong>Schedule Assistant</strong>: single-job recommendation engine — ranks slots by availability, skills/characteristics, territory, promised time windows, travel.</li><li><strong>Resource Scheduling Optimization (RSO)</strong>: paid add-in; bulk optimization of many WOs/resources. Optimization <strong>scopes</strong> (which resources/requirements/timeframe) + <strong>goals</strong> (weighted objectives: minimize travel, maximize utilization, high priority first, locked bookings honored). Runs on schedule, on demand, or single-resource re-optimization ("optimize technician's day"). 2025-wave releases add AI/agentic real-time re-optimization (traffic, cancellations, overruns).</li><li><strong>Skills</strong>: Characteristics with rating values; matched from incident type requirements.</li><li><strong>Territories</strong>: filter resources on board and in assistant.</li><li><strong>Crews</strong>: Bookable Resource of type Crew; members booked together (crew leader model). Requirement Groups for multi-resource jobs with different skill mixes.</li><li>Also: fulfillment preferences (time windows, intervals), booking rules (custom JS validation), geofencing with arrival detection, travel time calculation with map routing, resource start/end at home or company address, facility scheduling, resource pools.</li></ul>
+<h2>1.4 Mobile app</h2>
+<ul><li>Single Power Apps-based <strong>Field Service mobile app</strong> (iOS/Android/Windows); model-driven, fully configurable via app designer/forms/views.</li><li><strong>Offline-first</strong>: mobile offline profiles define which tables/rows sync; background delta sync; works fully disconnected; conflict handling; offline JS/business rules run client-side (Dataverse plugins don't).</li><li>Booking agenda view, work order details, service task checklists.</li><li><strong>Inspections</strong>: digital forms builder (drag-drop question types: text, number, dropdown, radio, checkbox, entity lookup, barcode input, photo, signature, date/time), versioning, branching logic, works offline, results stored as JSON with PDF export; attached to service tasks per asset.</li><li>Photos/videos/notes attached to WO or asset timeline; <strong>customer signature</strong> capture; customer report generation.</li><li><strong>Barcode scanning</strong>: search any record type (asset, WO, product) or populate fields.</li><li>Knowledge articles surfaced on work orders; <strong>Dynamics 365 Guides</strong> (step-by-step mixed reality/holographic instructions) and <strong>Remote Assist</strong> (expert video call with AR annotations, HoloLens support) — note: Guides &amp; Remote Assist retire after Dec 31, 2026.</li><li><strong>Copilot in mobile</strong>: work order recap (voice/chat), natural-language work order updates (speech-to-text field updates), flag risky jobs.</li><li>Location sharing → powers technician tracking; geofence auto status suggestions; push notifications; Teams chat embedded in WO context.</li></ul>
+<h2>1.5 Inventory</h2>
+<ul><li>Warehouse = any stock location, <strong>including technician trucks</strong> (mobile warehouses).</li><li>Product Inventory per warehouse: Qty Available, Allocated, On Hand, On Order.</li><li>WO Product with Line Status = Used decrements the source warehouse automatically.</li><li><strong>Purchase Orders</strong>: request → approval → receipt (to warehouse or direct to WO) → bill.</li><li><strong>Inventory Transfers</strong> (warehouse → truck), <strong>Adjustments</strong> (shrinkage, cycle counts).</li><li><strong>Returns</strong>: RMA with three processing types — return to warehouse, <strong>RTV</strong> (return to vendor), change of equipment ownership; RMA receipts confirm.</li><li>Deliberately "lightweight ERP" — for advanced costing/reservations Microsoft points to Business Central / Supply Chain Management integration.</li></ul>
+<h2>1.6 Agreements / preventive maintenance</h2>
+<ul><li>Agreement = frame with dates, price list, service territory.</li><li><strong>Agreement Booking Setup</strong>: recurrence (e.g. monthly), WO type, incident types, products/services/tasks, preferred resource, pre-booking flag → system generates <strong>Agreement Booking Dates</strong> and creates WOs X days in advance; can auto-book to preferred resource.</li><li><strong>Agreement Invoice Setup</strong>: recurring fixed invoices independent of WOs.</li><li>Entitlements apply contract pricing/discounts to WO products/services automatically (by account, asset category, incident type). SLAs (KPI instances) track response/resolution deadlines on WOs.</li><li>Asset-centric PM via incident types tied to assets + agreements per asset.</li></ul>
+<h2>1.7 IoT / Connected Field Service &amp; AI</h2>
+<ul><li><strong>Connected Field Service</strong>: Azure IoT Hub (or IoT Central) → Stream Analytics rules → IoT Alert records in Dataverse (via Logic Apps/Functions/Power Automate). Alert → case → work order conversion via business process flow; alert auto-parenting/aggregation per device/asset; device commands (e.g. remote restart) from within D365; device registration tied to Customer Assets. fix before customer notices, or fix remotely without a truck roll.</li><li><strong>Copilot features</strong> (2025–26): work order <strong>recap/summary</strong> (lifecycle-aware: unscheduled shows requirements, in-progress shows current state), booking recap; Copilot side pane in web app (natural-language WO queries, find/create/update); AI-powered work order creation from emails in Outlook; <strong>Scheduling Operations Agent</strong> (autonomous agent that continuously re-optimizes schedules as conditions change — preview); AI scheduling vs traditional RSO positioning; Copilot Studio for custom agents; data insights on inspections.</li></ul>
+<h2>1.8 Customer engagement</h2>
+<ul><li><strong>Field Service portal</strong> (Power Pages template): customer <strong>self-scheduling</strong> of appointments (suggested slots from Dataverse scheduling API), reschedule/cancel, view history. Limitation: user resources only, no crews/multi-resource incidents.</li><li><strong>Track my technician</strong>: live map with technician location + ETA once booking status = Traveling; technician name/photo, call/text icon. Requires location sharing from mobile app.</li><li>Automated <strong>notifications</strong> (email/SMS via Power Automate templates): booking reminders, day-of, traveling-with-map.</li><li>Post-completion <strong>surveys</strong> (Customer Voice / portal feedback).</li></ul>
+<h2>1.9 Integrations &amp; extensibility</h2>
+<ul><li><strong>Dataverse-native</strong>: every entity extensible, Power Automate flows, Power Apps, Power BI, plugins, Web API (OData), business process flows, Copilot Studio agents.</li><li><strong>Microsoft 365</strong>: work orders in <strong>Teams</strong> (create/view/manage, contextual chat) and <strong>Outlook</strong> (create WO from email with Copilot drafting).</li><li><strong>Business Central</strong>: native bidirectional integration (items, invoices posting, inventory) — SMB ERP story. <strong>Finance &amp; Operations / Supply Chain</strong> integration retires Feb 28, 2027, transitioning to Project Operations integration. <strong>Project Operations</strong> integration for project-based service.</li><li>Mixed reality (Guides, Remote Assist) — retiring end of 2026.</li><li>ISV ecosystem on AppSource.</li><li><strong>Pricing</strong>: $105/user/mo (full), $50/user/mo Field Service Contractor. RSO an add-on priced per optimized resource.</li></ul>
+<h2>1.10 Distinctive traits</h2>
+<ol><li>Deep, prescriptive out-of-box data model (incident types as WO templates, functional locations, agreements with dual booking/invoice setups, full RMA/RTV loop).</li><li>Posted stage + invoice generation = built-in billing loop.</li><li>URS shared scheduling engine + RSO with explicit scopes/goals.</li><li>Power Platform as the extensibility layer — low-code everywhere, same platform as the rest of Dynamics.</li><li>M365 gravity: Teams/Outlook embedded workflows, Copilot across web+mobile.</li><li>Connected Field Service reference architecture on Azure IoT.</li><li>Cheaper list price than Salesforce; contractor license tier.</li></ol>
+<p>---</p>
+<h1>2. Salesforce Field Service</h1>
+<p>Formerly Field Service Lightning (FSL). Three layers: (1) <strong>core standard objects</strong> in Service Cloud (free schema once FS enabled), (2) the <strong>Field Service managed package</strong> (FSL namespace: dispatcher console, scheduling engine, optimization, guided setup), (3) the <strong>Field Service mobile app</strong>. Requires Service Cloud; scheduling engine now <strong>Enhanced Scheduling and Optimization (ESO)</strong> running on Hyperforce.</p>
+<h2>2.1 Core objects / data model</h2>
+<div class="table-wrap"><table><thead><tr><th>Object</th><th>Role</th></tr></thead><tbody><tr><td>Account / Contact</td><td>Customer + person on site</td></tr><tr><td>Case</td><td>Optional origin of work (entitlement/milestone driven)</td></tr><tr><td><strong>WorkOrder</strong></td><td>What work is needed; links Account, Contact, Case, Asset, Entitlement, ServiceContract, WorkType, Location; price book support</td></tr><tr><td><strong>WorkOrderLineItem</strong></td><td>Child tasks/steps of a WO; own status, asset, work type; hierarchical (parent line items)</td></tr><tr><td><strong>WorkType</strong></td><td>Template: duration, required skills, products, standard line items, auto-create Service Appointment flag</td></tr><tr><td><strong>ServiceAppointment</strong></td><td>The schedulable visit (the "when/where"); polymorphic parent (WorkOrder, WOLI, Asset, Account, Lead); Earliest Start / Arrival Window Start-End / Due Date; scheduled start/end; actuals</td></tr><tr><td><strong>AssignedResource</strong></td><td>Junction SA ↔ ServiceResource (supports multiple assigned resources)</td></tr><tr><td><strong>ServiceResource</strong></td><td>Mobile worker, crew, or contractor; type Technician/Crew/Agent; linked to User; efficiency score, capacity-based option</td></tr><tr><td><strong>ServiceTerritory</strong></td><td>Hierarchical territories; operating hours; typical in-territory travel</td></tr><tr><td>ServiceTerritoryMember</td><td>Resource↔territory with primary/secondary/relocation + date ranges</td></tr><tr><td><strong>OperatingHours + TimeSlot</strong></td><td>Availability calendars for territories, resources, accounts (arrival windows)</td></tr><tr><td><strong>Shift</strong> (+ ShiftPattern)</td><td>Variable/rotating schedules overriding operating hours</td></tr><tr><td><strong>Skill / ServiceResourceSkill / SkillRequirement</strong></td><td>Skills with levels 0–99.99, time-bounded; requirements on work type/WO/WOLI</td></tr><tr><td><strong>ServiceCrew / ServiceCrewMember</strong></td><td>Crew as schedulable unit with member date ranges</td></tr><tr><td>ResourceAbsence</td><td>Time off / non-availability</td></tr><tr><td>ResourcePreference</td><td>Preferred/required/excluded resource per account or WO</td></tr><tr><td><strong>Asset</strong></td><td>Standard object, hierarchical; milestones; linked to maintenance</td></tr><tr><td><strong>MaintenancePlan / MaintenanceAsset / MaintenanceWorkRule</strong></td><td>PM: plan → covered assets → recurrence rules (calendar, criteria, usage-based) generating WO batches</td></tr><tr><td><strong>Entitlement / ServiceContract / ContractLineItem</strong></td><td>What service customer is entitled to; per-asset contract lines; milestones (SLA countdowns) on cases/WOs</td></tr><tr><td><strong>ProductItem</strong></td><td>Stock of a Product2 at a <strong>Location</strong> (incl. van/mobile locations); serialized or quantity</td></tr><tr><td>ProductItemTransaction</td><td>Audit of stock movements</td></tr><tr><td><strong>ProductRequest / ProductRequestLineItem</strong></td><td>Part orders (e.g. tech requests part to van)</td></tr><tr><td><strong>ProductTransfer</strong></td><td>Movement between locations; received via ProductReceipt</td></tr><tr><td><strong>Shipment</strong></td><td>In-transit tracking</td></tr><tr><td><strong>ReturnOrder / ReturnOrderLineItem</strong></td><td>RMA for products/inventory back to warehouse/vendor</td></tr><tr><td><strong>ProductConsumed / ProductRequired</strong></td><td>Parts used on WO/WOLI (decrements ProductItem) vs parts needed</td></tr><tr><td><strong>Location / Address</strong></td><td>Warehouses, vans, sites, plants; hierarchical</td></tr><tr><td>TimeSheet / TimeSheetEntry</td><td>Technician time tracking</td></tr><tr><td><strong>ServiceReport / ServiceReportTemplate</strong></td><td>PDF report incl. signatures, per WO/SA</td></tr><tr><td><strong>DigitalSignature</strong></td><td>Captured signatures typed by role (customer, technician) — multiple per report</td></tr><tr><td>LinkedArticle</td><td>Knowledge article attached to WO/WOLI</td></tr><tr><td>Expense, WorkPlan / WorkPlanTemplate / WorkStep / WorkStepTemplate</td><td>Expenses; work plans = ordered step checklists on WO/WOLI</td></tr><tr><td>OptimizationRequest, SchedulingPolicy (FSL__ custom objects), TravelMode</td><td>Managed package scheduling config</td></tr></tbody></table></div>
+<p>Relationship spine: <strong>Account → WorkOrder → WorkOrderLineItems → ServiceAppointment(s) → AssignedResource → ServiceResource (→ Territory, Skills, Shifts)</strong>, with WorkType templating, MaintenancePlan generating WOs, and Entitlement/ServiceContract governing them.</p>
+<h2>2.2 Work order &amp; appointment lifecycle</h2>
+<ul><li><strong>WorkOrder status</strong> (default picklist, customizable): New, In Progress, On Hold, Completed, Cannot Complete, Closed, Canceled. Status categories keep custom values mapped.</li><li><strong>ServiceAppointment status</strong> (default): <strong>None → Scheduled → Dispatched → In Progress → Completed | Cannot Complete | Canceled</strong>.</li><li><strong>Status transitions are configurable as a state machine</strong> (allowed from→to pairs) in Field Service Settings; auto-dispatch job flips Scheduled→Dispatched; "pinned" statuses lock appointments against optimizer moves (e.g. Dispatched onward).</li><li>Separation of concerns is explicit: WO = commercial/what, SA = execution/when; one WO can have many SAs (return visits), each with own lifecycle.</li></ul>
+<h2>2.3 Scheduling &amp; dispatch</h2>
+<ul><li><strong>Dispatcher Console</strong> (managed package): appointment list + <strong>Gantt</strong> + map with live routes and traffic; policy picker; mass schedule/dispatch/optimize; Gantt color rules; appointment chatter; long-term view; crew management UI. Summer '26 adds modernized <strong>Scheduling Console</strong> with AI layer (live updates, gap visualization, Agentforce surfacing nearest qualified tech for emergencies).</li><li><strong>Scheduling engine = policies</strong>: a <strong>Scheduling Policy</strong> bundles <strong>Work Rules</strong> (hard pass/fail filters: skills match, territory, availability, timeframe, required resources, max travel, service objectives-excluded resources) + <strong>Service Objectives</strong> (weighted soft scores: minimize travel, ASAP, preferred resource, skill level, minimize overtime, resource utilization/priority). Out-of-box policies: Customer First, High Intensity Utilization, Soft Boundaries, Emergency.</li><li><strong>Enhanced Scheduling and Optimization (ESO)</strong>: Hyperforce-based optimizer; global optimization (nightly/bulk), <strong>in-day optimization</strong> (react to cancellations/delays), <strong>resource schedule optimization</strong> (one tech's day), appointment insertion, "fill-in schedule", automatic rescheduling on overlap/emergency. <strong>Emergency dispatch</strong> ("last-mile") finds nearest qualified tech now.</li><li><strong>Skills</strong> with numeric levels and validity dates; <strong>territories hierarchical</strong> with primary/relocation membership; <strong>crews</strong> schedulable with min crew size on work type; <strong>complex work</strong>: scheduling dependencies between SAs (start-after-finish, same-start, same resource, same day), multiday appointments.</li><li><strong>Travel modes</strong>: per-resource transport (car/van/bike/walk), toll/hazmat avoidance; predictive travel with street-level routing; offsite/no-travel appointments.</li><li>Capacity-based scheduling for contractors (hours/jobs per period rather than slots).</li></ul>
+<h2>2.4 Mobile app</h2>
+<ul><li>Field Service mobile app (iOS/Android), <strong>offline-first</strong>: briefcase/offline priming (admin-defined record sets), delta sync, thousands of records offline, deep-link actions. Caveat: server-side automation (Apex triggers, validation rules, flows) doesn't run until sync.</li><li>Customizable via layouts, quick actions, <strong>Lightning Web Components offline</strong> (LWC-based tailored UIs, low-code form builder), mobile <strong>app extensions</strong> (launch other apps with context), branding.</li><li><strong>Service Reports</strong> with <strong>multiple digital signatures</strong> (typed by role), generated offline.</li><li><strong>Work Plans / Work Steps</strong>: templated checklists; <strong>Data Capture forms</strong> (dynamic offline forms built in Flow Builder — newer replacement for third-party forms); <strong>Voice-to-Form</strong> hands-free completion (Winter '26).</li><li>Photos/attachments to WO; barcode scanning for asset/product lookup; knowledge articles attached to WOs readable offline; Visual Remote Assistant session launch; timesheets, expenses, inventory (van stock view, product consumption, product requests) in app.</li><li>Push notifications, appointment agenda, offline maps; <strong>quick status change</strong> on the go; Einstein/Agentforce <strong>pre-work brief</strong> (audio summary of the job — listen while driving).</li></ul>
+<h2>2.5 Inventory</h2>
+<ul><li><strong>Location</strong> records model warehouses, sites, and <strong>vans (mobile locations)</strong>; hierarchical.</li><li><strong>ProductItem</strong> = stock of a product at a location (serialized or qty); ProductItemTransaction audit trail.</li><li>Flow: <strong>ProductRequest</strong> (tech needs part) → <strong>ProductTransfer</strong> (+ <strong>Shipment</strong> in transit) → ProductReceipt → van stock; <strong>ProductRequired</strong> on WO (planned) vs <strong>ProductConsumed</strong> (used — decrements van stock).</li><li><strong>ReturnOrder / ReturnOrderLineItem</strong> for RMAs (customer returns, defective parts back to warehouse/supplier).</li><li>Like Dynamics: intentionally light ERP; deeper inventory usually integrated (e.g. with an ERP via MuleSoft).</li></ul>
+<h2>2.6 Maintenance plans / entitlements</h2>
+<ul><li><strong>MaintenancePlan</strong> (often tied to ServiceContract): covered <strong>MaintenanceAssets</strong>; generation horizon/batch; one WO per asset per cycle option.</li><li><strong>MaintenanceWorkRules</strong>, three types: <strong>calendar-based</strong> (every N days/weeks/months, advanced recurrence RRULE), <strong>criteria-based</strong> (record conditions/thresholds trigger next WO — e.g. asset status change), <strong>usage-based</strong> (meter/usage counters via Asset Attributes — e.g. every 1,000 operating hours). Multiple rules per asset (e.g. minor monthly + major yearly) with sequencing.</li><li><strong>Entitlements + Milestones</strong>: SLA countdowns on cases and work orders (first response, resolution); ServiceContract/ContractLineItem per asset; entitlement verification on WO creation.</li></ul>
+<h2>2.7 IoT / AI (Einstein → Agentforce)</h2>
+<ul><li>No first-party IoT ingestion product anymore (Salesforce IoT Cloud discontinued); pattern is: external IoT platform (AWS/Azure) → Platform Events / APIs → Flow creates Case/WO. Criteria-based maintenance rules can react to asset attribute updates from telemetry.</li><li><strong>Agentforce for Field Service</strong> (current AI umbrella; Einstein features folded in):</li><li>Dispatcher: Agentforce fills schedule gaps, recommends + books appointments per policy; emergency "nearest qualified tech" actions; natural-language Gantt queries.</li><li>Technician/mobile: <strong>pre-work brief</strong> (audio AI summary), post-work summarization into service reports, knowledge answers, <strong>Voice-to-Form</strong> data capture, on-device Agentforce assistant.</li><li><strong>Work Summaries</strong> for wrap-up; asset service prediction (Einstein) for pre-emptive maintenance scoring.</li><li><strong>Visual Remote Assistant</strong> (add-on, Streem-based): two-way video see-what-customer-sees, AR annotations, OCR/barcode recognition, session recordings into records; virtual appointments as SA type.</li></ul>
+<h2>2.8 Customer engagement</h2>
+<ul><li><strong>Appointment Assistant</strong> (add-on): "Uber-style" last-mile — SMS/WhatsApp/email real-time status, technician name/photo/logo, <strong>live map tracking en route</strong> (temporary location sharing), ETA updates; <strong>self-service scheduling/rescheduling/cancellation</strong> page (no login, link-based; simplified single-day slot view); works on Experience Cloud.</li><li>Experience Cloud portals for full self-service (create WOs, book via GetSlots API-driven flows).</li><li>Salesforce Scheduler (separate product) for appointment booking scenarios; surveys via Salesforce Feedback Management.</li></ul>
+<h2>2.9 Integrations &amp; extensibility</h2>
+<ul><li>Full platform: Apex, Flow, LWC, Platform Events, REST/SOAP APIs; <strong>Field Service REST APIs</strong> and <strong>FSL Apex namespace</strong> (programmatic scheduling, optimization calls, GetSlots/book from custom UIs); AppExchange ISVs (Axsy, Youreka, ProntoForms etc. for advanced forms/offline).</li><li>MuleSoft for ERP integration; Data Cloud for unified customer data; Slack for swarming/collaboration; Maps/ Salesforce Maps for territory design.</li><li>Native fit with Sales/Service Cloud objects (Case→WO→Asset→Opportunity loops: "service to sales").</li><li><strong>Licensing</strong>: Enterprise/Unlimited editions; roles priced separately — Technician, Dispatcher (~$165–330/user/mo depending on edition), <strong>Field Service Plus</strong> ($350–380), login-based <strong>Contractor / Contractor+</strong> tiers; requires ≥1 Service Cloud + ≥1 Dispatcher license. Add-ons: Appointment Assistant, Visual Remote Assistant, Agentforce (consumption-based).</li></ul>
+<h2>2.10 Distinctive traits</h2>
+<ol><li>Cleanest WO vs ServiceAppointment separation + configurable status-transition state machine.</li><li>Scheduling policy model (work rules + weighted service objectives) — the most transparent/tunable optimizer configuration in the market; ESO with in-day and emergency optimization.</li><li>Maintenance work rules with calendar/criteria/usage types on one plan.</li><li>Appointment Assistant: polished packaged last-mile customer experience.</li><li>Platform extensibility (Apex/Flow/LWC offline) and CRM adjacency — service↔sales on one customer record.</li><li>Agentforce agentic AI direction (dispatcher gap-filling, voice-driven mobile work).</li><li>Higher price point; more assembly required (managed package + policies), but more scheduling knobs.</li></ol>
+<p>---</p>
+<h1>3. Head-to-head takeaways for feature planning</h1>
+<div class="table-wrap"><table><thead><tr><th>Dimension</th><th>Dynamics 365 FS</th><th>Salesforce FS</th></tr></thead><tbody><tr><td>Platform</td><td>Dataverse / Power Platform</td><td>Force.com + FSL managed package</td></tr><tr><td>WO templating</td><td>Incident Types (bundle tasks+products+services+skills)</td><td>Work Types + Work Plan/Step templates</td></tr><tr><td>Schedulable unit</td><td>Booking (on Resource Requirement)</td><td>Service Appointment (+ AssignedResource)</td></tr><tr><td>Status model</td><td>System status (fixed 6) + substatus + booking status</td><td>Customizable picklists + transition state machine + pinned statuses</td></tr><tr><td>Optimizer</td><td>RSO scopes/goals; new agentic scheduling agent</td><td>ESO policies = work rules + weighted objectives; in-day + emergency</td></tr><tr><td>PM engine</td><td>Agreement booking setups (calendar recurrence)</td><td>Maintenance work rules: calendar, criteria, <strong>usage-based meters</strong></td></tr><tr><td>Billing</td><td>Built-in: WO → Posted → Invoice; agreement invoices</td><td>Price books on WO; invoicing usually external/Revenue Cloud</td></tr><tr><td>Inventory loop</td><td>Warehouse/truck, PO, transfer, adjustment, RMA/RTV</td><td>Location/van, ProductRequest/Transfer/Shipment, ReturnOrder</td></tr><tr><td>IoT</td><td>First-party Connected Field Service (Azure IoT Hub)</td><td>Bring-your-own IoT → Platform Events/Flow</td></tr><tr><td>Mixed reality</td><td>Guides + Remote Assist (retiring end 2026)</td><td>Visual Remote Assistant (video AR, no headset story)</td></tr><tr><td>Customer last-mile</td><td>Power Pages portal + Track My Technician</td><td>Appointment Assistant (SMS/WhatsApp live tracking, no-login links)</td></tr><tr><td>AI</td><td>Copilot recap/update, Scheduling Operations Agent, Copilot Studio</td><td>Agentforce actions, pre-work brief, Voice-to-Form, work summaries</td></tr><tr><td>Price anchor</td><td>$105 full user, $50 contractor</td><td>~$165–380/user + add-ons, login-based contractor tiers</td></tr></tbody></table></div>
+<p>Common data-model concepts worth mirroring in any FSM product: account/asset/functional-location hierarchy; WO templates; separate schedulable-visit entity with own status flow; skills with levels; territory + operating-hours model; parts estimated-vs-used distinction; PM plan → generated WOs; entitlement/SLA layer; truck-as-warehouse inventory.</p>
+<h2>Sources (primary)</h2>
+<ul><li>https://www.microsoft.com/en-us/dynamics-365/products/field-service</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/field-service-architecture</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/work-order-status-booking-status</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/rso-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/inspections-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/inventory-purchasing-returns-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/agreements-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/connected-field-service-architecture</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/copilot-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/customer-portal-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/field-service/field-service-integration-overview</li><li>https://learn.microsoft.com/en-us/dynamics365/release-plan/2025wave2/service/dynamics365-field-service/</li><li>https://www.salesforce.com/service/field-service-management/guide/ (blocked; content via search)</li><li>https://developer.salesforce.com/docs/atlas.en-us.field_service_dev.meta/field_service_dev/fsl_dev_soap_core.htm</li><li>https://developer.salesforce.com/docs/atlas.en-us.field_service_dev.meta/field_service_dev/fsl_dev_soap_inventory.htm</li><li>https://developer.salesforce.com/docs/atlas.en-us.field_service_dev.meta/field_service_dev/fsl_dev_soap_maintenance.htm</li><li>https://help.salesforce.com/s/articleView?id=service.pfs_lifecycle.htm</li><li>https://help.salesforce.com/s/articleView?id=service.fs_key_concepts.htm</li><li>https://trailhead.salesforce.com/content/learn/modules/field-service-lightning-scheduling-basics/examine-scheduling-policies</li><li>https://www.salesforce.com/service/field-service-management/pricing/</li><li>https://www.salesforceben.com/salesforce-field-service/</li><li>https://diabsolut.com/salesforce-field-service-features/ (2025–26 release recaps)</li></ul>
+</article>
+<article class="doc-panel" data-doc="r3" hidden><h1>Competitive FSM Research: IFS FSM, Odoo Field Service, Acumatica Field Service</h1>
+<p>Researched 2026-07-03 via web search (direct fetches to vendor sites were blocked by the network proxy, so findings come from search-result content across vendor pages, official docs excerpts, datasheets, partner sites, and community forums). Confidence notes are inline where sourcing is thin.</p>
+<p>---</p>
+<h2>1. IFS FSM (IFS Field Service Management / IFS Cloud Service Management)</h2>
+<p><strong>Positioning:</strong> Enterprise-grade, best-of-breed FSM. Repeated leader in Gartner MQ for FSM. Two generations exist: legacy standalone <strong>IFS FSM 6</strong> (still widely deployed, own data model, smart client + web client) and <strong>IFS Cloud Service Management</strong> (the current platform, where FSM is a module of the composable IFS Cloud suite alongside ERP and EAM). Sold to large service organizations: telecom, med-tech, industrial OEMs, utilities.</p>
+<h3>Core entities / data model</h3>
+<ul><li>FSM 6 model: <strong>Person, Place, Product</strong> (installed base/assets) as master data; <strong>Service Request → Task(s) → Work Assignment(s)</strong> as the transactional chain. PSO "Activity" maps to Task/Request.</li><li>In IFS Cloud / Mobile Work Order docs (25R2): <strong>Service Request → Scope → Task → Work Assignment</strong>. Creating a service request creates a Scope in Released status with Tasks based on the selected Service; Work Assignments are created per resource. A technician can create a new Scope from the field for related-but-separate work.</li><li>Task status and Work Assignment status are separate state machines. Task Status Flows are configurable and can be restricted by task type/template and by role (e.g. TASKSTATUSANY permission to bypass the flow).</li><li>Installed base / asset structures, serial tracking, and equipment history are first-class (shared with IFS EAM).</li></ul>
+<h3>Service order / work order lifecycle</h3>
+<ul><li>Closed-loop process: request intake (contact center, portal, IoT trigger) → entitlement check against contract/warranty → task creation → scheduling/dispatch → mobile execution → debrief (time, parts, expenses) → review → invoice/claim.</li><li>Configurable status flows per task type; role-based transition control; back-office review before billing.</li><li>Also covers depot/workshop repair orders and RMA lifecycles (see reverse logistics).</li></ul>
+<h3>Scheduling &amp; dispatch</h3>
+<ul><li><strong>IFS PSO (Planning &amp; Scheduling Optimization)</strong> with the <strong>Dynamic Scheduling Engine (DSE)</strong> is the flagship differentiator: 100% dynamic, always-on continuous optimization (not batch). Uses ~35 algorithms with AI-based algorithm selection; dispatchers manage exceptions only ("scheduling by exception").</li><li>Predicts task duration and travel time with self-learning models; <strong>Automated Intelligent Travel Profiles (AITP)</strong> built on TomTom road data (600M+ devices) for predictive travel times.</li><li>Advanced models: "late-as-possible" scheduling, depot pick-ups, PUDO (pick-up/drop-off) locations, appointment booking with capacity check, what-if scenario planning, multi-day/multi-person jobs, skills, SLAs, shifts, territories.</li><li>Scale claim: handles up to 15x more jobs in one scheduling problem than competitors; 10 to 10,000 technicians; vendor cites ~28% more jobs/day.</li><li>Also usable for workforce planning/forecasting (long-term capacity), not just day-of dispatch.</li></ul>
+<h3>Mobile</h3>
+<ul><li>IFS Mobile Work Order / FSM Mobile: native iOS/Android/Windows, <strong>full offline</strong> operation — work orders and task data fully accessible offline, automatic sync on reconnect (some features online-only).</li><li>Technician capabilities: job details, asset/installed-base history, parts lists, safety info; <strong>task steps with checklists</strong>, mandatory attachments per step, photo/video capture attached to task or step (printable into the work task report), time reporting, parts consumption, expenses, customer signature capture. Data flows straight into IFS Cloud, no re-entry.</li><li>AI service report summarization on mobile (customer-friendly summary to speed sign-off, 25R1/25R2).</li></ul>
+<h3>Inventory / spare parts</h3>
+<ul><li>Deep <strong>service logistics</strong>: multi-location inventory including technician van stock, forward stock locations, supply-chain partner (3PL) stock; availability check, reservations, replenishment requests from mobile.</li><li><strong>Loan and exchange</strong> processes (advance exchange), serial traceability and full transaction logs.</li><li>Parts demand forecasting/optimization for service parts.</li></ul>
+<h3>Reverse logistics &amp; depot repair (signature strength)</h3>
+<ul><li>Full <strong>RMA</strong> flows: return authorization → inbound shipping → receiving → routing → repair (repair orders/workshop) → packaging → outbound shipping → billing.</li><li>Warranty claim management against suppliers/OEMs; loaner management during repair.</li><li>This end-to-end reverse-logistics depth is what most SMB FSM tools lack and is IFS's moat in complex service.</li></ul>
+<h3>Contracts, warranties, maintenance</h3>
+<ul><li>Service contract management: SLAs with automated compliance monitoring, entitlement checks at request intake, flexible/contract-specific pricing, periodic contract billing, renewals; goal is preventing revenue leakage.</li><li>Warranty management on assets and components (what's covered, supplier warranty recovery/claims).</li><li>Preventive/planned maintenance programs on installed base (shared engine with IFS EAM); predictive maintenance via IoT + AI anomaly detection (FMECA assistance in EAM).</li></ul>
+<h3>ERP integration approach</h3>
+<ul><li>IFS Cloud <strong>is</strong> an ERP (finance, HCM, supply chain, projects) — Service Management is natively in the same platform/data model, so invoicing, costing, and inventory are internal, not integrated.</li><li>Standalone FSM 6 is integration-friendly by design (many customers run it against SAP/Oracle): XML/REST-based integration layer, message-based sync of customers, parts, invoices to the ERP.</li><li>IFS Cloud exposes OData REST APIs; marketplace connectors (e.g. Azure/Microsoft ecosystem).</li></ul>
+<h3>Customer-facing</h3>
+<ul><li>B2B <strong>customer portal</strong> / self-service: request creation, status tracking, asset visibility, collaboration. Contact-center console for agents. Appointment booking with real-time capacity from PSO. Notifications ("technician on the way").</li></ul>
+<h3>Reporting / analytics / AI</h3>
+<ul><li><strong>IFS.ai</strong> layer (25R1: 200+ AI capabilities): Copilot (conversational, context-aware, embedded in workflows) including <strong>Copilot for Service Technicians</strong> (real-time troubleshooting guidance in the field), time prediction, sales quotation assist, service report summarization.</li><li>Predictive maintenance, anomaly detection, explainable AI. Lobbies (role-based dashboards) + embedded BI in IFS Cloud.</li></ul>
+<h3>Distinctive</h3>
+<ol><li>PSO dynamic scheduling engine — the strongest real-time optimizer in the market.</li><li>End-to-end reverse logistics/depot repair/RMA.</li><li>Installed-base/asset-centric model shared with full EAM.</li><li>Enterprise scale (thousands of techs) and complex contract/SLA/entitlement logic.</li><li>Weaknesses (per third-party reviews): implementation complexity, cost, heavy for SMB; two-generation product line (FSM 6 vs IFS Cloud) creates migration questions.</li></ol>
+<p>---</p>
+<h2>2. Odoo Field Service</h2>
+<p><strong>Positioning:</strong> SMB/mid-market. Field Service is one modular app inside the Odoo suite (Community open-source core; FSM app is Enterprise). Technically it is a <strong>specialized layer on the Project app</strong> — an FSM task <em>is</em> a project task with field-service extensions. Per-user suite pricing makes it very cheap vs dedicated FSM.</p>
+<blockquote><p><strong>Important 2026 change:</strong> as of <strong>Odoo 19.2 the standalone Field Service app is discontinued and merged into the Planning app</strong> (announced in 19.2 release notes; Odoo 20 continues this). Same on-site tools, now living in Planning for a unified scheduling experience. Feature set below still applies; the container app changed.</p></blockquote>
+<h3>Core entities / data model</h3>
+<ul><li><strong>Task</strong> (project.task in the Field Service project) is the work order. Fields: customer, address, planned date, assignees, sale order link, worksheet template, timesheets, products/materials.</li><li><strong>Worksheet templates</strong> — configurable per intervention type (Studio-built forms: text, checkboxes, selections, photos, signature).</li><li>Products (stock-tracked, incl. lot/serial), Warehouses, Sale Orders, Invoices, Helpdesk tickets, Recurrences. No native "equipment/installed base served in the field" entity in the FSM app itself (Maintenance app covers internal equipment; installed-base tracking for customer equipment is a known gap / customization area, often via lot-serial + partner).</li></ul>
+<h3>Work order lifecycle</h3>
+<ul><li>Task creation channels: manual, <strong>email alias, website form, from a confirmed Sale Order</strong> (service product configured "create task in Field Service project"), or <strong>from a Helpdesk ticket</strong> ("Plan Intervention" button when team has Onsite Interventions enabled).</li><li>Stages are simple kanban stages (New / Planned / In Progress / Done — configurable, per project). No enforced state machine.</li><li>Execution: technician starts timer, fills worksheet, logs products used, gets customer signature, marks done → customer report (worksheet + timesheet + products) → invoice.</li></ul>
+<h3>Scheduling &amp; dispatch</h3>
+<ul><li>Views: <strong>Kanban, Gantt (drag-and-drop, dependencies, conflict/overlap warnings), Calendar, Map view</strong> (tasks plotted by address; click a task → itinerary/route link via Google Maps).</li><li>Planning by user or team; avoid double booking and see unassigned tasks. With the 19.x merge into Planning: shift templates, open shifts, auto-planning of shifts, employee availability come from Planning.</li><li><strong>No native route optimization engine</strong> — map view + manual sequencing only. No real-time GPS technician tracking natively.</li></ul>
+<h3>Mobile</h3>
+<ul><li>Odoo mobile app (iOS/Android) is a wrapper on the responsive web UI: end-to-end appointment handling — view schedule, timer-based time tracking, fill worksheets, add products, capture photos in worksheet, <strong>customer signature on device</strong>, generate/send report and invoice on site.</li><li><strong>Offline: essentially none / very limited</strong> — the app requires connectivity (browser-based). This is the biggest mobile gap vs dedicated FSM tools.</li></ul>
+<h3>Inventory / spare parts</h3>
+<ul><li>Enable "Time and Material Invoicing" → product catalog on the task. Products added to a task are consumed from stock automatically ("zero effort" stock updates), with <strong>lot/serial tracking</strong> supported.</li><li><strong>Default warehouse per user</strong> (My Profile → Preferences → Default Warehouse) — this is Odoo's mechanism for <strong>van stock</strong>: each technician's "vehicle" is a warehouse/location; materials on their tasks pull from it. Multi-warehouse and replenishment come from the standard Inventory app (reordering rules, internal transfers).</li><li>Returns handled by standard Inventory returns/RMA flows (basic; no service-specific reverse logistics).</li></ul>
+<h3>Contracts, warranties, preventive maintenance</h3>
+<ul><li>No dedicated service-contract entity in FSM. Patterns used instead:</li><li><strong>Recurring tasks</strong> (task recurrence) for periodic maintenance visits.</li><li><strong>Subscriptions app</strong> for recurring billing of service plans; combined with sale-order-generated tasks for quarterly PM visits (documented pattern: equipment sale + recurring service package).</li><li>Helpdesk SLA policies apply to tickets, not FSM tasks directly.</li><li>Warranty tracking: not native; via serial numbers + custom fields or third-party modules (OCA fieldservice ecosystem has more, e.g. <code>fieldservice_account</code>, agreements/locations/equipments modules — the OCA "Field Service" vertical is a notably richer open-source data model: FSM Location, FSM Equipment, FSM Order, agreements).</li></ul>
+<h3>ERP integration approach (key for us)</h3>
+<ul><li><strong>There is no "integration" — FSM is native inside the ERP.</strong> Single database, single data model:</li><li><strong>Sales:</strong> service product on SO auto-creates the FSM task; task links back to SO; materials and timesheets append lines to the same SO.</li><li><strong>Invoicing:</strong> "Create invoice" from the task → draft invoice from SO lines (time &amp; materials based on actuals: timesheet hours × service price + products used). Fixed-price and milestone invoicing also possible via SO policies. Invoice can be generated and emailed minutes after signature.</li><li><strong>Accounting:</strong> invoices post straight to Odoo Accounting; analytic accounts per project/task give service profitability.</li><li><strong>Inventory:</strong> task materials generate stock moves from the user's default warehouse.</li><li><strong>Timesheets/Payroll/HR:</strong> timer entries are standard timesheets. (Note: 19.2 removed Planning–Payroll work-entry integration.)</li><li><strong>Helpdesk/CRM/Website forms</strong> as intake channels.</li><li>External integration surface: JSON-RPC/XML-RPC + (Odoo 17+) REST-ish external API on all models; webhooks/automations via Studio/Automation rules. Because FSM objects are ordinary ORM models (project.task, sale.order, account.move), an external app syncing with Odoo works against generic model APIs — no FSM-specific API.</li></ul>
+<h3>Customer-facing</h3>
+<ul><li>Customer portal (website): see quotations, sales orders, invoices, sign &amp; pay online; task/worksheet reports shared to portal. Website form and email as request channels. On-site signature + instant emailed report is the marquee flow.</li></ul>
+<h3>Reporting / analytics / AI</h3>
+<ul><li>Standard Odoo BI: pivot tables, bar/pie/line charts, export to XLSX, embedded Spreadsheet (dashboards) — analyze tasks, hours, performance by employee/team/customer.</li><li>Timesheet analysis (start/end/break times).</li><li>AI: Odoo has been adding platform-level AI (AI fields, ChatGPT-assisted content, etc.), but <strong>nothing FSM-specific</strong> (no scheduling optimizer, no AI dispatch) as of Odoo 19.</li></ul>
+<h3>Distinctive</h3>
+<ol><li>Price/simplicity: full ERP + FSM for a per-user suite fee; FSM usable in a day.</li><li>Task-from-SO / task-from-Helpdesk intake and sign→invoice-on-site loop — tightest quote-to-cash of the three for simple jobs.</li><li>Configurable worksheets (Studio) instead of rigid forms.</li><li>Everything is customizable open-source Python/ORM; OCA field-service modules extend the weak spots.</li><li>Gaps: no offline mobile, no route optimization, no native contracts/warranty/installed base, simple lifecycle. The 19.2 merge into Planning signals Odoo treats FSM as scheduling+project, not asset-centric service.</li></ol>
+<p>---</p>
+<h2>3. Acumatica Field Service (Service Management + Equipment Management, "Field Service Edition")</h2>
+<p><strong>Positioning:</strong> Mid-market cloud ERP; FSM is a <strong>natively embedded edition/module of the ERP</strong> — same database, same UI framework, same customization platform. Consumption-based (not per-user) licensing — unlimited users is a selling point for field teams. Strong in construction-adjacent, HVAC/mechanical, equipment dealers.</p>
+<h3>Core entities / data model</h3>
+<ul><li><strong>Service Order</strong> (header with lines for services, stock items, labor) and <strong>Appointment</strong> (a scheduled visit executing all/part of a service order; one SO ↔ many appointments). <strong>Service Order Types</strong> drive behavior (billing target, time behavior, workflows, numbering).</li><li><strong>Target Equipment / Equipment records</strong> (customer-owned or company-owned) with components, serials, vendors, sale/installation dates; full service history per equipment.</li><li><strong>Service Contracts</strong> and <strong>Contract Schedules</strong> (recurrence rules generating service orders/appointments); <strong>Routes</strong> (Route Management module); Staff/skills/licenses; Billing Cycles per customer.</li><li>All standard ERP entities (Customer, StockItem, PO, AR Invoice, Project) are the same records — no duplication.</li></ul>
+<h3>Service order lifecycle</h3>
+<ul><li>Intake: manual, <strong>from CRM opportunity/case conversion</strong>, from contract schedules, or from customer portal/case. Notes/files attach throughout.</li><li>Flow: Service Order (estimate → open) → Appointment(s) scheduled → technician starts/ends appointment in mobile (instant status back to office) → appointment completed/closed → <strong>billing run</strong> → AR invoice (or SO invoice / project billing) → service order closed.</li><li>Configurable automation steps per service order type; quotes for service work; <strong>purchase orders can be created directly from a service-order need</strong> (procure parts per job).</li></ul>
+<h3>Scheduling &amp; dispatch</h3>
+<ul><li><strong>Dispatch Calendar Board</strong>: graphical, drag-and-drop daily/weekly scheduling; color-coded by status; filter by skills, territory, availability. Multi-day and multi-employee boards.</li><li><strong>Route Management module</strong>: define routes, optimize sequence to minimize drive time/fuel; <strong>Google Maps plotting per driver</strong>, recalculates route + travel time when dispatcher reorders appointments; <strong>WorkWave routing engine</strong> integration for true optimization (respects working schedules and lunch breaks).</li><li><strong>Real-time technician GPS location</strong> tracking on map.</li><li>No AI/continuous optimizer comparable to IFS PSO — optimization is route-centric and dispatcher-driven.</li></ul>
+<h3>Mobile</h3>
+<ul><li>Native Acumatica mobile app (iOS/Android), same app as rest of ERP with FSM screens: view/manage appointments, start/end (drives time capture), equipment selection and history, warranty visibility, <strong>parts catalog with truck-stock visibility, photo capture, time entry, customer signature, credit-card-on-file payment</strong> (2025 release), expense receipts.</li><li>Service report with digital signature saved as PDF, syncs to back office.</li><li><strong>Offline capability</strong> added in the 2025 mobile release but historically weak; community threads confirm offline entry was long-requested, and ISVs (OrangeKloud, JigxFrontline) sell offline-first field apps on top — treat native offline as partial/recent.</li></ul>
+<h3>Inventory / spare parts</h3>
+<ul><li>Full ERP inventory: multi-warehouse, bins/locations, serial/lot. <strong>Vehicles as warehouses/locations = truck stock</strong>, visible from mobile parts catalog.</li><li>Issue inventory from the field against the appointment; parts flow to invoice and COGS automatically. Replenishment via standard purchasing; <strong>PO from service order</strong> for job-specific parts. Returns via standard inventory receipts/RMA (no service-grade reverse logistics like IFS).</li></ul>
+<h3>Contracts, warranties, preventive maintenance</h3>
+<ul><li><strong>Service contracts</strong> with billing (recurring fixed, per-usage, or combined), covered vs. non-covered services, and <strong>schedules that auto-generate preventive-maintenance service orders/appointments</strong> on recurrence rules; fine-tuned on calendar boards.</li><li><strong>Warranty tracking per equipment and per component</strong> ("multidimensional": different warranty periods for different components), vendor warranties, sale/installation dates — prevents billing covered work and supports warranty claims.</li><li>Equipment Management extends Service Management for all of the above.</li></ul>
+<h3>ERP integration approach (key for us)</h3>
+<ul><li><strong>Embedded, single database</strong> — the cleanest "FSM inside ERP" example:</li><li><strong>Billing:</strong> Billing Cycles per customer define run frequency and grouping (bill per Appointment, per Service Order, or per Customer; group into one invoice). Invoice generation target is configured per Service Order Type: <strong>AR Invoice, Sales Order/SO Invoice, or Project transactions</strong>. Flexible billing on estimates vs actuals (community-reported bug: appointment actual-vs-estimate quantities billing estimated amounts in some configs — even embedded FSM billing has edge cases).</li><li><strong>Projects:</strong> service orders/appointments can post time and costs to <strong>Project Accounting</strong> (job costing for large installs), including cost codes/budgets.</li><li><strong>Financials:</strong> AR, GL, taxes are native postings; credit card payments from the field.</li><li><strong>CRM:</strong> opportunities/cases convert to service orders; 360° customer view includes service history.</li><li><strong>Purchasing/Inventory:</strong> POs from service orders; stock issues per appointment.</li><li>External API surface: contract-based <strong>REST API (200+ default endpoints)</strong> + OData for generic inquiries + webhooks + import scenarios; screen-based API executes actions. Well documented; the standard integration route for a companion field app.</li></ul>
+<h3>Customer-facing</h3>
+<ul><li>Self-service <strong>Customer Portal</strong> (cases, financial documents; equipment/service visibility), automated notifications/reminders, service reports with signature PDF emailed. Not as deep as dedicated FSM customer-experience suites (no native "track your technician" Uber-style page).</li></ul>
+<h3>Reporting / analytics / AI</h3>
+<ul><li>Generic Inquiries (GIQL editor in 2025 R2), redesigned dashboard engine (2025 R2), report designer, side panels; Power BI via OData.</li><li><strong>AI:</strong> Acumatica AI Studio; <strong>anomaly detection on generic inquiries</strong> (flags outliers automatically — 2026 R1 for Field Service edition: monitors revenue leakage, low utilization, billing inconsistencies); AI Assistant (2026 R1 managed availability). AI is analytics/back-office oriented, not scheduling.</li></ul>
+<h3>Distinctive</h3>
+<ol><li>True single-database FSM+ERP: appointment → billing cycle → AR/SO/Project invoice with zero sync.</li><li>Flexible billing cycles (per appointment / per SO / per customer, estimates vs actuals) — most granular billing config of the three.</li><li>Equipment + component-level warranty model.</li><li>Route Management with Google Maps/WorkWave and live GPS.</li><li>Consumption-based licensing → cheap to put all technicians on the system.</li><li>Gaps: native mobile offline is recent/partial (ISV apps fill it), no AI scheduling optimizer, customer portal thinner than dedicated FSM.</li></ol>
+<p>---</p>
+<h2>Cross-product takeaways for our app (ERP-sync perspective)</h2>
+<div class="table-wrap"><table><thead><tr><th>Theme</th><th>IFS</th><th>Odoo</th><th>Acumatica</th></tr></thead><tbody><tr><td>FSM↔ERP pattern</td><td>Native in IFS Cloud; legacy FSM 6 = best-of-breed synced to any ERP via messages/APIs</td><td>Native: FSM task is a project task; invoice built from the linked Sale Order</td><td>Native: SO-type config routes billing to AR / Sales Order / Projects; billing cycles control grouping</td></tr><tr><td>Billing trigger</td><td>Debrief → review → contract/claim/invoice</td><td>Customer signs → invoice from SO (time &amp; materials from timesheets + products)</td><td>Billing run over completed appointments/SOs per customer billing cycle</td></tr><tr><td>Van stock</td><td>Technician/van locations + 3PL, loans/exchange</td><td>Default warehouse per user</td><td>Vehicle as warehouse; truck stock in mobile parts catalog</td></tr><tr><td>Work order chain</td><td>Request → Scope → Task → Assignment (separate status machines)</td><td>Project task with kanban stages</td><td>Service Order → Appointment(s), type-driven workflows</td></tr><tr><td>Offline mobile</td><td>Full offline, mature</td><td>None/minimal</td><td>Partial, recent (ISVs fill gap)</td></tr><tr><td>Scheduling IQ</td><td>Continuous AI optimizer (PSO)</td><td>Manual Gantt/map</td><td>Dispatch board + route optimization (WorkWave/Google)</td></tr><tr><td>Contracts/PM</td><td>SLA/entitlement engine, warranty claims</td><td>Recurring tasks + Subscriptions workaround</td><td>Contracts + schedules auto-generate PM orders; component warranties</td></tr></tbody></table></div>
+<p>Design implications for an ERP-synced FSM app:</p>
+<ol><li>Both embedded ERPs separate the <strong>operational doc (appointment/task)</strong> from the <strong>billing doc (invoice)</strong> and generate billing from actuals (time + materials) captured in the field — our sync should push debrief lines, not invoices, and let the ERP own invoice numbering/tax.</li><li>Acumatica's <strong>billing cycle</strong> concept (group N visits → one invoice, per customer) is worth copying; Odoo's per-task instant invoice is the simple case of it.</li><li>Everyone models <strong>van stock as a warehouse/location per technician</strong> — sync stock levels per technician location.</li><li><strong>Offline mobile is the differentiator</strong> SMB ERPs lack (Odoo none, Acumatica partial) and IFS proves the pattern: full local data, task-step checklists, queued sync.</li><li>An <strong>installed-base/equipment entity with warranty &amp; contract entitlement</strong> is what separates "scheduling app" (Odoo) from "service management" (IFS, Acumatica).</li></ol>
+<h3>Key sources</h3>
+<ul><li>IFS: ifs.com/en/products/fsm, ifs.com product pages (contract-and-warranty-management, service-logistics-and-repair), docs.ifs.com 25r2 MobileWorkOrder, blog.ifs.com (25R2 industrial AI, PSO low-volume), Microsoft Marketplace listings (FSM, PSO), community.ifs.com (FSM6 task status flows), novacura.com, platned.com, taloflow.ai, technologyevaluation.com.</li><li>Odoo: odoo.com/app/field-service and /field-service-features, odoo.com/documentation 16.0–19.0 (creating_tasks, onsite_interventions, product_management), Odoo 19.2 release notes, erpgap.com (What's new in FSM Odoo 19), muchconsulting.com (FSM→Planning merge), ksolves.com, odoo-community.org (OCA field service).</li><li>Acumatica: acumatica.com/cloud-erp-software/field-service-management/, Acumatica Service Management &amp; Equipment Management datasheets (PDF), help.acumatica.com (billing cycles, generating billing documents), openuni.acumatica.com Field Services course PDF, swktech.com, dsdinc.com (Route Management), community.acumatica.com (offline mobile, SO billing actual-vs-estimate), acumatica.com blog (REST API/OData, anomaly detection), erp.today (2026 R1 AI for field service).</li></ul>
+</article>
+    </main>
+
+    <aside class="toc">
+      <div class="toc-heading">On this page</div>
+      <div id="toc-list"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DOCS = [{"key": "overview", "label": "Overview"}, {"key": "competitive", "label": "Competitive analysis"}, {"key": "datamodel", "label": "Data model"}, {"key": "architecture", "label": "Architecture"}, {"key": "erpsync", "label": "ERP sync"}, {"key": "users", "label": "Users & auth"}, {"key": "roadmap", "label": "Roadmap"}, {"key": "r1", "label": "Frontu & AllDevice"}, {"key": "r2", "label": "Dynamics 365 & Salesforce"}, {"key": "r3", "label": "IFS, Odoo, Acumatica"}];
+  var validKeys = DOCS.map(function (d) { return d.key; });
+
+  function showDoc(key, pushHash) {
+    if (validKeys.indexOf(key) === -1) key = "overview";
+    document.querySelectorAll(".doc-panel").forEach(function (el) {
+      el.hidden = el.getAttribute("data-doc") !== key;
+    });
+    document.querySelectorAll(".nav-item").forEach(function (el) {
+      el.classList.toggle("active", el.getAttribute("data-doc") === key);
+    });
+    if (pushHash !== false) {
+      history.replaceState(null, "", "#" + key);
+    }
+    buildToc(key);
+    var main = document.getElementById("main-scroll");
+    main.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    var active = document.querySelector('.nav-item[data-doc="' + key + '"]');
+    if (active && active.scrollIntoView) {
+      active.scrollIntoView({ block: "nearest", inline: "center" });
+    }
+  }
+
+  function buildToc(key) {
+    var panel = document.querySelector('.doc-panel[data-doc="' + key + '"]');
+    var list = document.getElementById("toc-list");
+    list.innerHTML = "";
+    if (!panel) return;
+    var heads = panel.querySelectorAll("h2, h3");
+    heads.forEach(function (h, i) {
+      var id = "h-" + key + "-" + i;
+      h.id = id;
+      var a = document.createElement("a");
+      a.href = "#" + id;
+      a.className = "toc-link" + (h.tagName === "H3" ? " toc-sub" : "");
+      a.textContent = h.textContent.trim();
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      list.appendChild(a);
+    });
+    setupSpy(panel);
+  }
+
+  var spyObserver = null;
+  function setupSpy(panel) {
+    if (spyObserver) spyObserver.disconnect();
+    var heads = panel.querySelectorAll("h2, h3");
+    if (!heads.length || !("IntersectionObserver" in window)) return;
+    spyObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          document.querySelectorAll(".toc-link").forEach(function (l) { l.classList.remove("active"); });
+          var link = document.querySelector('.toc-link[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add("active");
+        }
+      });
+    }, { root: document.getElementById("main-scroll"), rootMargin: "0px 0px -70% 0px" });
+    heads.forEach(function (h) { spyObserver.observe(h); });
+  }
+
+  document.querySelectorAll(".nav-item").forEach(function (btn) {
+    btn.addEventListener("click", function () { showDoc(btn.getAttribute("data-doc")); });
+  });
+
+  var initial = location.hash.replace("#", "");
+  showDoc(initial || "overview", false);
+})();
+</script>
