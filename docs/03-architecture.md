@@ -12,9 +12,13 @@ Status: draft v0.1 (2026-07-03)
 └──────────────────┬────────────────────────┘
                    │ HTTPS, delta sync + outbox
 ┌──────────────────▼────────────────────────┐
-│ herbe.service backend                     │
-│  API ── Postgres ── sync/queue workers    │
-│  auth (local + OIDC) ── files (S3-style)  │
+│ Vercel: Next.js app + API routes/edge fns │
+│  auth (Supabase Auth) ── sync endpoints   │
+└──────────────────┬────────────────────────┘
+                   │
+┌──────────────────▼────────────────────────┐
+│ Supabase: Postgres, Auth, Storage,        │
+│ Realtime, pg_cron / Edge Functions        │
 └───────┬───────────────────────┬───────────┘
         │ ERP adapter           │ ERP adapter
 ┌───────▼────────┐      ┌───────▼──────────┐
@@ -23,6 +27,8 @@ Status: draft v0.1 (2026-07-03)
 │ (registers)    │      │ WebExcellentAPI  │
 └────────────────┘      └──────────────────┘
 ```
+
+Stack decision: **Supabase (Postgres + Auth + Storage + Realtime)** and **Vercel** hosting, matching herbe.calendar — one ops model and one auth/tenant story across the suite. To confirm once herbe.calendar's repo is available: its multi-tenant scheme (Postgres RLS vs. app-level scoping), how it structures Supabase Auth + the Entra ID provider, and whether it already has a scheduled-job pattern on Vercel worth reusing outright.
 
 Standalone mode = backend + app with no adapter configured. ERP sync is an add-on module per tenant, not a dependency of the core.
 
@@ -63,11 +69,13 @@ The part most FSM products get wrong; it drives the architecture.
 
 ## Backend
 
-- API: typed REST (OpenAPI-generated clients), per-tenant isolation, all list endpoints support `after=<changeSeq>` deltas — the same mechanism the ERP adapters consume.
-- Postgres: row-versioned entities, `changeSeq` via sequence + trigger; append-only tables for ops, history events, audit.
-- Files: S3-compatible object store; images get server-side thumbnails.
-- Workers: sync queue (ERP adapters), history-event builder, notifications (push/email), report/PDF generation (worksheet PDF with signature for the customer).
-- Multi-tenant from day one (suite pattern), EU-hosted.
+- **API**: Next.js API routes / edge functions on Vercel, typed REST (OpenAPI-generated clients), per-tenant isolation, all list endpoints support `after=<changeSeq>` deltas — the same mechanism the ERP adapters consume.
+- **Database**: Supabase Postgres. Row-versioned entities, `changeSeq` via sequence + trigger; append-only tables for ops, history events, audit. Row-Level Security enforces tenant isolation at the database layer (pattern to confirm against herbe.calendar's existing RLS policies rather than reinventing).
+- **Auth**: Supabase Auth — email/password, TOTP, and Microsoft Entra ID as an OIDC provider. See `05-users-auth.md`.
+- **Files**: Supabase Storage; images get server-side thumbnails on upload.
+- **Realtime**: Supabase Realtime pushes booking/status changes to connected dispatcher screens and can back the "conflict inbox" / sync-health live updates; it's a UX enhancement, not a substitute for the offline pull/outbox mechanism devices rely on.
+- **Background jobs**: Vercel has no long-running worker process, so ERP polling, history-event building, and notification/PDF generation run as scheduled invocations — Vercel Cron hitting API routes, and/or Supabase Edge Functions on `pg_cron`, sized to finish within Vercel's function duration limits (chunk large tenants/registers across runs rather than one long job).
+- Multi-tenant from day one (suite pattern), EU-hosted (Supabase project region + Vercel region pinned to EU).
 
 ## ERP adapters
 

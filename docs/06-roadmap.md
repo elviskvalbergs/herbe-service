@@ -6,11 +6,12 @@ Status: v0.1 (2026-07-03). Sizing assumes a small team (2–3 devs + design shar
 
 Goal: de-risk the two hard things (offline sync, ERP mapping) before building features.
 
-- Access + review of the other herbe app repos (Bitbucket) and the suite design system; decide shared component/frontend stack accordingly
-- Confirm Standard ERP + Excellent Books service-module register codes and field maps against real tenant systems (`04-erp-sync.md` table)
-- **Walking skeleton**: PWA shell installable + offline, logs in (local + Entra ID), pulls Items/Customers from one ERP via `updates_after` deltas, displays them offline, one round-trip outbox op — deployed end-to-end
-- Tenant model, project scaffolding, CI/CD, environments
-- Sync-engine spike outcomes written up as ADRs (local DB choice, conflict rules validated against real ERP behavior, sequence-reset handling)
+- Access + review of the other herbe app repos and the suite design system (mirrored to GitHub); decide shared component/frontend stack accordingly
+- Provision Supabase project (Postgres + Auth + Storage) and Vercel project; confirm against herbe.calendar whether to join its Supabase project/Auth tenant or federate — see `05-users-auth.md`
+- Confirm Standard ERP + Excellent Books service-module register codes and field maps against real tenant systems, incl. `ActVc` activity types for bookings (`04-erp-sync.md` table)
+- **Walking skeleton**: PWA shell installable + offline, logs in via Supabase Auth (local + Entra ID), pulls Items/Customers from one ERP via `updates_after` deltas, displays them offline, one round-trip outbox op, one scheduled sync job on Vercel Cron — deployed end-to-end
+- Tenant model (Postgres RLS), project scaffolding, CI/CD, environments
+- Sync-engine spike outcomes written up as ADRs (local DB choice, conflict rules validated against real ERP behavior, sequence-reset handling, key-sweep deletion reconciliation)
 
 Exit: skeleton demo on a phone in airplane mode; register map signed off.
 

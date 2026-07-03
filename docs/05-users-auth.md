@@ -4,18 +4,18 @@ Status: draft v0.1 (2026-07-03)
 
 ## Model (same pattern as herbe.calendar)
 
-Users are **app-local** accounts, optionally linked to external identities. The link is data, not identity: removing an SSO link never deletes the user or their history.
+Auth runs on **Supabase Auth**; `auth.users` is the login record, but the app's own `users` table (tenant, role, profile, status) is what the rest of the schema references — the app-local user is data we own, not just a mirror of the auth row. External identities attach as links, not as identity itself: removing an SSO link never deletes the user or their history.
 
 ```
-User ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books | local,
-                            externalId, linkedAt, linkedBy }
+User (app table, FK → auth.users) ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books,
+                                                          externalId, linkedAt, linkedBy }
 ```
 
-- **Local**: email + password (Argon2id), optional TOTP 2FA. Always available as fallback.
-- **Microsoft Entra ID (Azure)**: OIDC login; optional SCIM/Graph-driven provisioning (auto-create users from a security group, deactivate on removal).
-- **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets sync with the correct ERP salesperson/technician code. Fed either manually or by matching email during initial load.
+- **Local**: Supabase Auth email/password, optional TOTP 2FA. Always available as fallback.
+- **Microsoft Entra ID (Azure)**: configured as an OIDC provider in Supabase Auth; optional SCIM/Graph-driven provisioning (auto-create users from a security group, deactivate on removal).
+- **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets and bookings (`ActVc`) sync with the correct ERP salesperson/technician code. Fed either manually or by matching email during initial load.
 
-One user may hold all three links. Login methods per tenant are configurable (e.g. "SSO only" policy).
+One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy). To confirm against herbe.calendar: whether it already runs one shared Supabase Auth tenant/project across suite apps (enabling true silent SSO) or a per-app project with token exchange — this decides whether herbe.service joins that project or federates against it.
 
 ## Roles
 
@@ -31,8 +31,8 @@ Permissions are capability flags grouped into these default roles (custom roles 
 
 ## Sessions & devices
 
-- Long-lived refresh tokens on field devices (offline work must survive weeks without re-auth), short-lived access tokens.
-- Device registry per user: named devices, last sync, remote sign-out + local data wipe on next contact (lost phone / offboarding).
+- Supabase Auth's refresh/access token pair, with refresh token lifetime extended for field devices (offline work must survive weeks without re-auth).
+- Device registry per user: named devices, last sync, remote sign-out (revoke the Supabase session) + local data wipe on next contact (lost phone / offboarding).
 - Offline PIN/biometric app-lock re-verifying the cached session locally.
 
 ## Multi-tenancy
