@@ -17,8 +17,8 @@ Status: draft v0.2 (2026-07-04) — **stack decision revised** after reviewing t
 └──────────────────┬────────────────────────┘
                    │
 ┌──────────────────▼────────────────────────┐
-│ Neon Postgres (Drizzle ORM)               │
-│ + Vercel Blob (media originals)           │
+│ Supabase Postgres (Drizzle ORM)           │
+│ + Supabase Storage (media originals)      │
 └───────┬───────────────────────┬───────────┘
         │ ERP adapter           │ ERP adapter
 ┌───────▼────────┐      ┌───────▼──────────┐
@@ -30,16 +30,16 @@ Status: draft v0.2 (2026-07-04) — **stack decision revised** after reviewing t
 
 **Stack decision (verified against both sibling repos):**
 - **Next.js 16 App Router + React 19 + TypeScript + Tailwind v4** — what both herbe.calendar and herbe.portal run today.
-- **Neon Postgres**, EU region (`fra1`/`aws-eu-central-1`, portal's `vercel.json` pattern). ORM: **Drizzle** (portal pattern; calendar's raw-SQL approach is the suite outlier). Idempotent SQL migrations with a build-time runner + admin re-run UI, lifted from the portal (`scripts/migrate-prod.mjs`, `/admin/run-migrations`).
+- **Supabase Postgres** (decision 2026-07-04 — DB hosting only; auth stays Auth.js, **not** Supabase Auth), EU region, one project per customer per the tenancy decision below. Known divergence, accepted: both siblings host on Neon, and the portal's provisioning CLI provisions Neon projects — the CLI is adapted to the Supabase Management API in Phase 0. ORM: **Drizzle** (portal pattern; calendar's raw-SQL approach is the suite outlier). Idempotent SQL migrations with a build-time runner + admin re-run UI, lifted from the portal (`scripts/migrate-prod.mjs`, `/admin/run-migrations`).
 - **Auth.js (next-auth v5)** — both siblings run it. See `05-users-auth.md` for providers and identity links.
 - **Vercel cron** for all background jobs (both siblings: `GET /api/cron/*` with `Bearer ${CRON_SECRET}`, constant-time check, Postgres advisory cron-locks à la calendar's `lib/cronLock.ts`), plus the `scripts/*-cron.sh` + `CRON-HANDOFF.md` fallback-runner convention both repos maintain.
-- **Vercel Blob** for media originals (portal already depends on `@vercel/blob`); thumbnails generated server-side with `sharp` (also already a portal dependency).
+- **Supabase Storage** for media originals (same per-customer Supabase project as the DB — one vendor, one bill); thumbnails generated server-side with `sharp` (already a portal dependency). Portal's Vercel Blob usage stays portal-local (theme assets only).
 - **Sentry** (`@sentry/nextjs` with tunnel route), **pino** logging — suite conventions.
 - **No Supabase anywhere** — the v0.1 assumption "match herbe.calendar" was made before the repo was reachable and turned out wrong. Realtime dispatcher updates use polling + `changeSeq` deltas first; a push channel (SSE or Postgres LISTEN/NOTIFY via Neon) is an optimization, not a foundation.
 
 Standalone mode = backend + app with no adapter configured. ERP sync is an add-on module per tenant, not a dependency of the core.
 
-**Tenancy — decision required (Phase 0 ADR).** The suite has two live models: herbe.calendar is one deployment / many `tenant_accounts` (app-level `account_id` scoping, no RLS); herbe.portal is **one deployment + one Neon DB per customer**, stamped out by a provisioning CLI (`lib/provisioning`, `customers.yaml`). Recommendation: adopt the **portal model** — service tenants are companies with their own ERP connection and heavy per-tenant sync jobs, isolation-per-deployment keeps cron durations bounded and data isolation trivial, and the provisioning CLI is reusable as-is. RLS is then unnecessary. If go-to-market later needs cheap self-service tenants, revisit with the calendar model.
+**Tenancy — DECIDED 2026-07-04.** The **portal model**: one deployment + one database per customer, stamped out by the provisioning CLI — with the DB on **Supabase Postgres** instead of Neon (adapt `lib/provisioning`'s Neon calls to the Supabase Management API; Vercel/domain/env steps unchanged). Service tenants are companies with their own ERP connection and heavy per-tenant sync jobs; isolation-per-deployment keeps cron durations bounded and data isolation trivial. RLS unnecessary. If go-to-market later needs cheap self-service tenants, revisit with the calendar model (one deployment, `account_id` scoping).
 
 ## Client: PWA first, wrappers optional
 
@@ -81,12 +81,13 @@ The part most FSM products get wrong; it drives the architecture.
 ## Backend
 
 - **API**: Next.js API routes on Vercel, typed REST (OpenAPI-generated clients), per-tenant isolation, all list endpoints support `after=<changeSeq>` deltas — the same mechanism the ERP adapters consume. Service-to-service access (herbe.portal reading service data) via scoped hashed bearer tokens, reusing the portal's `analytics_tokens` pattern — see `08-suite-integration.md`.
-- **Database**: Neon Postgres + Drizzle. Row-versioned entities, `changeSeq` via sequence + trigger; append-only tables for ops, history events, audit. Tenant isolation per the tenancy ADR (portal model: one DB per customer ⇒ isolation by construction; app-level scoping only if the calendar model is chosen).
+- **Database**: Supabase Postgres + Drizzle. Row-versioned entities, `changeSeq` via sequence + trigger; append-only tables for ops, history events, audit. Tenant isolation by construction (one DB per customer, decided).
 - **Auth**: Auth.js v5 with the portal's provider set (password + TOTP, magic link, optional Google / Entra ID / Smart-ID). See `05-users-auth.md`.
 - **Files**: Vercel Blob for originals; images get server-side thumbnails (`sharp`) on upload. ERP-side documents stream through the adapter (portal pattern), never copied.
-- **Realtime**: dispatcher board and sync-health screens refresh via short-interval delta polling on `changeSeq` first; SSE/LISTEN-NOTIFY push is a later optimization. It's a UX enhancement, not a substitute for the offline pull/outbox mechanism devices rely on.
+- **Realtime**: dispatcher board and sync-health screens refresh via short-interval delta polling on `changeSeq` first; Supabase Realtime (available on the chosen DB hosting) or SSE is a later optimization. It's a UX enhancement, not a substitute for the offline pull/outbox mechanism devices rely on.
 - **Background jobs**: Vercel Cron hitting `GET /api/cron/*` routes with `Bearer ${CRON_SECRET}` and advisory cron-locks (both siblings' proven convention), sized to finish within function duration limits — chunk large tenants/registers across runs (calendar's `syncAllErp` batching: `Promise.allSettled` per connection, 60 s per-connection timeout, 500-row upsert batches, page limit ceilings). Maintain `scripts/herbe-service-cron.sh` + `scripts/CRON-HANDOFF.md` mirrors like both siblings.
-- EU-hosted: Vercel `fra1` + Neon `aws-eu-central-1` (portal's exact pinning).
+- EU-hosted: Vercel `fra1` + Supabase EU (Frankfurt) region pinning.
+- **Licensing (per-user pricing decided 2026-07-04)**: per-tenant licensed seat count enforced at user activation — activating a user beyond the seat count is blocked with an upgrade prompt; seat usage (licensed vs active, by role) visible in tenant admin. Seat count lives in tenant config, set at provisioning and adjustable by super-admin. Deactivated users free their seat (and trigger device wipe per `05-users-auth.md`).
 
 ## ERP adapters
 

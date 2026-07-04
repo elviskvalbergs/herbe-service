@@ -7,7 +7,7 @@ Status: draft v0.1 (2026-07-04). Written from a code-level review of both siblin
 | | herbe.calendar | herbe.portal | herbe.service (this spec) |
 |---|---|---|---|
 | Role | Employee scheduling over ERP activities + Outlook/Google/Zoom | Customer self-service over ERP registers (invoices, quotations, deliveries, e-sign, payments) | Field service execution (orders → work → approval → ERP invoice) |
-| Stack | Next.js 16, React 19, Tailwind 4, Neon + raw `pg`, Auth.js v5 | Next.js 16, React 19, Tailwind 4, Neon + Drizzle, Auth.js v5 | same; Drizzle (portal pattern) |
+| Stack | Next.js 16, React 19, Tailwind 4, Neon + raw `pg`, Auth.js v5 | Next.js 16, React 19, Tailwind 4, Neon + Drizzle, Auth.js v5 | same; Drizzle on **Supabase Postgres** (decided 2026-07-04) |
 | Tenancy | one deployment, many `tenant_accounts` | one deployment + one Neon DB **per customer** (provisioning CLI) | ADR in `03-architecture.md`; portal model recommended |
 | Auth providers | email magic-link only | password+TOTP, magic link, Google, Smart-ID, Dokobit, eParaksts | portal set + Entra ID OIDC |
 | ERP client | `lib/herbe/*`: REST + `updates_after`/`@sequence`, OAuth refresh, two-way `ActVc`, WebExcellentAPI | `lib/erp/*`: `ErpAdapter` contract, register cache + sync runner, WebExcellentAPI (PDF, attachments, activities), write-backs | extends portal contract + calendar's incremental/write mechanics (`04-erp-sync.md`) |
@@ -39,6 +39,8 @@ Status: draft v0.1 (2026-07-04). Written from a code-level review of both siblin
 ## 4. Portal ↔ service: customer surface, signoff, invoices
 
 **Division of labor (resolves the v0.1 overlap):** herbe.service Phase 3 does **not** build a customer portal. herbe.portal grows **service modules**; herbe.service exposes the API they read. Portal already owns login for customer humans (incl. eIDs), notification prefs, invoice display + payment, e-signing.
+
+**Detailed portal-side design spec (delivered 2026-07-04, portal roadmap slot confirmed):** `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` — includes the frozen `/api/ext/v1` contract, `service_connection_config` schema, signing descriptor, and notification keys.
 
 **New portal modules (high level, built portal-side following its register-module playbook):**
 - **P1 — Service items**: the customer's equipment registry: serials, sites, warranty/contract status, per-item service history, QR label reprint. Data source: herbe.service API (not ERP registers — the app owns richer item/history data).
@@ -81,7 +83,7 @@ Ranked by value; "coupling" = what must be untangled to reuse outside the source
 | APNs + native iOS shell + mobile token pairing | calendar `ios/`, `lib/apns.ts`, `lib/mobileAuth.ts` | moderate | Phase 2/3 reference when native wrapper lands |
 | AES-GCM credential crypto | calendar `lib/crypto.ts` / portal `lib/security/envelope.ts` | none | Use portal's envelope format (key-id + rotation-friendly) |
 
-**Mechanics decision (Phase 0, with sibling owners):** the suite's precedent is copy-with-attribution, and it has already caused divergence (two ERP clients, two crypto formats, two docs loaders). Recommendation: extract **only** `@herbe/erp-core` and `@herbe/email-templates` now (highest churn, highest duplication cost — service would be the third copy of the ERP client), copy-first everything else. Don't block Phase 0 on extraction: if agreement takes longer than two weeks, copy-first with attribution and extract in Phase 2.
+**Mechanics — DECIDED 2026-07-04:** extract **only** `@herbe/erp-core` and `@herbe/email-templates` now (highest churn, highest duplication cost — service would be the third copy of the ERP client), copy-first everything else with attribution. Don't block Phase 0 on extraction: if it takes longer than two weeks, copy-first and extract in Phase 2.
 
 ## 7. End-to-end workflow across the suite
 

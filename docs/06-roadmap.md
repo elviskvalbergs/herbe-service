@@ -7,9 +7,9 @@ Status: v0.2 (2026-07-04) — updated after the spec review with real calendar/p
 Goal: de-risk the two hard things (offline sync, ERP mapping) before building features.
 
 - ~~Access + review of the other herbe app repos~~ **done** (calendar + portal reviewed 2026-07-04, findings in `08-suite-integration.md`/`09-spec-review.md`); **still open: the design-system repo** — until it's mirrored, the portal's `app/globals.css` tokens + CLAUDE.md non-negotiables are the working reference
-- Decide + execute the **reuse mechanics** with the portal/calendar owners: extract `@herbe/erp` (adapter framework), `@herbe/email-templates` from herbe-portal, or copy-first with attribution (suite precedent) — see `08-suite-integration.md` §6
-- **Tenancy ADR**: deployment-per-customer (portal model, recommended) vs multi-tenant single deployment (calendar model) — `03-architecture.md`
-- Provision Neon + Vercel projects (via the portal's provisioning CLI if the portal tenancy model is chosen)
+- Execute the **reuse mechanics** (decided 2026-07-04): extract `@herbe/erp-core` (adapter framework) and `@herbe/email-templates` from herbe-portal; copy-first everything else with attribution — see `08-suite-integration.md` §6
+- ~~Tenancy ADR~~ **decided 2026-07-04**: deployment-per-customer (portal model) on **Supabase Postgres** — `03-architecture.md`
+- Provision Supabase + Vercel projects; adapt the portal provisioning CLI from the Neon API to the Supabase Management API
 - Confirm Standard ERP + Excellent Books service-module register codes and field maps against real tenant systems, incl. `ActVc` activity types for bookings and the invoice back-link field (`04-erp-sync.md` table)
 - **Walking skeleton**: PWA shell installable + offline, logs in via Auth.js (credentials + one more provider), pulls Items/Customers from one ERP through the reused adapter, displays them offline, one round-trip outbox op, one scheduled sync job on Vercel Cron — deployed end-to-end
 - Project scaffolding, CI/CD, environments; i18n scaffolding (next-intl, portal's 7-locale setup)
@@ -46,6 +46,7 @@ Goal: a technician can do a full day's work offline; a manager can approve it; t
 - Users, roles (technician / dispatcher-manager / admin in Phase 1; team lead and back office roles activate in Phase 2), Auth.js sign-in incl. Entra ID where the tenant wants it, ERP identity links, device registry + remote wipe
 - ERP adapter #1 (the launch tenant's ERP): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back; **bookings ↔ `ActVc` two-way** (Standard ERP tenants — this is what makes the technician's Phase 1 calendar and herbe.calendar see the same schedule; Excellent Books tenants get it where WebExcellentAPI is present)
 - Notification/email sending via the portal's TemplateKey engine (reused) — Phase 1 needs it for worksheet PDF mail and rejection notices
+- **License/seat enforcement** (per-user pricing decided): licensed seat count per tenant, activation blocked beyond seats, usage visible in admin (`03-architecture.md`)
 - **Sync health screen** (per-register status, dead-letter queue, retry)
 - Standalone mode (no adapter) functional
 
@@ -102,11 +103,13 @@ Prioritize by pilot data, not upfront:
 
 ## Open items
 
-1. ~~herbe suite repos~~ **resolved** — calendar + portal mirrored and reviewed (2026-07-04). **Design-system repo still missing**; interim reference: portal `app/globals.css` tokens + design non-negotiables in portal CLAUDE.md.
-2. Launch-tenant choice decides adapter order (Standard ERP vs Excellent Books first).
-3. Register codes marked "confirm" in `04-erp-sync.md`, incl. Sites mapping and the invoice back-link field.
-4. Pricing/packaging (per-user flat à la AllDevice vs modular à la Frontu) — product decision, not spec-blocking.
-5. Tenancy ADR (`03-architecture.md`) — decide in Phase 0 week 1; blocks provisioning setup.
-6. Reuse mechanics (shared `@herbe/*` packages vs copy-first) — needs agreement with portal/calendar owners; `08-suite-integration.md` §6.
-7. Suite SSO (shared Auth.js issuer / Entra broker) — suite-level decision, not Phase 1-blocking (`05-users-auth.md`).
-8. Portal service modules (Phase 3) need a slot on the herbe.portal roadmap — coordinate early so the API contract (`08-suite-integration.md` §5) is stable by then.
+Decision round 2026-07-04 closed most of these; remaining open items are **1** and **3**.
+
+1. **Design-system repo still missing** — decided to mirror it to GitHub like calendar/portal; pending owner's computer access. Interim reference: portal `app/globals.css` tokens + design non-negotiables in portal CLAUDE.md.
+2. ~~Adapter order~~ **decided**: Excellent Books first (`04-erp-sync.md`); Standard ERP config follows cheaply (same API family).
+3. **Open**: register codes marked "confirm" in `04-erp-sync.md`, incl. Sites mapping, the invoice back-link field, and WebExcellentAPI presence on the launch tenant.
+4. ~~Pricing/packaging~~ **decided**: per-user pricing initially ⇒ seat-based licensing control is a Phase 1 platform feature (`03-architecture.md`).
+5. ~~Tenancy ADR~~ **decided**: portal model on Supabase Postgres (`03-architecture.md`).
+6. ~~Reuse mechanics~~ **decided**: extract `@herbe/erp-core` + `@herbe/email-templates`, copy-first the rest (`08-suite-integration.md` §6).
+7. ~~Suite SSO~~ **decided**: deferred; Entra ID per tenant when needed (`05-users-auth.md`).
+8. ~~Portal service modules~~ **committed**: design spec delivered to the portal repo — `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`.

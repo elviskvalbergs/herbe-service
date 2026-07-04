@@ -4,7 +4,9 @@ Status: draft v0.2 (2026-07-04) — spec-review fixes: adapter framework reuse (
 
 ## Principle
 
-The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per tenant, per adapter, direction-aware. A tenant may connect Standard ERP, Excellent Books, both (rare, e.g. migration), or none (standalone).
+The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per tenant, per adapter, direction-aware. A tenant may connect Standard ERP, Excellent Books, both (**migration mode only**: one ERP is marked primary per register, the other read-only — never two writable masters), or none (standalone).
+
+Adapter order (decided 2026-07-04): **Excellent Books first** — launch tenants come from the Excellent customer base. Since both ERPs share the same register API family, the Standard ERP configuration follows cheaply. Note for Phase 0 tenant verification: booking sync and PDF features on Excellent Books require WebExcellentAPI on the tenant's installation — probe and confirm for the launch tenant specifically.
 
 ## Adapter framework: extend herbe.portal's, don't rebuild
 

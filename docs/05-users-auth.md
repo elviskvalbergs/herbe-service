@@ -18,7 +18,7 @@ User (app table) ── IdentityLink[] ── { provider: entra-id | standard-er
 
 One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table).
 
-**Suite SSO reality check**: there is no shared identity provider across herbe apps today — each app authenticates independently. "Signed into calendar ⇒ silently signed into service" does not exist and won't fall out for free. Near-term: same email + same login methods across apps (low-friction, not SSO). True suite SSO = a shared Auth.js issuer or an Entra-backed OIDC broker — a suite-level decision tracked in `08-suite-integration.md`, not a herbe.service deliverable.
+**Suite SSO — DECIDED 2026-07-04: deferred.** There is no shared identity provider across herbe apps today and none is built now. Near-term: same email + same login methods across apps (low-friction, not SSO). Entra ID is added as a per-tenant Auth.js provider **when a tenant needs it** — no upfront work. Revisit suite-level SSO only if real cross-app friction shows up.
 
 ## Roles
 

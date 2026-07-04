@@ -52,7 +52,7 @@ All Phase 1 unless noted; follows the portal's `/admin` console structure.
 | # | Screen | Content |
 |---|---|---|
 | A1 | Tenant settings | Company profile, number series (standalone), price visibility policy, field-creation permissions, locale defaults. |
-| A2 | Users & roles | Invite, role assignment, deactivate (triggers remote wipe), ERP identity links (person-code mapping table with match-by-email helper). |
+| A2 | Users & roles | Invite, role assignment, deactivate (triggers remote wipe), ERP identity links (person-code mapping table with match-by-email helper). **Seat counter**: licensed vs active users; activation beyond the licensed count is blocked with an upgrade prompt. |
 | A3 | Device registry | Per-user devices, last sync, remote sign-out + wipe. |
 | A4 | ERP connection | Adapter choice, credentials, capability probe result (incl. WebExcellentAPI), register/field map versions, activity-type mapping for bookings, poll cadences, maintenance window. |
 | A5 | Email/notification templates | Portal's template editor reused: per-key defaults + overrides, variables panel, locale tabs. |
