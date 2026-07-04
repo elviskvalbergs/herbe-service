@@ -40,4 +40,4 @@ Permissions are capability flags grouped into these default roles (custom roles 
 
 ## Multi-tenancy
 
-Tenant = company. Users belong to one tenant (cross-tenant contractor accounts out of scope for v1). All data, adapters, and policies are tenant-scoped; tenancy topology (deployment-per-customer vs shared deployment) per the ADR in `03-architecture.md`. Suite-level SSO is future work — see the reality check above and `08-suite-integration.md`.
+Tenant = one customer deployment (decided: own deployment + DB, `03-architecture.md`). Within a deployment there can be **several ERP company connections**, each a fully separate data scope (`02-data-model.md` "Company scoping"); users are deployment-level, get access per company, and switch the active company in the UI — technicians typically live in one company, back office may span several. Cross-deployment contractor accounts are out of scope for v1. Suite-level SSO is deferred — see above.

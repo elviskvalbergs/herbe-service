@@ -4,13 +4,15 @@ Status: draft v0.2 (2026-07-04) — spec-review fixes: adapter framework reuse (
 
 ## Principle
 
-The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per tenant, per adapter, direction-aware. A tenant may connect Standard ERP, Excellent Books, both (**migration mode only**: one ERP is marked primary per register, the other read-only — never two writable masters), or none (standalone).
+The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per company connection, direction-aware.
 
-Adapter order (decided 2026-07-04): **Excellent Books first** — launch tenants come from the Excellent customer base. Since both ERPs share the same register API family, the Standard ERP configuration follows cheaply. Note for Phase 0 tenant verification: booking sync and PDF features on Excellent Books require WebExcellentAPI on the tenant's installation — probe and confirm for the launch tenant specifically.
+**One product, one adapter, N company connections (clarified 2026-07-04).** Standard ERP and Excellent Books are literally the same product; there is **one adapter**, not two. The connection model is exactly herbe.portal's `erp_companies` pattern: a deployment holds zero (standalone) or more ERP connections, **each connection is one company** — with its own customers, items, orders, service items, caches, sync state, and field maps. Users switch between companies in the app; nothing is shared or merged across companies. No cross-company cleverness.
+
+Launch tenants come from the Excellent customer base. Per-installation capability note for Phase 0: probe WebExcellentAPI presence per connection (it gates PDFs, attachments, activity deletion — see the two tiers below).
 
 ## Adapter framework: extend herbe.portal's, don't rebuild
 
-Phase 1 targets Standard ERP and Excellent Books; other ERPs (Horizon, Jumis, Moneo are already stubbed in the portal's registry) may follow. The abstraction that makes that possible **already exists** in herbe.portal:
+Phase 1 targets the Standard ERP / Excellent Books product family — **one adapter**. Other vendors' ERPs (Horizon, Jumis, Moneo are already stubbed in the portal's registry) may follow later. The abstraction that makes that possible **already exists** in herbe.portal:
 
 - **`ErpAdapter` interface + `AdapterCapabilities`** (`herbe-portal/lib/erp/types.ts`) — a neutral contract; everything outside `lib/erp/` imports only this module. Capabilities (`supportsIncrementalSync`, `supportsWebExcellentApi`, …) gate features per connection; a feature whose capability is `false` is absent from the UI, not disabled.
 - **Registry + factory** (`lib/erp/registry.ts`) — adapter chosen per company config; credentials AEAD-encrypted per company (`lib/erp/credentials.ts`, envelope format, master key).
@@ -24,7 +26,7 @@ herbe.service's adapter = the portal contract, extended with service-register me
 
 ## API family
 
-Both ERPs expose the HansaWorld-style register API. Verified from Excellent Books API docs (api-docs.excellent.ee):
+Standard ERP and Excellent Books expose the identical HansaWorld register API (same product). Verified from the API docs (api-docs.excellent.ee):
 
 - `GET /api/1/<Register>` — list; `filter.Field=value`, `sort`, `range`, `offset`/`limit`. Observed variants in production code: calendar uses `/api/1/...`-style paths with `updates_after`; portal uses `${base_url}/api/${companyCodeInErp}/${register}` with `filter[Field]=value`. The adapter's URL builder is per-connection config, not a constant.
 - `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark. **Not guaranteed on every installation/register**: the portal runs `supportsIncrementalSync: false` in production and full-scans instead. Incremental reads are a per-connection *capability*, probed at setup; the sync engine must be correct with full-scan-only connections (slower cadence, same result).
@@ -63,7 +65,7 @@ Verified register codes (from API docs) vs. to-confirm (service module codes dif
 | Stock level | stock/item-status lookup or report API | confirm |
 | Stock transaction (consumption, van transfer) | Stock Depreciation / Stock Movement | confirm code |
 | Invoice (status back-link only) | `IVVc` | verified (seen in docs) |
-| Booking | Activities `ActVc` (Standard ERP; Excellent Books via WebExcellentAPI where available) | decided |
+| Booking | Activities `ActVc` (same register in both brands; two-way create/update via REST — calendar-proven; deletes/comments/attachments need WebExcellentAPI) | decided |
 
 ## Cache & freshness (server-side ERP cache)
 
@@ -101,7 +103,7 @@ Verified against calendar/portal production code — encode these as adapter rul
 - **Pre-app history import** (Phase 1 "history includes ERP era"): initial load pages historical Work Sheets/Service Orders/Invoices per serial number into `HistoryEvent` rows through the same mappers, date-windowed (default: full available history for serials under contract, configurable horizon otherwise). Scope confirmed against real tenant data volumes in Phase 0.
 
 ### Identity & idempotency
-- Every app record stores per-ERP `erpRefs {register, uuid/code, seq}`.
+- Every app record stores its company connection's `erpRef {register, uuid/code, seq}` (`erp_company_id` scopes the record itself).
 - Outbound ops carry the app UUID; adapter must never double-create (lookup by stored ref, then by natural key, then create).
 
 ### Error handling

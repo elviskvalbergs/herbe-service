@@ -18,7 +18,7 @@ Scope: full consistency + completeness review of spec v0.1 (docs 01–06) agains
 | C8 | Minor | Roles doc defines 5 roles; Phase 1 lists 3, team lead/back office unassigned to any phase. | ✅ `06`: team lead + back office activate Phase 2. |
 | C9 | Minor | Phase 1 "basic fixed checklists" vs Phase 2 builder — source of Phase 1 templates unstated. | ✅ `07` O9: seeded templates managed as data, builder UI Phase 2. |
 | C10 | Minor | Multi-technician jobs unaddressed (one assignee per worksheet vs team work). | ✅ `02`: second tech = own worksheet under the same order. |
-| C11 | Minor | Dual-ERP tenants ("both, rare, e.g. migration"): master-conflict rules between two ERPs undefined. | ✅ decided 2026-07-04: migration mode only — one ERP primary per register, the other read-only (`04`). |
+| C11 | Minor | Dual-ERP tenants ("both, rare, e.g. migration"): master-conflict rules between two ERPs undefined. | ✅ superseded by owner clarification: Standard ERP and Excellent Books are the same product — one adapter; the real model is N company connections per install, each a fully separate company scope (`02` Company scoping, `04` Principle). The "two ERPs at once" question doesn't exist. |
 
 ## 2. UI coverage (screens, roles, workflows, UX)
 
@@ -78,11 +78,11 @@ Scope: full consistency + completeness review of spec v0.1 (docs 01–06) agains
 
 1. **Tenancy**: portal model (deployment + DB per customer) — on **Supabase Postgres** instead of Neon. Consequence accepted: provisioning CLI adapted to the Supabase Management API; DB hosting diverges from siblings. Auth remains Auth.js, not Supabase Auth.
 2. **Reuse**: extract `@herbe/erp-core` + `@herbe/email-templates`; copy-first the rest.
-3. **Adapter order**: Excellent Books first (same API family as Standard ERP, so #2 is cheap); launch tenants from the Excellent customer base.
+3. **Adapter order**: moot — owner clarified Standard ERP and Excellent Books are literally the same product: **one adapter**, portal-style multi-company connections (N per install, each its own customers/items/orders, users switch companies, no cross-company sharing). Launch tenants from the Excellent customer base.
 4. **Design system**: mirror the repo when computer access allows; portal tokens as interim reference.
 5. **Portal service modules**: confirmed — design spec delivered at `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`.
 6. **Suite SSO**: deferred; Entra ID added per tenant when needed.
-7. **Dual-ERP**: migration mode only, one primary per register (C11).
+7. **Dual-ERP**: question dissolved by the same-product clarification (see 3 and C11) — multiple connections are simply multiple companies.
 8. **Pricing**: per-user initially ⇒ seat-based licensing control added as Phase 1 platform feature (`03`, `06`, `07` A2).
 
 ## What changed in the spec (v0.1 → v0.2)

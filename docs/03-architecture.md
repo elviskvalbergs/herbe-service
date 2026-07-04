@@ -19,13 +19,14 @@ Status: draft v0.2 (2026-07-04) — **stack decision revised** after reviewing t
 ┌──────────────────▼────────────────────────┐
 │ Supabase Postgres (Drizzle ORM)           │
 │ + Supabase Storage (media originals)      │
-└───────┬───────────────────────┬───────────┘
-        │ ERP adapter           │ ERP adapter
-┌───────▼────────┐      ┌───────▼──────────┐
-│ Standard ERP   │      │ Excellent Books  │
-│ REST API       │      │ REST API +       │
-│ (registers)    │      │ WebExcellentAPI  │
-└────────────────┘      └──────────────────┘
+└──────────────────┬────────────────────────┘
+                   │ one adapter, N company connections
+┌──────────────────▼────────────────────────┐
+│ Standard ERP / Excellent Books            │
+│ (same product family)                     │
+│ REST register API                         │
+│ + optional WebExcellentAPI per install    │
+└───────────────────────────────────────────┘
 ```
 
 **Stack decision (verified against both sibling repos):**
@@ -89,9 +90,9 @@ The part most FSM products get wrong; it drives the architecture.
 - EU-hosted: Vercel `fra1` + Supabase EU (Frankfurt) region pinning.
 - **Licensing (per-user pricing decided 2026-07-04)**: per-tenant licensed seat count enforced at user activation — activating a user beyond the seat count is blocked with an upgrade prompt; seat usage (licensed vs active, by role) visible in tenant admin. Seat count lives in tenant config, set at provisioning and adjustable by super-admin. Deactivated users free their seat (and trigger device wipe per `05-users-auth.md`).
 
-## ERP adapters
+## ERP adapter
 
-Both target APIs are HansaWorld-register style (verified against Excellent Books API docs; Standard ERP's REST API is the same family):
+Standard ERP and Excellent Books are the same HansaWorld product family — **one adapter** serves both, configured per company connection (portal's `erp_companies` model: N connections per install, each a separate company scope; users switch companies):
 - `GET /api/1/<Register>?updates_after=<seq>` — delta reads with `@sequence` high-water marks
 - `filter.Field=value`, `offset/limit` — targeted reads
 - `POST /api/1/<Register>` — record creation

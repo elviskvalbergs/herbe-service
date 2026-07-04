@@ -44,7 +44,7 @@ Goal: a technician can do a full day's work offline; a manager can approve it; t
 
 **Platform**
 - Users, roles (technician / dispatcher-manager / admin in Phase 1; team lead and back office roles activate in Phase 2), Auth.js sign-in incl. Entra ID where the tenant wants it, ERP identity links, device registry + remote wipe
-- ERP adapter #1 (the launch tenant's ERP): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back; **bookings ↔ `ActVc` two-way** (Standard ERP tenants — this is what makes the technician's Phase 1 calendar and herbe.calendar see the same schedule; Excellent Books tenants get it where WebExcellentAPI is present)
+- The ERP adapter (Standard ERP / Excellent Books — one product family, one adapter, portal-style multi-company connections with `erp_company_id` scoping in the schema from day one): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back; **bookings ↔ `ActVc` two-way** via REST (calendar-proven) — this is what makes the technician's Phase 1 calendar and herbe.calendar see the same schedule
 - Notification/email sending via the portal's TemplateKey engine (reused) — Phase 1 needs it for worksheet PDF mail and rejection notices
 - **License/seat enforcement** (per-user pricing decided): licensed seat count per tenant, activation blocked beyond seats, usage visible in admin (`03-architecture.md`)
 - **Sync health screen** (per-register status, dead-letter queue, retry)
@@ -62,7 +62,7 @@ Goal: the planner and the warehouse join the loop.
 - **Van stock**: per-technician location, stock lookup across all locations (incl. offline cache), transfers, consumption already flowing from Phase 1; min-stock indication
 - **Barcode/QR**: scan parts into worksheet rows; printable QR labels for service items → scan opens item card/history, confirms arrival, starts work
 - Checklist/form **template builder** (field types, required rules, measured values with pass/fail bounds), templates by item/work type
-- ERP adapter #2 (the other ERP), adapter framework hardened into config-driven product
+- Multi-company hardening: several ERP company connections in one install, polished company switcher, per-company sync health; adapter framework hardened into config-driven product
 - Time-entry review/export for payroll-side reporting
 
 Exit: dispatcher plans a 5+ technician team for a week entirely in-app; parts stock in ERP matches reality.
@@ -106,7 +106,7 @@ Prioritize by pilot data, not upfront:
 Decision round 2026-07-04 closed most of these; remaining open items are **1** and **3**.
 
 1. **Design-system repo still missing** — decided to mirror it to GitHub like calendar/portal; pending owner's computer access. Interim reference: portal `app/globals.css` tokens + design non-negotiables in portal CLAUDE.md.
-2. ~~Adapter order~~ **decided**: Excellent Books first (`04-erp-sync.md`); Standard ERP config follows cheaply (same API family).
+2. ~~Adapter order~~ **superseded by 2026-07-04 clarification**: Standard ERP and Excellent Books are the same product — one adapter, no ordering question. Launch tenants are Excellent-hosted installations.
 3. **Open**: register codes marked "confirm" in `04-erp-sync.md`, incl. Sites mapping, the invoice back-link field, and WebExcellentAPI presence on the launch tenant.
 4. ~~Pricing/packaging~~ **decided**: per-user pricing initially ⇒ seat-based licensing control is a Phase 1 platform feature (`03-architecture.md`).
 5. ~~Tenancy ADR~~ **decided**: portal model on Supabase Postgres (`03-architecture.md`).

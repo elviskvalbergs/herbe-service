@@ -2,7 +2,7 @@
 
 Status: draft v0.2 (2026-07-04) — spec-review fixes: Booking cardinality & statuses, ServiceOrder status derivation, signature/rejection revision rule, Contact modeling aligned with CUVc reality
 
-The model follows the Standard ERP Service Orders module vocabulary (Service Orders, Work Sheets, Items, Serial Numbers) so that mapping to both ERPs stays close to 1:1, while adding app-side entities the ERPs don't have (bookings, checklists, media, sync metadata).
+The model follows the Standard ERP / Excellent Books Service Orders module vocabulary (Service Orders, Work Sheets, Items, Serial Numbers — same product, same registers) so that ERP mapping stays close to 1:1, while adding app-side entities the ERP doesn't have (bookings, checklists, media, sync metadata).
 
 ## Entity overview
 
@@ -17,6 +17,10 @@ Item 1──* StockLevel *──1 StockLocation  (incl. van stock)
 ServiceItem 1──* HistoryEvent            (derived service history)
 User 1──* IdentityLink                   (Azure AD, Standard ERP, Excellent Books)
 ```
+
+## Company scoping
+
+A deployment holds one or more **ERP company connections** (portal `erp_companies` model; clarified 2026-07-04). Every ERP-derived or ERP-synced entity — customers, contacts, sites, service items, items, stock, orders, worksheets, bookings, history — carries `erp_company_id`. Companies are fully separate data scopes: no sharing, no merging, no cross-company lookups. Users can have access to several companies and switch context; the active company scopes every list and search. Standalone deployments get one implicit local company. Users, roles, and checklist templates are deployment-level, not company-level.
 
 ## Core entities
 
@@ -75,7 +79,7 @@ Scheduling wrapper: service order (optionally a specific worksheet) × technicia
 - Status: `planned → confirmed → cancelled` (+ `rescheduled` recorded as cancel-and-recreate with a link, matching herbe.calendar's booking status vocabulary). Execution progress (en route, on site, done) lives on the Worksheet/TimeEntry, not on the booking.
 - One worksheet may have many bookings (multi-day jobs); each booking has exactly one technician.
 
-Bookings sync two-way with Standard ERP **Activities (`ActVc`)**: each booking is stored as an activity on the linked technician's ERP calendar (activity type/symbol per adapter config), so ERP-side calendars and herbe.calendar see the same schedule. Activities created/moved in the ERP for the mapped activity types flow back as bookings. For Excellent Books, activity access goes through WebExcellentAPI where the tenant has it; otherwise bookings stay app-local.
+Bookings sync two-way with ERP **Activities (`ActVc`)** — the same register in Standard ERP and Excellent Books (one product family; herbe.calendar reads and writes it over plain REST in production). Each booking is stored as an activity on the linked technician's ERP calendar (activity type/symbol per connection config), so ERP-side calendars and herbe.calendar see the same schedule. Activities created/moved in the ERP for the mapped activity types flow back as bookings. WebExcellentAPI, where the installation has it, additionally enables activity deletion, comments, and attachments.
 
 ### ChecklistTemplate
 Reusable forms attached by item type, work type, or customer contract: sections, field types (bool, number with min/max, text, photo-required, selection), required-on-completion flags. Versioned; results always reference the template version.
@@ -88,10 +92,10 @@ See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to
 
 ## Sync metadata (on every synced entity)
 - `id` — client-generated UUID (idempotency key)
-- `erpRefs[]` — per-ERP: register, record id/UUID, last known `@sequence`
+- `erpRef` — per company connection: register, record id/UUID, last known `@sequence`
 - `syncState` — `local / pending / synced / conflict`
 - `updatedAt`, `updatedBy`, `deletedAt` (tombstone)
-- `origin` — `app / standard-erp / excellent-books`
+- `origin` — `app / erp` (the company connection is already fixed by `erp_company_id`)
 
 ## Master-data ownership
 
@@ -103,5 +107,5 @@ See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to
 | Service orders | shared | yes (two-way) |
 | Worksheets, time, media, checklists, signatures | app | yes; pushed to ERP on approval |
 | Invoices | ERP | never — read-only status back-link |
-| Bookings | app | yes; mirrored two-way as Standard ERP Activities (`ActVc`) |
+| Bookings | app | yes; mirrored two-way as ERP Activities (`ActVc`) |
 | Users, roles, checklist templates | app | yes; not synced to ERP |

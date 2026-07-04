@@ -11,6 +11,8 @@ Status: draft v0.1 (2026-07-04). Added by the spec review — the v0.1 spec had 
 
 Both shells are one Next.js app; the landing shell is chosen by role, and users with both hats (team lead) can switch. Every field-shell screen works offline against the local DB; office-shell screens are online-first (dispatcher works in the office) but degrade gracefully.
 
+**Company switcher**: a deployment can hold several ERP company connections, each a separate data scope (`02-data-model.md`). Office shell: company selector in the sidebar header (portal's `/c/[companyId]` scoping pattern); every list/search is scoped to the active company. Field shell: technicians with access to one company never see a switcher; multi-company users switch under **More**. The "download my work" briefcase covers all companies the user has bookings in.
+
 Suite look & feel: design-system tokens (`--herbe-*`), portal non-negotiables apply verbatim — square indicators/dots, `--herbe-bone` input fill lifting to `--herbe-paper` on focus, forest-green primary CTA, red only for brand + destructive, no circular avatars. Wordmark: inline-SVG logo component (`HerbePortalLogo` approach), never `<img>` on the design-system SVGs.
 
 ## Screen inventory — field shell (technician; team lead adds a team toggle)
