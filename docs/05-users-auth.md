@@ -1,21 +1,24 @@
 # herbe.service — Users, Auth & Roles
 
-Status: draft v0.1 (2026-07-03)
+Status: draft v0.2 (2026-07-04) — rewritten after reviewing sibling codebases: the suite runs **Auth.js (next-auth v5)**, not Supabase Auth; Entra ID login exists in neither sibling today.
 
-## Model (same pattern as herbe.calendar)
+## Model (verified suite pattern)
 
-Auth runs on **Supabase Auth**; `auth.users` is the login record, but the app's own `users` table (tenant, role, profile, status) is what the rest of the schema references — the app-local user is data we own, not just a mirror of the auth row. External identities attach as links, not as identity itself: removing an SSO link never deletes the user or their history.
+Auth runs on **Auth.js v5** — both siblings do (calendar: pg adapter + DB sessions; portal: Drizzle adapter + JWT sessions with a `session_version` revocation counter). The app's own `users` table (tenant, role, profile, status) is what the rest of the schema references. External identities attach as links, not as identity itself: removing a link never deletes the user or their history.
 
 ```
-User (app table, FK → auth.users) ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books,
-                                                          externalId, linkedAt, linkedBy }
+User (app table) ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books,
+                                        externalId, linkedAt, linkedBy }
 ```
 
-- **Local**: Supabase Auth email/password, optional TOTP 2FA. Always available as fallback.
-- **Microsoft Entra ID (Azure)**: configured as an OIDC provider in Supabase Auth; optional SCIM/Graph-driven provisioning (auto-create users from a security group, deactivate on removal).
-- **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets and bookings (`ActVc`) sync with the correct ERP salesperson/technician code. Fed either manually or by matching email during initial load.
+- **Local**: email/password (argon2id) + optional TOTP — the portal's credentials provider, reused. Magic-link as the low-friction fallback (both siblings ship one).
+- **Microsoft Entra ID**: an Auth.js OIDC provider, per-tenant configurable. Note: neither sibling has Entra *login* today (calendar uses Graph for mail/directory only), so this is net-new — but it's a standard Auth.js provider, not infrastructure work. Optional Graph-driven provisioning (auto-create from a security group, deactivate on removal) follows the calendar's directory-sync pattern.
+- **Strong eID (optional, per tenant)**: Smart-ID / Dokobit / eParaksts providers exist ready-made in the portal (`lib/auth/*-provider.ts`) if a tenant wants them for managers/back office.
+- **ERP link**: maps the app user to the ERP employee/person code so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code ↔ Azure object id, per account) for the employee side — this is the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern).
 
-One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy). To confirm against herbe.calendar: whether it already runs one shared Supabase Auth tenant/project across suite apps (enabling true silent SSO) or a per-app project with token exchange — this decides whether herbe.service joins that project or federates against it.
+One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table).
+
+**Suite SSO reality check**: there is no shared identity provider across herbe apps today — each app authenticates independently. "Signed into calendar ⇒ silently signed into service" does not exist and won't fall out for free. Near-term: same email + same login methods across apps (low-friction, not SSO). True suite SSO = a shared Auth.js issuer or an Entra-backed OIDC broker — a suite-level decision tracked in `08-suite-integration.md`, not a herbe.service deliverable.
 
 ## Roles
 
@@ -31,10 +34,10 @@ Permissions are capability flags grouped into these default roles (custom roles 
 
 ## Sessions & devices
 
-- Supabase Auth's refresh/access token pair, with refresh token lifetime extended for field devices (offline work must survive weeks without re-auth).
-- Device registry per user: named devices, last sync, remote sign-out (revoke the Supabase session) + local data wipe on next contact (lost phone / offboarding).
+- Auth.js session with lifetime extended for field devices (offline work must survive weeks without re-auth). Pattern: portal's JWT strategy (24 h rolling / 30 d absolute) with the absolute window raised for the technician role, **plus** the portal's `session_version` counter so role changes/offboarding invalidate live sessions at next contact. For the native-wrapper path, calendar's `mobile_tokens` (hashed bearer, 90-day sliding expiry) is the reference.
+- Device registry per user: named devices, last sync, remote sign-out (session revocation via `session_version` bump / token delete) + local data wipe on next contact (lost phone / offboarding).
 - Offline PIN/biometric app-lock re-verifying the cached session locally.
 
 ## Multi-tenancy
 
-Tenant = company. Users belong to one tenant (cross-tenant contractor accounts out of scope for v1). All data, adapters, and policies are tenant-scoped. Suite-level SSO: a user signed into another herbe app with the same Entra identity gets silent SSO into herbe.service.
+Tenant = company. Users belong to one tenant (cross-tenant contractor accounts out of scope for v1). All data, adapters, and policies are tenant-scoped; tenancy topology (deployment-per-customer vs shared deployment) per the ADR in `03-architecture.md`. Suite-level SSO is future work — see the reality check above and `08-suite-integration.md`.
