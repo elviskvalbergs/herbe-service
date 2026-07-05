@@ -22,6 +22,7 @@ For service companies: service orders in, planned work on a board, technicians e
 | [12-documents-templates.md](docs/12-documents-templates.md) | Document generation: DOCX mail-merge templates, compliance certificates, numbering, delivery & signing |
 | [13-suite-change-requests.md](docs/13-suite-change-requests.md) | Concrete asks on the herbe.calendar / herbe.portal teams, each with a fallback |
 | [14-design-handoff.md](docs/14-design-handoff.md) | Design-system handoff: what's missing for a field-service app |
+| [15-testing-strategy.md](docs/15-testing-strategy.md) | TDD policy, test infrastructure, spec-rule traceability, and what the owner must arrange |
 | [docs/research/](docs/research/) | Raw competitor + suite research notes (appendix) |
 
 ## Product principles
