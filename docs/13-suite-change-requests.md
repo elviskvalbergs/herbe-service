@@ -2,7 +2,7 @@
 
 Status: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Phase 0 coordination agenda from `06-roadmap.md`, written as concrete, individually decidable requests. Basis: `08-suite-integration.md` (integration design), the sibling apps' source review (`03-architecture.md`, `04-erp-sync.md`), and herbe.calendar's public docs.
 
-**Framing: nothing here blocks the MVP, and herbe.service is a standalone product** — it ships its own deployment, and its tokenized customer links close the loop even without the siblings. The primary customer surface for portal tenants is the **portal service modules** (decided 2026-07-04; design spec delivered to the portal repo), so POR-4 below is superseded by a committed plan; the remaining portal asks are integration touchpoints. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app; it needs only configuration agreements (CAL-1, CAL-2, POR-2). Everything else buys latency, coverage, or one-window convenience, and each request lists its fallback so it can be declined or deferred without breaking herbe.service's roadmap.
+**Framing: nothing here blocks the MVP.** The customer surface is **herbe.portal, exclusively** (owner 2026-07-05): the portal service modules (decided 2026-07-04, design spec + 2026-07-05 addendum delivered to the portal repo) are the customer's only window into service data — POR-4 below is superseded by that committed plan, and POR-3 inverted accordingly. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app; it needs only configuration agreements (CAL-1, CAL-2, POR-2). Everything else buys latency, coverage, or one-window convenience, and each request lists its fallback so it can be declined or deferred without breaking herbe.service's roadmap.
 
 ## Summary
 
@@ -56,7 +56,7 @@ Calendar already merges busy-times across ERP/Outlook/Google per person. Our sch
 
 ## herbe.portal
 
-The portal hosts the primary customer surface as **service modules** reading our `/api/ext/v1` API (decided 2026-07-04; `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`); herbe.service additionally keeps tokenized customer links for QR/ETA/report/feedback flows and for tenants without portal (`08-suite-integration.md` §4). POR-1..3 remain integration touchpoints; POR-4 is superseded.
+The portal hosts the **entire** customer surface as service modules reading our `/api/ext/v1` API (decided 2026-07-04, exclusivity confirmed 2026-07-05; `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` + addendum). herbe.service ships no customer pages. POR-1/POR-2/POR-6 remain integration touchpoints; POR-3 and POR-4 are superseded.
 
 ### POR-1 — Invoice ↔ service order cross-link (Phase 3, small)
 

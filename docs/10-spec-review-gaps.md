@@ -1,6 +1,6 @@
 # herbe.service — Review Round 2 & Spec-Line Merge: Resolutions and Open Questions
 
-Status: v2.0 (2026-07-05). Round 2 (2026-07-04) found the fork between the two spec lines plus 22 seam gaps and 12 phase gaps; on 2026-07-05 the product owner confirmed the audit line as legitimate ("multi-person ActVc, docs templates etc"), the lines were **merged**, and every resolvable finding was written into the spec. This document is now the **single tracker**: what was resolved and where, and the questions that still need the owner (§3 — answer these in chat by number, or edit this file).
+Status: v2.0 (2026-07-05). Round 2 (2026-07-04) found the fork between the two spec lines plus 22 seam gaps and 12 phase gaps; on 2026-07-05 the product owner confirmed the audit line as legitimate ("multi-person ActVc, docs templates etc"), the lines were **merged**, and every resolvable finding was written into the spec. This document is the **single tracker**: what was resolved and where. **All open questions were answered by the owner on 2026-07-05 (§3)** — the spec has no open internal decisions left; remaining externals are listed at the end of §3.
 
 ---
 
@@ -17,9 +17,9 @@ Conflicts adjudicated:
 | # | Topic | Line A said | Line B said | Merged as |
 |---|---|---|---|---|
 | 1 | Crew model | One worksheet per technician (C10) | One worksheet per job, lead + members; multi-person `ActVc` primary | **Line B — owner-confirmed 2026-07-05.** `02`, `04`, `05`, `07` rewritten |
-| 2 | Customer surface | Portal service modules (decided, spec delivered) | Own tokenized customer pages, portal feed "optional, later" | **Synthesis**: portal modules primary (later decision stands) **+** line B's tokenized links for QR/ETA/report/feedback and non-portal tenants (`08` §4). Confirm: Q2 |
-| 3 | Tenancy | Deployment-per-customer (portal model) — "decided 2026-07-04" | Shared-schema `account_id` (calendar model) — also "decided 2026-07-04" | **Line A kept (later that day)** — but two contradictory owner decisions exist. Confirm: Q1 (blocks the walking-skeleton schema) |
-| 4 | Reuse mechanics | Extract `@herbe/erp-core` + `@herbe/email-templates`, copy-first rest (decision log) | No shared packages at all — copy the approach, separate codebases | **Line A kept**; B's counterview noted in `08` §6. Confirm: Q3 |
+| 2 | Customer surface | Portal service modules (decided, spec delivered) | Own tokenized customer pages, portal feed "optional, later" | **Owner 2026-07-05: portal exclusively** — no customer-facing surface in service at all; tokenized-pages layer removed again (`08` §4, Q2 answer) |
+| 3 | Tenancy | Deployment-per-customer (portal model) — "decided 2026-07-04" | Shared-schema `account_id` (calendar model) — also "decided 2026-07-04" | **Owner 2026-07-05: both** — multi-tenant core (`tenant_id` in schema) + dedicated deployments for whitelabel/overlay customers (`03`, Q1 answer) |
+| 4 | Reuse mechanics | Extract `@herbe/erp-core` + `@herbe/email-templates`, copy-first rest (decision log) | No shared packages at all — copy the approach, separate codebases | **Decided 2026-07-05 (delegated)**: extract `@herbe/erp-core` only; email templates and everything else copy-first (`08` §6, Q3 answer) |
 | 5 | Native wrapper | Calendar's Swift `WKWebView` shell pattern | Capacitor | Both listed as candidates, decided Phase 2/3 on real data (`03`). No action now |
 | 6 | Worksheet final status | `Synced` (invoicing on order) | `Synced/Invoiced` | Line A (review fix C7) |
 | 7 | Booking cardinality | Order mandatory, worksheet optional + statuses | Worksheet mandatory, no statuses | Line A (review fixes C1/C2), crew additions on top |
@@ -66,22 +66,18 @@ Phase gaps (P1–P12): all applied in `06-roadmap.md` v0.3 — `/api/ext` + toke
 3. **Cron**: Vercel cron primary for now (dispatcher-route pattern); external ops-runner docs maintained as fallback — `03` (supersedes the round-2 W21 resolution).
 4. **Quote sending automation**: portal's send endpoint exists but is session-bound; new ask POR-6 (token-authenticated trigger) — `13`, wired into the `04` quote flow.
 
-## 3. Open questions for the product owner
+## 3. Open questions — ALL ANSWERED 2026-07-05
 
-Answer by number (chat is fine). Everything else is decided or tracked externally.
+| Q | Question | Owner's answer | Applied in |
+|---|---|---|---|
+| Q1 | Tenancy | "Like in portal — SaaS multitenant is an option, as is customer-specific deployment when they need their design or overlay customisations." → **multi-tenant core** (`tenant_id` on every domain table, shared SaaS deployment default) **+ dedicated deployments** (whitelabel domain/theme/overlay hooks) provisioned per customer; same codebase, one version train | `03` tenancy + fleet ops, `02` company scoping, `05` multi-tenancy, `06` Phase 0 |
+| Q2 | Customer surface | "Anything that requires customer input or is the customer's business is in portal. **No customer-facing stuff in service.**" → tokenized-pages layer removed; portal service modules are the entire customer window (equipment/QR target, requests, order status + ETA view, reports, signoff, feedback); non-portal tenants: emailed PDFs + on-site signature. Portal-team scope updated — design-spec **addendum delivered to the portal repo** | `08` §4, `02` CustomerConfirmation, `04` quote/standalone, `06` P3, `12` approval, `13` framing + POR-3/4, `14` §11, README, `01` d12 |
+| Q3 | Shared packages | "No strong opinion — hassle, but possibly worth it for big overlap. You decide." → **extract `@herbe/erp-core` only** (the third-copy risk is real there); email-template engine and everything else copy-first; two-week timebox stands | `08` §6, `04`, `03`, `06` Phase 0 |
+| Q4 | Phase 1 trim | Confirmed: whitelabel option + transformations UI/settings export stay Phase 2 | `06` (no change needed) |
+| Q5 | Phase 1 estimate | Acknowledged: re-estimate at Phase 0 exit | `06` header note (no change needed) |
 
-**Q1 — Tenancy (blocks Phase 0 schema).** Two contradictory decisions both dated 2026-07-04: deployment-per-customer (portal model, currently in the spec) vs shared-schema `account_id` (calendar model, audit line). **Recommendation: deployment-per-customer** — service tenants carry heavy per-tenant ERP sync jobs and photo volume; isolation bounds cron durations and makes data isolation trivial; the provisioning CLI exists. Shared-schema is better only if you expect many small self-service tenants soon. Which stands?
-
-**Q2 — Customer surface synthesis (confirm).** Merged as: portal service modules = primary customer surface (your 2026-07-04 decision, spec already delivered to the portal repo) **plus** the audit line's tokenized deep links (QR label, report approval, ETA, feedback — also the full surface for tenants without portal). Confirm this synthesis, or scale one side back.
-
-**Q3 — Reuse mechanics (soft confirm).** Spec says: extract `@herbe/erp-core` + `@herbe/email-templates`, copy-first everything else, two-week timebox. The audit line argued for zero shared packages (copy the approach only). The timebox already limits the downside. Confirm extraction, or switch to copy-only?
-
-**Q4 — Phase 1 scope (confirm the trim).** The merge grew Phase 1 (item tree, kilometers, team-ready model, projector, audit log — kept) but I moved two audit-line P1 items to Phase 2: **whitelabel deployment option** and **transformations UI + settings import/export** (Phase 1 ships basic connection config; maps live as reviewed config data). Reason: neither is needed for the single-pilot exit criterion. Agree, or pull either back into Phase 1?
-
-**Q5 — Phase 1 estimate.** With the added P1 scope, does 10–14 weeks stand, or re-estimate at Phase 0 exit? (No action needed now — flagging that the number predates the merge.)
-
-**External / tracked elsewhere (no answer needed here):**
+**Remaining external items (not spec decisions):**
 - Register-code confirmation against the launch tenant — Phase 0 checklist in `06`.
-- Design-system import into `herbe-design-system` (claude.ai/design project → repo) — interim: portal tokens + `14-design-handoff.md`.
-- Sibling-team asks — `13-suite-change-requests.md` (CAL-1/CAL-2 are Phase 0 config agreements; the calendar C1–C3 work needs an owner commitment like the portal's).
-- Portal-side implementation notes to relay — `08` §4.
+- Design-system import into `herbe-design-system` — interim: portal tokens + `14-design-handoff.md`.
+- Sibling-team asks — `13-suite-change-requests.md` (CAL-1/CAL-2 Phase 0 config agreements; calendar C1–C3 owner commitment; portal POR-1/POR-2/POR-6).
+- Phase 1 re-estimate at Phase 0 exit (Q5).

@@ -86,7 +86,7 @@ Priority: **P0** = walking skeleton (Phase 0), **P1** = MVP (Phase 1), **P2** = 
 8. Briefcase / download-my-work (P1)
 9. Item card + service history timeline (P1)
 10. Dispatch board + map (P2), tree browser + coverage (P2), scan flows (P2)
-11. Customer-facing tokenized pages (Phase 3, `08-suite-integration.md`): equipment card + history, order status timeline, report view, ETA page, feedback, request form — public-facing, tenant-branded, mobile-first
+11. ~~Customer-facing pages~~ — removed (owner 2026-07-05): the customer surface is herbe.portal's service modules, designed portal-side within the portal's design system (`08-suite-integration.md` §4); herbe.service needs no customer-facing screens
 
 ## 5. Deliverable format
 

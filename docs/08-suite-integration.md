@@ -1,6 +1,6 @@
 # herbe.service — Suite Integration & Reuse (herbe.calendar, herbe.portal)
 
-Status: v0.2 (2026-07-05) — spec-line merge: tier framing, Kanban delegation, Smart Booking intake, tokenized customer links and the activity-vessel signing fallback folded in from the audit line; `/api/ext` scoping and portal-side implementation notes added from review round 2. Written from code-level review of both sibling repos (calendar `main`-merge b57fcbd, portal v1.0.24).
+Status: v0.3 (2026-07-05) — owner decision applied: **the portal is the only customer-facing surface**; service ships no customer pages. Tier framing, Kanban delegation, Smart Booking intake and the activity-vessel signing fallback folded in from the audit line; `/api/ext` scoping and portal-side implementation notes from review round 2. Written from code-level review of both sibling repos (calendar `main`-merge b57fcbd, portal v1.0.24).
 
 ## 1. Suite reality (verified, not assumed)
 
@@ -8,7 +8,7 @@ Status: v0.2 (2026-07-05) — spec-line merge: tier framing, Kanban delegation, 
 |---|---|---|---|
 | Role | Employee scheduling over ERP activities + Outlook/Google/Zoom; Kanban boards over ERP pipelines; Smart Booking share links | Customer self-service over ERP registers (invoices, quotations, deliveries, e-sign, payments) | Field service execution (orders → work → approval → ERP invoice) |
 | Stack | Next.js 16, React 19, Tailwind 4, Neon + raw `pg`, Auth.js v5 | Next.js 16, React 19, Tailwind 4, Neon + Drizzle, Auth.js v5 | same; Drizzle on **Supabase Postgres** (decided 2026-07-04) |
-| Tenancy | one deployment, many `tenant_accounts` | one deployment + one Neon DB **per customer** (provisioning CLI) | portal model decided 2026-07-04 (Q1 confirmation pending, `10-spec-review-gaps.md`) |
+| Tenancy | one deployment, many `tenant_accounts` | one deployment + one Neon DB **per customer** (provisioning CLI) | both, resolved 2026-07-05: multi-tenant core (calendar pattern) + dedicated deployments for whitelabel (portal pattern) — `03-architecture.md` |
 | Auth providers | email magic-link only | password+TOTP, magic link, Google, Smart-ID, Dokobit, eParaksts | role-shaped: magic link office, PIN+biometrics field (`05-users-auth.md`) |
 | ERP client | `lib/herbe/*`: REST + `updates_after`/`@sequence`, OAuth refresh, two-way `ActVc`, WebExcellentAPI | `lib/erp/*`: `ErpAdapter` contract, register cache + sync runner, WebExcellentAPI (PDF, attachments, activities), write-backs (QTVc patch) | extends portal contract + calendar's incremental/write mechanics (`04-erp-sync.md`) |
 | i18n | none | next-intl, `lv,en,et,lt,fi,sv,no` + per-deployment overrides | portal setup reused |
@@ -21,7 +21,7 @@ Status: v0.2 (2026-07-05) — spec-line merge: tier framing, Kanban delegation, 
 
 1. **The ERP is the shared backbone wherever a tenant has one.** Calendar and service both speak two-way `ActVc`; the portal reads/writes the same registers. No point-to-point sync for data the ERP already carries.
 2. **For app-owned data (worksheets, pre-approval statuses), the owning app exposes a typed REST API** consumed with scoped bearer tokens (portal's `analytics_tokens` pattern: hashed token, scope enum, company scoping).
-3. **Deep links over embedded UI.** Each app renders its own domain; cross-app navigation via stable URLs (`https://service.herbe.app/c/{tenant}/orders/{id}`, portal/calendar equivalents), tokenized customer links (§4), and `hansa://` for the ERP desktop client.
+3. **Deep links over embedded UI.** Each app renders its own domain; cross-app navigation via stable URLs (`https://service.herbe.app/c/{tenant}/orders/{id}`, portal/calendar equivalents) and `hansa://` for the ERP desktop client. Customer-facing links always point into the portal (§4).
 4. **Capability gating everywhere**: a tenant without herbe.calendar, without herbe.portal, or without an ERP simply doesn't see the corresponding affordances (portal's WebExcellentAPI gating discipline, applied suite-wide).
 
 ## 3. Calendar ↔ service: booking planning
@@ -42,16 +42,15 @@ Status: v0.2 (2026-07-05) — spec-line merge: tier framing, Kanban delegation, 
 
 ## 4. Portal ↔ service: customer surface, signoff, invoices
 
-**Division of labor (decided 2026-07-04, portal design spec delivered; merge synthesis adds the tokenized layer):** herbe.service Phase 3 does **not** build a customer portal. Two complementary customer layers:
+**Division of labor — FINAL (owner, 2026-07-05): anything that requires customer input or is the customer's business lives in herbe.portal. herbe.service ships no customer-facing surface at all.** The portal service modules are the complete customer window: equipment registry + history (also the target of QR-label deep links for customer scans), request intake, order tracking incl. the "technician on the way" status/ETA view, approved-worksheet read-out + report PDF, worksheet/report signoff via the portal signing subsystem, and satisfaction feedback. Portal already owns customer login (incl. eIDs), notification prefs, invoice display + payment, e-signing.
 
-- **herbe.portal service modules** (primary, portal tenants): equipment registry + history, request intake, order tracking, approved-worksheet read-out + report PDF, worksheet signoff via the portal signing subsystem. Detailed portal-side design spec: `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` (frozen `/api/ext/v1` contract, `service_connection_config` schema, signing descriptor, notification keys). Portal already owns customer login (incl. eIDs), notification prefs, invoice display + payment, e-signing.
-- **Tokenized deep links** (every tenant, incl. standalone — the calendar `/book/<token>` pattern): the QR label on a machine → asset page with history; order-status link; report view + approval link; "technician on the way" ETA page; feedback link. Scoped narrowly (one asset / one order / one report), revocable, expiring where sensitive; no accounts. This is the whole customer surface for tenants without portal, and the notification-link transport for everyone.
+Portal-side scope is specified for the portal dev team in `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` — the original design (frozen `/api/ext/v1` contract, `service_connection_config`, signing descriptor, notification keys) **plus the 2026-07-05 addendum** (feedback module, ETA view, QR entry route, quote-send trigger API, implementation notes). Tenants without portal: customer touchpoints are the emailed report PDF and the on-site canvas signature — the portal is the upgrade path, not a competing service UI.
 
 **Invoices**: nothing new — the portal's existing invoice module (IVVc + ARVc + payment gateways) covers invoices created from approved worksheets; service guarantees the ERP invoice carries the order reference (`04-erp-sync.md` back-link) so the portal can show "from service order X" (cross-link ask: POR-1).
 
 **Quotes**: out-of-contract quotes push to `QTVc` (`04-erp-sync.md` quote flow); the portal's existing quotations module covers confirmation. Note from code review: the public share link covers *viewing*; accept/reject requires portal login + confirmed scope.
 
-**Signoff**: where a tenant wants formal digital signature instead of/in addition to the on-site canvas signature — `SigningModuleDescriptor` for the worksheet report, `onAllSigned` → `POST /api/ext/v1/worksheets/{id}/confirm`, which writes `CustomerConfirmation` on the worksheet (`02-data-model.md`) and attaches the signed file to the booking's ERP activity where WebExcellentAPI allows. Fallback without the portal module: the tokenized approval link (`method: token_link`); the `ActVc` **activity-vessel** route through the portal's delivery-confirmation flow remains a config-level fallback for compliance documents (POR-2, `12-documents-templates.md`).
+**Signoff**: where a tenant wants formal digital signature instead of/in addition to the on-site canvas signature — `SigningModuleDescriptor` for the worksheet report, `onAllSigned` → `POST /api/ext/v1/worksheets/{id}/confirm`, which writes `CustomerConfirmation` on the worksheet (`02-data-model.md`) and attaches the signed file to the booking's ERP activity where WebExcellentAPI allows. The `ActVc` **activity-vessel** route through the portal's delivery-confirmation flow remains a config-level fallback for compliance documents (POR-2, `12-documents-templates.md`); without any portal, confirmation is the on-site signature.
 
 **Technical contract (service side, built in Phase 2, consumed by portal Phase 3):**
 - `GET /api/ext/v1/…` — service items (+ tree paths), orders, approved worksheets, history; `POST /api/ext/v1/requests` (idempotency key required); `POST /api/ext/v1/worksheets/{id}/confirm`. All list endpoints take `customerCodes=` + `after=<changeSeq>`.
@@ -63,7 +62,7 @@ Status: v0.2 (2026-07-05) — spec-line merge: tier framing, Kanban delegation, 
 ## 5. Users & identity across the suite
 
 - Employee identity: service reuses calendar's `person_codes` concept for user↔ERP-employee mapping (`05-users-auth.md`); where a tenant runs both apps against one ERP, the mapping data is the same and should be entered once — Phase 2: import/sync person links from calendar's table or via a small admin import.
-- Customer identity: portal's `identity_links` stays portal-owned; service's customer-facing data is scoped by ERP customer codes, which is the shared key. Service's tokenized-link visitors are a third population: scoped tokens, no accounts.
+- Customer identity: portal's `identity_links` stays portal-owned; service's customer-scoped data is keyed by ERP customer codes, which is the shared key. Service has no customer-facing visitors of its own.
 - SSO: not built anywhere today (§1); deferred by decision (`05-users-auth.md`, SUITE-1 in `13-suite-change-requests.md`).
 
 ## 6. Reuse inventory & mechanics
@@ -75,7 +74,7 @@ Ranked by value; "coupling" = what must be untangled to reuse outside the source
 | `ErpAdapter` contract + registry + credential envelope | portal `lib/erp/{types,registry,credentials}.ts` | types.ts is import-clean; registry/creds touch portal DB | **Extract to `@herbe/erp-core`** (Phase 0) |
 | Standard Books REST + WebExcellentAPI clients, mappers, typed errors + maintenance guard | portal `lib/erp/standard-books/*` | clients are DB-free; cache stores are Drizzle-bound | Extract clients+mappers; service implements its own cache stores on the shared pattern |
 | `updates_after`/`@sequence` incremental sync, OAuth refresh, `ActVc` save (form-encoding, row chunking, `parsePersons`) | calendar `lib/sync/erp.ts`, `lib/herbe/{client,actVcSave}.ts` | moderate (calendar tables) | Fold the mechanics into `@herbe/erp-core`; calendar migrates opportunistically |
-| Email template engine (TemplateKey/TemplateDataMap/CHANNELS, render, admin editor) | portal `lib/email/*` | render layer DB-free; dispatch reads `email_config` | Extract render+types as `@herbe/email-templates`; service owns its dispatch/config tables |
+| Email template engine (TemplateKey/TemplateDataMap/CHANNELS, render, admin editor) | portal `lib/email/*` | render layer DB-free; dispatch reads `email_config` | Copy-first (Q3 decision — overlap not big enough to justify a shared package); service owns its dispatch/config tables |
 | Signing subsystem (Dokobit/eParaksts/Smart-ID gateways, runners, typed signature pad) | portal `lib/{signing,dokobit,eparaksts,smartid,signature}` | gateways DB-free; runners bound to `signing_*` tables | Phase 3, used portal-side (§4) — no extraction needed initially |
 | Auth.js config, credentials/TOTP/magic-link providers, session-version | portal `lib/auth/*` | bound to portal user tables | Copy-first into service schema; extraction later |
 | i18n setup + locale files structure + overrides admin | portal `lib/i18n/*`, `locales/` | light | Copy-first |
@@ -86,11 +85,10 @@ Ranked by value; "coupling" = what must be untangled to reuse outside the source
 | Docs wiki loader + DocLink | portal (`DocLink`) / calendar (loader) | light | Copy-first |
 | Deep links (`hansa://` builder) | calendar `lib/serpLink.ts` (already copied into portal) | none | Copy (third consumer strengthens the case for `@herbe/erp-core`) |
 | Scoped bearer tokens (hashed, company-scoped) | portal `analytics_tokens` + `lib/mcp/auth` / calendar `api_tokens` | light | Copy pattern for `/api/ext` (§4) |
-| Tokenized public pages (share-token model, cancel tokens) | calendar `/book/<token>`, `favorite_share_links` | moderate | Copy pattern for §4 tokenized customer links |
 | APNs + native iOS shell + mobile token pairing | calendar `ios/`, `lib/apns.ts`, `lib/mobileAuth.ts` | moderate | Phase 2/3 reference when native wrapper lands |
 | AES-GCM credential crypto | calendar `lib/crypto.ts` / portal `lib/security/envelope.ts` | none | Use portal's envelope format (key-id + rotation-friendly) |
 
-**Mechanics — DECIDED 2026-07-04:** extract **only** `@herbe/erp-core` and `@herbe/email-templates` now (highest churn, highest duplication cost — service would be the third copy of the ERP client), copy-first everything else with attribution. Don't block Phase 0 on extraction: if it takes longer than two weeks, copy-first and extract in Phase 2. *(The audit line argued the opposite — no shared packages at all, copy the approach only; raised as Q3 in `10-spec-review-gaps.md`.)*
+**Mechanics — FINAL (Q3 delegated to tech lead, decided 2026-07-05):** extract **only `@herbe/erp-core`** — the one asset where the overlap is genuinely large (REST + WebExcellentAPI clients, typed errors, write mechanics, mappers; service would be the *third* copy) and the churn cost of divergence is proven (the suite already carries two ERP clients and two crypto formats). **Everything else, including the email-template engine, is copy-first with attribution** — shared packages are a hassle, and none of the rest clears the bar. Timebox stands: if `@herbe/erp-core` extraction exceeds two weeks, copy-first and extract in Phase 2.
 
 ## 7. End-to-end workflow across the suite
 
@@ -108,5 +106,5 @@ Ranked by value; "coupling" = what must be untangled to reuse outside the source
                           quote draft ──────────────────► QTVc ──────────────────► quotations module (confirm)
                           service report PDF ─────────────────────────────────────► service modules (view/sign-off)
                           history event                                             service-items history
-                          tokenized links (QR/ETA/report/feedback) ──► customer, portal or not
+                          QR label / notification links ────────────────────────────────────► portal service modules
 ```
