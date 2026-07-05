@@ -83,7 +83,16 @@ Stable users with fixed UUIDs/emails across every environment: `tech.anna@…` (
 | **Regression** | full Playwright + integration suite, every PR (smoke) and nightly (full, incl. visual snapshots on seeded screens per locale) | CI, ephemeral | re-seeded per run — deterministic |
 | **Acceptance** | `@acceptance`-tagged happy-path journeys (the eight `07` workflow contracts) + human UAT with the same personas | staging deployment, nightly re-seed | `baseline` + `sync-edge` |
 
-Portal-side bonus: the seeded deployment's `/api/ext/v1` serves the same deterministic dataset — the portal team tests its service modules against it without needing our codebase (noted in their design-spec addendum).
+### 5.5 Environments via Vercel provisioning (owner directive 2026-07-05)
+
+Test environments ride the same Vercel machinery as production — no parallel infrastructure:
+
+- **Per-PR preview deployments** (Vercel's native behavior, same as the portal's `preview` branch flow): every PR auto-deploys to a preview URL with the **Preview environment's** env vars — `TEST_AUTH=1` lives there and in staging only, never in Production (this is the environment half of the §5.3 double guard). CI seeds the preview's database on deploy and runs the Playwright regression suite against the preview URL — UI tests hit real Vercel infrastructure (edge, headers, cron routes), not just local docker. Database per preview: Supabase branching, or schema-per-preview on a shared test project — pick in the Phase 0 provisioning ADR.
+- **Staging/demo** is a first-class entry in the fleet inventory, stamped out by the **same provisioning CLI** as customer deployments (`03-architecture.md` fleet ops) — which means provisioning itself is exercised on every re-provision, not only when a customer signs. Nightly re-seed; acceptance suite + human UAT run here.
+- **The fake ERP deploys as its own small Vercel project** (it is just an HTTP app serving fixtures + scripted behaviors, state in a test DB), so previews and staging reach it like a real ERP endpoint; locally it runs in docker compose.
+- Local development keeps the docker compose (app + Postgres + Mailpit + fake ERP) for the fast inner loop; previews are the shared, reviewable variant of the same thing.
+
+Portal-side bonus: the seeded staging deployment's `/api/ext/v1` serves the same deterministic dataset — the portal team tests its service modules against it without needing our codebase (noted in their design-spec addendum).
 
 ## 6. What I need arranged (owner action list)
 
