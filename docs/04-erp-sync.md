@@ -1,41 +1,75 @@
 # herbe.service — Two-way ERP Sync (Standard ERP & Excellent Books)
 
-Status: draft v0.2 (2026-07-04) — spec-review fixes: adapter framework reuse (herbe.portal), capability-driven incremental sync, cache/freshness model, write mechanics & normalization, invoice back-link, Sites mapping
+Status: v0.3 (2026-07-05) — spec-line merge + review-round-2 resolutions: store topology pinned (cache → ingest → domain, portal loader pattern per product owner), full `ActVc` mapping with **multi-person crew activities**, echo suppression, push-queue ordering, quote flow, adapter configuration model with transformations and settings export.
 
 ## Principle
 
 The app is not a UI over the ERP; it is a peer system with its own store. Sync is a background process, per company connection, direction-aware.
 
-**One product, one adapter, N company connections (clarified 2026-07-04).** Standard ERP and Excellent Books are literally the same product; there is **one adapter**, not two. The connection model is exactly herbe.portal's `erp_companies` pattern: a deployment holds zero (standalone) or more ERP connections, **each connection is one company** — with its own customers, items, orders, service items, caches, sync state, and field maps. Users switch between companies in the app; nothing is shared or merged across companies. No cross-company cleverness.
+**One product, one adapter, N company connections (clarified 2026-07-04).** Standard ERP and Excellent Books are literally the same product; there is **one adapter**, not two. The connection model is exactly herbe.portal's `erp_companies` pattern: a deployment holds zero (standalone) or more ERP connections, **each connection is one company** — with its own customers, items, orders, service items, caches, sync state, and field maps. One ERP server typically hosts several companies, addressed by the company number in the API path (`/api/<company>/…`); adding another company = a new connection that reuses the server endpoint/credentials but carries its own company number, register maps, sync state and label. No special casing — a company is just another connection. Users switch between companies in the app; nothing is shared or merged across companies.
 
 Launch tenants come from the Excellent customer base. Per-installation capability note for Phase 0: probe WebExcellentAPI presence per connection (it gates PDFs, attachments, activity deletion — see the two tiers below).
 
 ## Adapter framework: extend herbe.portal's, don't rebuild
 
-Phase 1 targets the Standard ERP / Excellent Books product family — **one adapter**. Other vendors' ERPs (Horizon, Jumis, Moneo are already stubbed in the portal's registry) may follow later. The abstraction that makes that possible **already exists** in herbe.portal:
+The framework is **ERP-agnostic**; the HansaWorld family is the first adapter, not the boundary of the design. Nothing outside the adapter may assume HansaWorld semantics.
 
-- **`ErpAdapter` interface + `AdapterCapabilities`** (`herbe-portal/lib/erp/types.ts`) — a neutral contract; everything outside `lib/erp/` imports only this module. Capabilities (`supportsIncrementalSync`, `supportsWebExcellentApi`, …) gate features per connection; a feature whose capability is `false` is absent from the UI, not disabled.
+### Adapter contract (what any ERP adapter implements)
+
+- **Master data pull with change detection** — a delta API where the ERP has one (`updates_after` here), otherwise scheduled diff-by-key; the core only sees "changed records since last run".
+- **Entity mapping** through the transformation layer (configuration model below) — adapters translate, the app model stays ERP-neutral.
+- **Create/update push, idempotent** — lookup by stored ref, then natural key, then create; never double-create.
+- **Deletion detection** — whatever strategy the ERP requires (key-sweep here); the core only sees tombstones.
+- **Capability flags** — optional features an adapter declares per connection: incremental reads, invoice status read-back, calendar/activity mirror for bookings, ERP-computed prices, document PDF fetch, attachments-as-links. Features degrade gracefully where a flag is off; on an ERP without a calendar entity, bookings simply stay app-local.
+
+Everything above the contract is adapter-independent and written once: the sync engine (deltas, outbox, conflicts), push queue + dead-letter queue + sync-health screen, connection/transformation configuration UI, settings import/export.
+
+The pieces **already exist** in herbe.portal and herbe.calendar:
+
+- **`ErpAdapter` interface + `AdapterCapabilities`** (`herbe-portal/lib/erp/types.ts`) — a neutral contract; everything outside `lib/erp/` imports only this module (Horizon/Jumis/Moneo slots already stubbed in the registry).
 - **Registry + factory** (`lib/erp/registry.ts`) — adapter chosen per company config; credentials AEAD-encrypted per company (`lib/erp/credentials.ts`, envelope format, master key).
-- **Standard Books REST client** — `${base_url}/api/${companyCode}/${register}` with `filter[Field]=value`, offset paging, 401→HSESSION-reset-retry, control-char-sanitizing JSON parse.
+- **Standard Books REST client** — `${base_url}/api/${companyCode}/${register}` with `filter[Field]=value`, offset paging, 401→HSESSION-reset-retry, control-char-sanitizing JSON parse, charset sniffing + raw-`http` fallback for malformed responses (both teams hit this independently — budget for it).
 - **WebExcellentAPI client** — `WebExcellentAPI.hal?action=…`; handles the servlet's real behavior: HTTP/1.1 only (403s on HTTP/2 — undici `allowH2:false`), Basic auth only (rejects OAuth Bearer), HSESSION cookie capture/reuse, base64-in-XML document decoding.
-- **Register cache + sync runner + freshness model** — see "Cache & freshness" below.
+- **Typed error hierarchy + maintenance guard** — portal classifies every ERP error into `ErpTransientError` / `ErpPermanentError` / `ErpScheduledMaintenanceError` and gates live calls behind a maintenance-window guard (`assertNotInMaintenance()`, calendar's `lib/erpDowntime`). Reuse directly — it's exactly what the sync-health screen needs to distinguish "retry automatically" from "needs a human", without a maintenance window spamming the DLQ.
+- **Register cache + sync runner + freshness model** — see "Store topology" below.
+- **Register onboarding checklist** — the portal's CLAUDE.md documents a 12-step path for adding a register (schema → cache type → store → sync module → runner → freshness → types → mapper → adapter → UI → admin → templates). Adopt the same checklist shape so every new register/entity follows one documented path.
 
-herbe.calendar independently maintains the same API family client (`lib/herbe/client.ts`) with the pieces the portal doesn't use: **`updates_after`/`@sequence` incremental reads**, OAuth token refresh against `standard-id.hansaworld.com` (advisory-lock-guarded), and **two-way `ActVc` writes** (`lib/herbe/actVcSave.ts`).
+herbe.calendar independently maintains the same API family client (`lib/herbe/client.ts`) with the pieces the portal doesn't use: **`updates_after`/`@sequence` incremental reads**, OAuth token refresh against `standard-id.hansaworld.com` (advisory-lock-coalesced so parallel cron/API invocations don't race the ERP's auth endpoint), and **two-way `ActVc` writes** (`lib/herbe/actVcSave.ts`).
 
-herbe.service's adapter = the portal contract, extended with service-register methods (`listServiceOrders`, `getWorksheet`, `postWorksheet`, `listKnownSerials`, stock transactions, …) + the calendar's incremental-read and write mechanics. Extraction into a shared `@herbe/erp` package is the Phase 0 plan (`08-suite-integration.md`); copy-first with attribution (the suite's existing precedent) if extraction stalls.
+herbe.service's adapter = the portal contract, extended with service-register methods (`listServiceOrders`, `getWorksheet`, `postWorksheet`, `listKnownSerials`, stock transactions, …) + the calendar's incremental-read and write mechanics. Extraction into a shared `@herbe/erp-core` package is the Phase 0 plan (`08-suite-integration.md`); copy-first with attribution if extraction stalls.
+
+## Store topology (how ERP data, the domain store and devices connect)
+
+**Decided 2026-07-05 (product owner): the portal's cache/loader model is the ERP-facing layer; the domain store is fed from it.** Four layers, one direction of truth each:
+
+```
+ERP registers ──(poll/loader)──► cached_{register}  ──(ingest/mapper)──► domain tables ──(changeSeq deltas)──► devices
+                                  (raw ERP payloads,                      (app model,                          (IndexedDB replica)
+                                   sync_state per                          erpRef + changeSeq)
+                                   company×register)
+                                        ▲                                      │
+                                        └──────(push queue: the ONLY writer toward the ERP)◄── outbox ops ◄── devices
+```
+
+1. **ERP → register cache** (`cached_{register}` tables, portal pattern, per company connection): raw ERP rows + `sync_state` (status/cursor/`lastFullSyncAt`). The portal's two freshness concepts apply unchanged and must not be conflated: `isCacheTrustworthy` (register-wide: "complete snapshot exists?", set only by a completed full sync) vs per-scope freshness (`max(updatedAt)` over the scope's rows — never short-circuited from register-wide timestamps). Per-register **customisable loaders** (the transformation layer below) absorb per-installation ERP quirks here, before anything touches the domain model.
+2. **Ingest (cache → domain)**: a mapper step upserts cached rows into domain tables, applying the ownership rules (`02-data-model.md`): ERP-mastered fields overwrite; app-owned fields on shared entities are preserved; a genuinely conflicting same-field edit sets `syncState: conflict` instead of silently overwriting. Ingest bumps `changeSeq`, emits tombstones for swept deletions, and feeds the HistoryEvent projector. Ingest is idempotent (keyed by `erpRef`) and runs as part of each poll cycle.
+3. **Domain → devices**: `changeSeq` delta pull (`03-architecture.md`). **Device delta endpoints never trigger inline ERP syncs** — the cron cadence keeps layers 1–2 fresh; a technician pulling deltas must meet the <3 s budget. **Sync-on-read** (portal's stale-scope inline refresh) is allowed only on office-shell reads (dispatcher opening a customer, admin opening sync health) where a bounded wait is acceptable.
+4. **Devices → domain → ERP**: outbox ops apply to domain tables; app-owned facts that must reach the ERP enter the **push queue** — the only writer toward the ERP (ordering and failure rules below). Successful pushes write `erpRef` back onto the domain record; the next poll's ingest then recognizes the record as its own (echo suppression).
 
 ## API family
 
 Standard ERP and Excellent Books expose the identical HansaWorld register API (same product). Verified from the API docs (api-docs.excellent.ee):
 
-- `GET /api/1/<Register>` — list; `filter.Field=value`, `sort`, `range`, `offset`/`limit`. Observed variants in production code: calendar uses `/api/1/...`-style paths with `updates_after`; portal uses `${base_url}/api/${companyCodeInErp}/${register}` with `filter[Field]=value`. The adapter's URL builder is per-connection config, not a constant.
-- `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark. **Not guaranteed on every installation/register**: the portal runs `supportsIncrementalSync: false` in production and full-scans instead. Incremental reads are a per-connection *capability*, probed at setup; the sync engine must be correct with full-scan-only connections (slower cadence, same result).
+- `GET /api/<company>/<Register>` — list; `filter.Field=value`, `sort`, `range`, `offset`/`limit`. **The first path segment is the company number on the ERP server** (`/api/1/INVc` = items of company 1). Observed variants in production code: calendar uses `updates_after` on these paths; portal uses `filter[Field]=value` syntax. The adapter's URL builder is per-connection config, not a constant.
+- `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark. Sequences are **per company**. **Not guaranteed on every installation/register**: the portal runs `supportsIncrementalSync: false` in production and full-scans instead. Incremental reads are a per-connection *capability*, probed at setup; the sync engine must be correct with full-scan-only connections (slower cadence, same result).
 - Caveat verified in calendar code: server-side `filter[…]` matching is unreliable on some registers — the portal deliberately full-scans + filters app-side for CUVc/ContactRelVc. Treat ERP-side filters as an optimization, never as the correctness mechanism.
-- `POST /api/1/<Register>` — create/update records
+- `POST /api/<company>/<Register>` — create/update records
 - Records carry `UUID` and `@url`
 - Caveat from docs: sequence numbers may reset after ERP version upgrades → adapter must detect regression and fall back to full reconciliation.
 
 **Deletion detection.** The API's `deletes_after` parameter exists but is unreliable in practice — do **not** build on it. Instead: nightly (and on demand) key-sweep reconciliation per register — page through record IDs/UUIDs with plain list calls, diff against our stored `erpRefs`, tombstone what disappeared. The same sweep doubles as the recovery path for sequence resets. Between sweeps a record deleted in the ERP may linger in the app for up to a day; acceptable for master data, and service documents are guarded anyway (an approved worksheet must never be silently deleted by sync — flag, don't delete).
+
+Checked against both sibling apps' actual deletion handling — they differ, and neither is a straight fit: herbe.calendar sidesteps the problem for `ActVc` with a bounded time-window full replace (90 days back / 30 forward, delete+insert in one transaction) — works because calendar bookings outside that window don't matter. herbe.service can't do that; "history is the product" means records from years back must stay correct, so the unbounded key-sweep is the right call. herbe.portal's WebExcellentAPI client can issue explicit deletes where the tenant has that tier — use it to react faster when available, but keep the nightly sweep as the tier-1-only baseline.
 
 ### Two API tiers
 
@@ -59,38 +93,58 @@ Verified register codes (from API docs) vs. to-confirm (service module codes dif
 | Contact person | `CUVc` (flag-distinguished) + relations `ContactRelVc` | verified (portal) |
 | Employee/portal user lookup | `UserVc` | verified (portal + calendar) |
 | Site (service address) | `CUVc` address rows / delivery addresses / Objects | confirm — model per tenant during Phase 0; Sites stay first-class app-side regardless |
-| Customer service item / serial | Known Serial Numbers | confirm code |
+| Customer service item / serial (`unit` nodes only — the tree stays app-side, `11-service-items-and-parts.md`) | Known Serial Numbers | confirm code |
 | Service order | Service Orders register (Service Orders module) | confirm code |
-| Worksheet | Work Sheets register | confirm code |
+| Worksheet | Work Sheets register — `WSVc` (per product owner; verify casing/version) | near-confirmed |
+| Service contract | service-contracts register (exists in both brands) | confirm code + sync direction (`02-data-model.md` Contract) |
+| Quotation (out-of-contract quotes, Phase 3) | `QTVc` | verified (portal syncs + writes it in production) |
 | Stock level | stock/item-status lookup or report API | confirm |
 | Stock transaction (consumption, van transfer) | Stock Depreciation / Stock Movement | confirm code |
-| Invoice (status back-link only) | `IVVc` | verified (seen in docs) |
-| Booking | Activities `ActVc` (same register in both brands; two-way create/update via REST — calendar-proven; deletes/comments/attachments need WebExcellentAPI) | decided |
-
-## Cache & freshness (server-side ERP cache)
-
-Three data layers, each with its own refresh rule — don't conflate them:
-
-1. **ERP → server cache** (`cached_{register}` tables, portal pattern): per `(company, register)` a `sync_state` row tracks status/cursor/`lastFullSyncAt`. Two distinct freshness concepts, kept separate exactly as the portal enforces:
-   - `isCacheTrustworthy(state)` — register-wide: "do we have a complete snapshot at all?" Gates whether the cache may be served. Set only by a completed full sync.
-   - `isCustomerCacheFresh(...)` — per-scope (customer/technician): `max(updatedAt)` over that scope's cached rows. Triggers an on-demand incremental sync on read when stale ("sync-on-read"). Never short-circuit it from register-wide timestamps — a full sync must not make every scope look fresh.
-2. **Server → device** (delta pull): every entity table carries `changeSeq`; devices pull `?after=<seq>` (see `03-architecture.md`). The device never talks to the ERP.
-3. **Device → server** (outbox): app-owned facts flow up as idempotent ops; the server's ERP push queue (below) is the only writer toward the ERP.
-
-Reads that hit a stale scope trigger a scoped incremental sync inline (bounded), then serve; full syncs run only on schedule/reconciliation — the portal's loader pattern, reused.
+| Invoice (status back-link; rows for reporting via portal's mappers) | `IVVc` (+ `ARVc` for payment status) | verified |
+| Booking | Activities `ActVc` (same register in both brands) | verified — herbe.calendar runs two-way `ActVc` end-to-end in production (form writes, `updates_after` pull, MainPerson/CCPerson mapping) |
 
 ## Sync flows
 
 ### Inbound (ERP → app), continuous polling per register
-Master data: customers, items, prices, stock levels, employees, known serial numbers, open service orders created in ERP. Poll cadence: fast registers (service orders, stock, activities) every 1–5 min; slow (items, customers) every 15–60 min; full reconciliation nightly and on sequence reset. On connections without `updates_after` support the fast cadence degrades to windowed full scans (date-range `range=` reads, calendar's `fullSyncRange` pattern: rounded month windows, ~90 d back / 30 d forward).
+Master data: customers, items, prices, stock levels, employees, known serial numbers, open service orders created in ERP. Poll cadence is set by herbe.service's product needs, per-register per-connection configurable (a load-sensitive ERP can be tuned down): fast registers (service orders, stock, activities) every **1–5 min**; slow (items, customers) every 15–60 min; full reconciliation nightly and on sequence reset. On connections without `updates_after` support the fast cadence degrades to windowed full scans (date-range `range=` reads, calendar's `fullSyncRange` pattern: rounded month windows, ~90 d back / 30 d forward). (For reference, herbe.calendar polls at 15 min business hours — that only affects tier-0 cross-app latency, not what we run.)
 
-### Outbound (app → ERP), event-driven
+### Outbound (app → ERP), event-driven through the push queue
+
+**Push queue ordering & partial failure (the saga rule).** ERP writes have no transactions; a worksheet approval fans out into several dependent posts. Rules:
+
+- The queue is **FIFO per service order**, with explicit dependencies: customer → order → worksheet → stock transaction(s) → (Phase 3) quote. A step whose dependency is unpushed or dead-lettered **waits behind it** — a worksheet never races ahead of its failed order push.
+- Each fan-out (e.g. one approval) is a **push group**: steps are recorded individually; on partial failure the group resumes from the failed step and **never re-posts a succeeded step** (idempotency: stored `erpRef` per step, then natural-key lookup, then create).
+- Manual DLQ retry re-enters the group at the failed step; a successful retry repairs `erpRef` on the domain record and unblocks dependents.
+
+Flows:
 - New customer / service item created in field → pushed immediately (with duplicate-check by reg. number / serial before create).
-- Service order created in app → pushed on creation, ERP number stored back into `erpRefs`.
-- Booking created/moved on the dispatch board → written as an Activity (`ActVc`) on the technician's ERP calendar (mapped by the user's ERP identity link; activity type per adapter config). Inbound: activities of the mapped types poll on the fast cadence and update/create bookings, so a schedule change made in the ERP (or in herbe.calendar) shows on the technician's phone.
-- Worksheet → pushed when **Approved** by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time). Stock consumption posts as the ERP-appropriate stock transaction. Invoice is then created **in the ERP** by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history.
-- **Invoice back-link mechanics**: the pushed worksheet/order record carries the app's order number in an agreed ERP field (order-number field or a custom field — fixed per tenant field map, confirmed in Phase 0). The `IVVc` poll matches invoices back by that reference (fallback: customer + date + amount heuristic flagged for manual confirm, never silently linked). Payment status enrichment can reuse the portal's `ARVc` (open-balances) mapper.
+- Service order created in app → pushed on creation, ERP number stored back into `erpRef`.
+- Booking created/moved on the dispatch board → written as an Activity (`ActVc`); full mapping below. Inbound: activities of the mapped types poll on the fast cadence and update/create bookings, so a schedule change made in the ERP (or in herbe.calendar) shows on the technician's phone within minutes.
+- Worksheet → pushed when **Approved** by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time, billable distance rows). Stock consumption posts as the ERP-appropriate stock transaction. Invoice is then created **in the ERP** by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history. **The assignee mapping requires an identity link**: approval of a worksheet whose lead/members lack ERP person codes is blocked with an actionable error (a wrong technician code on the ERP document is worse than a delay).
+- **Invoice back-link mechanics**: the pushed worksheet/order record carries the app's order number in an agreed ERP field (order-number field or a custom field — fixed per tenant field map, confirmed in Phase 0). The `IVVc` poll matches invoices back by that reference (fallback: customer + date + amount heuristic flagged for manual confirm, never silently linked). Payment status enrichment reuses the portal's `ARVc` (open-balances) mapper; Phase 3 reporting ("revenue per technician, ERP-priced") reads `IVVc` rows through the portal's invoice mappers rather than inventing a second parser.
 - Attachments: pushed as record links where the ERP supports it; otherwise the app remains the system of record for media and the ERP record carries a deep link into herbe.service.
+
+### Booking ↔ Activity (`ActVc`) mapping in detail
+
+`ActVc` is not just a calendar entry in the HansaWorld family — it is a general-purpose record that links across the system, and the adapter uses it that way:
+
+- **Field mapping**: person signature(s) via the user's ERP identity link; start/end date+time (converted from UTC + tz at the boundary, `02-data-model.md`); activity type + symbol (adapter config per tenant); **workflow stage** ← worksheet/order status mirror (what herbe.calendar's Kanban renders and drag-updates, `08-suite-integration.md`); free-text/description ↔ booking notes — **two-way**: text edited on the ERP activity (or in herbe.calendar) lands in the booking notes on the technician's phone and vice versa.
+- **Native document fields**: the activity's **Service Order** and **Service Item** fields are always populated when the booking's order maps to an ERP service order — ERP-side users drill from calendar to order natively, and ERP-side activity reporting per order keeps working.
+- **Team jobs — multi-person activities are the primary mode** (product owner, confirmed 2026-07-05): multi-person activities are first-class in the HansaWorld family (herbe.calendar displays them today). **One activity carries the whole crew** in its person field: one entry on every member's ERP and herbe.calendar view, one workflow stage, one set of links and notes — the ERP itself keeps the crew consistent. The adapter maps **N crew bookings ↔ 1 activity**: inbound person-list changes update the crew bookings (and the worksheet's members list), outbound crew bookings collapse into the person list; `crewGroupId` keeps the mapping stable. **One activity per person** is the automatic fallback only where the shared window breaks: a member whose booking detaches (different start/end) splits into their own activity while the rest stay on the shared one.
+- **Echo suppression** (both directions, both writers): the adapter tags its writes with the app record UUID (reserved field/prefix — suite convention proposed as CAL-2, `13-suite-change-requests.md`); on poll, records matching a stored `erpRef` with `@sequence` ≤ the last outbound write are ignored as self-echoes, and inbound versions older than a pending outbound op never roll local state back. Without this, two writers (service + calendar) ping-pong updates.
+- **Inbound activities without a service order** (mapped type, no order behind it — created by a dispatcher in the ERP or calendar): activity types configured as **intake types** auto-convert to ServiceOrder (`New`) + Booking (the Smart Booking channel, `08-suite-integration.md` §3); other mapped types land as an **unlinked booking task in the dispatcher inbox** — attach to an existing order, create an order, or dismiss (dismissed activities are remembered and not re-imported). Orders are never silently auto-created outside intake types. Activities of persons with no identity-linked user are ignored (logged once in sync health).
+- **Unlinked technician outbound**: a booking assigned to a user without an ERP identity link stays app-local and queues its `ActVc` write, with a per-user warning in sync health; the write fires when the link is added.
+- **Record links**: where the tenant has WebExcellentAPI (`getrecordlinks` capability), the adapter (a) writes links from the booking activity to the service order, service item, and customer; (b) reads links on inbound activities — an activity already linked to a service order auto-attaches as a booking of that order; (c) surfaces activity links *between* service orders as "related orders". Without the capability, the native Service Order/Service Item fields carry the primary linkage.
+- **Not mapped**: worksheet content (rows, time, media) never travels via activities — worksheets have their own register push on approval. The activity is planning + linkage + notes (+ document vessel, `12-documents-templates.md`) only.
+
+### Quote flow (out-of-contract work, Phase 3)
+
+The portal's quotations module (`QTVc`, accept/reject with public share view) is the customer-facing surface; herbe.service is the producer:
+
+1. Manager creates a **quote draft** from the service order (rows from a work template or an estimated worksheet; prices are ERP-truth — `windowactions` preview where available, otherwise post-and-read-back).
+2. The push queue posts it to `QTVc` with the order reference (same back-link convention as invoices); `erpRef` stored.
+3. The customer confirms in herbe.portal (its existing QTVc module — note: viewing is public via share token, accept/reject requires portal login + confirmed scope) or the ERP directly.
+4. The `QTVc` poll picks up the status change → order gains a `quote accepted/rejected` event: accepted → dispatcher notified, order proceeds to planning; rejected → order flagged for follow-up. Never auto-cancel on rejection.
 
 ### Write mechanics & normalization (data modified on read/send)
 
@@ -99,15 +153,16 @@ Verified against calendar/portal production code — encode these as adapter rul
 - **Writes** are URL-encoded form posts: `set_field.<Field>=<value>`, matrix rows as `set_row_field.<N>.<Field>` with long text **chunked across rows** (calendar's `toHerbeForm`/`saveActVcRecord`). The adapter owns chunking/reassembly; app code never sees row-chunked text.
 - **Read normalization**: ERP responses may contain control characters (portal sanitizes before JSON parse), locale-formatted dates and decimals, and person lists as packed strings (calendar's `parsePersons`). Mappers normalize to ISO dates, canonical decimal strings, and arrays at the adapter boundary — domain types never carry raw ERP formats.
 - **Auth is per-tier**: REST accepts OAuth Bearer (calendar refreshes tokens against `standard-id.hansaworld.com`, advisory-lock-coalesced) or Basic; **WebExcellentAPI accepts Basic only and HTTP/1.1 only**. HSESSION cookies are captured and reused (~4 h TTL) to avoid re-auth per call.
-- **Field-level mapping tables are configuration, not code**: per-tenant register/field maps versioned in the backend, because Standard ERP installations are customized.
 - **Pre-app history import** (Phase 1 "history includes ERP era"): initial load pages historical Work Sheets/Service Orders/Invoices per serial number into `HistoryEvent` rows through the same mappers, date-windowed (default: full available history for serials under contract, configurable horizon otherwise). Scope confirmed against real tenant data volumes in Phase 0.
 
-### Identity & idempotency
-- Every app record stores its company connection's `erpRef {register, uuid/code, seq}` (`erp_company_id` scopes the record itself).
-- Outbound ops carry the app UUID; adapter must never double-create (lookup by stored ref, then by natural key, then create).
+## Adapter configuration model (suite conventions)
+
+- **Connection definition.** A named ERP connection per company: API base URL, auth (OAuth via Standard ID, or Basic — the same two options the suite apps offer), company number, register set, capability flags (WebExcellentAPI probed at setup), timezone, per-register sync cadence, own sync state (`@sequence` high-water marks), display label/color, activity-type + intake-type mapping, invoice back-link field.
+- **Transformations on import/export.** Two tiers, per register, both directions: **declarative maps** (field maps, value/code conversions — units, VAT codes, classifiers — defaults, skip/filter conditions) for the common cases, and **sandboxed JS transform hooks** for the rest — a function receiving the record + related context, returning the transformed record. Versioned per tenant, editable without deployments — this is where per-installation ERP customizations are absorbed. The same JS-hook engine powers document computed fields (`12-documents-templates.md`): one sandbox, one skill, two uses.
+- **Settings import/export.** The complete adapter configuration (connections minus secrets, register maps, transformations, status→stage maps) exports and imports as a file — for support diagnostics, cloning a proven setup to a new tenant or company, staging→production promotion, and provisioning whitelabel deploys. Secrets never travel in exports; they are re-entered on import.
 
 ### Error handling
-- Failed pushes go to a per-tenant dead-letter queue with human-readable reason, surfaced in a back-office "Sync health" screen (count, last success per register, retry button). Silent sync failure is the #1 trust-killer for two-way integrations — this screen is a Phase 1 deliverable, not an afterthought.
+- Failed pushes go to a per-tenant dead-letter queue with human-readable reason (typed error classification — transient errors auto-retry with backoff, permanent errors and maintenance windows don't spam the queue), surfaced in a back-office "Sync health" screen (count, last success per register, retry button honoring the push-group rules above). Silent sync failure is the #1 trust-killer for two-way integrations — this screen is a Phase 1 deliverable, not an afterthought.
 - Validation mismatches (ERP rejects a row: closed period, missing account, credit-blocked customer) bounce back as actionable tasks to the service manager, with the worksheet returned to `Done` (not lost).
 
 ## Pricing & invoicing boundary
@@ -116,4 +171,4 @@ The app shows prices for informational purposes (role-gated); the ERP owns prici
 
 ## Standalone mode
 
-No adapter configured: numbers issued from app-local series, prices from an app-maintained simple price list on Items, invoicing status features hidden. Enabling an adapter later triggers an initial-load wizard: match customers/items by natural keys, review duplicates, then switch masters per the ownership table in `02-data-model.md`.
+No adapter configured: numbers issued from app-local series, prices from an app-maintained simple price list on Items, invoicing status features hidden; the portal service modules require an ERP-connected deployment, so standalone tenants' customer surface is the tokenized-link pages only (`08-suite-integration.md` §4). Enabling an adapter later (Phase 2 deliverable — the **initial-load wizard**): the implicit local company is **bound to the new connection** (one-way; existing records keep their `erp_company_id`), then match customers/items by natural keys, review duplicates (merge via the alias mechanism, `02-data-model.md`), and switch masters per the ownership table.

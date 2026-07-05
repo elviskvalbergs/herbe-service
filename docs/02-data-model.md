@@ -1,26 +1,29 @@
 # herbe.service — Data Model
 
-Status: draft v0.2 (2026-07-04) — spec-review fixes: Booking cardinality & statuses, ServiceOrder status derivation, signature/rejection revision rule, Contact modeling aligned with CUVc reality
+Status: v0.4 (2026-07-05) — merge of the two spec lines (see `10-spec-review-gaps.md`): the audit line's tree/lot/coverage model, **team jobs (lead + members)**, DistanceEntry, field policies and DocumentTemplate folded into the reviewed v0.2 base (company scoping, Contact-as-CUVc, booking statuses, order derivation, signature revision rule). Crew decision per product owner 2026-07-05: **multi-person is the primary mode**.
 
 The model follows the Standard ERP / Excellent Books Service Orders module vocabulary (Service Orders, Work Sheets, Items, Serial Numbers — same product, same registers) so that ERP mapping stays close to 1:1, while adding app-side entities the ERP doesn't have (bookings, checklists, media, sync metadata).
 
 ## Entity overview
 
 ```
-Customer 1──* Site 1──* ServiceItem
-Customer 1──* ServiceOrder 1──* ServiceOrderRow ──> ServiceItem
+Customer 1──* Site 1──* ServiceItem (tree: parent link; kind: system|unit|lot)
+ServiceItem *──1 ItemModel ──* PartCompatibility ──> Item
+Customer 1──* ServiceOrder 1──* ServiceOrderRow ──> ServiceItem (any node + coverage)
 ServiceOrder 1──* Worksheet 1──* WorksheetRow ──> Item
-Worksheet 1──* TimeEntry, 1──* Media, 1──0..1 Signature, 1──* ChecklistResult
-Worksheet *──1 User (assignee)
-Booking *──1 ServiceOrder, *──0..1 Worksheet, *──1 User   (planning)
+Worksheet *──1 User (lead), 1──* WorksheetMember ──> User   (team jobs)
+Worksheet 1──* TimeEntry, 1──* DistanceEntry, 1──* Media, 1──0..1 Signature, 1──* ChecklistResult
+Booking *──1 ServiceOrder, *──0..1 Worksheet, *──1 User   (planning; one booking per
+                                          technician, crew bookings share a crewGroupId)
 Item 1──* StockLevel *──1 StockLocation  (incl. van stock)
 ServiceItem 1──* HistoryEvent            (derived service history)
-User 1──* IdentityLink                   (Azure AD, Standard ERP, Excellent Books)
+User 1──* IdentityLink                   (Standard ERP / Excellent Books person code,
+                                          optionally Entra ID / eID)
 ```
 
 ## Company scoping
 
-A deployment holds one or more **ERP company connections** (portal `erp_companies` model; clarified 2026-07-04). Every ERP-derived or ERP-synced entity — customers, contacts, sites, service items, items, stock, orders, worksheets, bookings, history — carries `erp_company_id`. Companies are fully separate data scopes: no sharing, no merging, no cross-company lookups. Users can have access to several companies and switch context; the active company scopes every list and search. Standalone deployments get one implicit local company. Users, roles, and checklist templates are deployment-level, not company-level.
+A deployment holds one or more **ERP company connections** (portal `erp_companies` model; clarified 2026-07-04). Every ERP-derived or ERP-synced entity — customers, contacts, sites, service items, items, stock, orders, worksheets, bookings, history — carries `erp_company_id`. Companies are fully separate data scopes: no sharing, no merging, no cross-company lookups. Users can have access to several companies and switch context; the active company scopes every list and search. Standalone deployments get one implicit local company; if an ERP connection is enabled later, that implicit company is **bound to the connection** (one-way, irreversible) — existing records keep their `erp_company_id`, nothing is re-stamped (see `04-erp-sync.md` standalone section). Users, roles, checklist templates, document templates and field policies are deployment-level, not company-level.
 
 ## Core entities
 
@@ -33,7 +36,10 @@ Customer fields: code, name, reg. number, VAT number, addresses, phones, emails,
 A customer can have many service locations. Fields: address, geo-point, access instructions (gate codes, keys — visible offline to the assigned technician only), on-site contact. Standard ERP models this loosely (delivery addresses / objects); the app keeps Sites first-class and maps to ERP address rows.
 
 ### ServiceItem (the thing being serviced)
-The customer's installed equipment, identified by serial number. Fields: serial number, item code (link to Item catalog), make/model, name, customer, site, installation date, warranty start/end, service contract link, meter/counter values, status (active / inactive / replaced), photos, documents (manuals, instructions). Maps to Standard ERP Known Serial Numbers / serviced-item records (register code to confirm per ERP version).
+The customer's installed equipment — a **tree, not a flat list** (full design: `11-service-items-and-parts.md`). Nodes have `parentId`, materialized `path`, `kind` (`system` grouping/zone node, `unit` serialized asset, `lot` counted group of like items with `quantity`), a link to the **ItemModel** registry (what it is), and `positionCode` (tenant numbering). Unit fields: serial number, installation date, warranty start/end, service contract link, meter/counter values, status (active / inactive / replaced), photos, documents. Orders/worksheets may target any node; group-level rows carry **coverage** (`all` / `n of m` / list / exceptions) and history projects down to covered descendants. Only `unit` nodes map to the ERP serial register (Known Serial Numbers — register code to confirm per ERP version); the tree itself is app-owned. Phase 1 ships `system`/`unit` nodes (flat is a degenerate tree — no later migration); `lot` + coverage arrive Phase 2.
+
+### ItemModel (what a service item is)
+Make/model/category registry with per-category attributes, documents, and default checklist template. Referenced by ServiceItems and by **PartCompatibility** (`model × catalog part × role × qty`) and alternative-item groups (equivalence + supersession) — the machinery behind "parts that fit this machine" and automatic substitute offering. App-owned; seedable from ERP classifiers. Details: `11-service-items-and-parts.md`.
 
 ### Item (catalog: spare parts and services)
 Synced from ERP register `INVc` (verified in Excellent Books REST API). Two kinds relevant here:
@@ -46,7 +52,7 @@ Locations: main warehouse, technician vans (one per field user), supplier/consig
 
 ### ServiceOrder
 The demand: "customer X needs work on service items A, B". Fields: number (app-local + ERP number after sync), customer, site, contact, description of fault/request, priority, requested/promised dates, status, orderer, salesperson/manager, related contract, rows.
-- **ServiceOrderRow**: service item (serial number), reported symptom, requested work type.
+- **ServiceOrderRow**: service item node (unit, lot or system — group rows carry coverage), reported symptom, requested work type.
 
 Status flow: `New → Accepted → Planned → In progress → Work done → Confirmed → Invoiced → Closed` (+ `Cancelled`). "Invoiced" is set by ERP sync-back, never in the app.
 
@@ -59,43 +65,73 @@ Status flow: `New → Accepted → Planned → In progress → Work done → Con
 - Adding a new worksheet/booking to a `Work done`/`Confirmed` order rolls it back to the matching earlier state. Derivation is recomputed server-side on every worksheet/booking transition.
 
 ### Worksheet (the work-done fact)
-One or more per ServiceOrder; the technician's working document. Fields: service order link, service item(s), assignee, status, planned vs actual time, work description, fault/cause/remedy codes, internal notes, customer-visible notes.
-- **WorksheetRow**: item (spare part or service), quantity, stock location it came from, price/discount (visibility role-gated), serial number of the used/replaced part.
-- **TimeEntry**: start/stop or manual; type (work / travel / waiting); normal vs overtime; feeds both invoicing and payroll-side reporting.
+One or more per ServiceOrder; the working document of a **job**. Fields: service order link, service item node(s), **lead** (responsible technician), **members** (the rest of the crew on a team job — every member can execute: add rows, time, media, checklist values), status, planned vs actual time, work description, fault/cause/remedy codes, internal notes, customer-visible notes. **One worksheet per job, not per person**: a two-technician boiler replacement is one document with two members, not two documents to reconcile. Status transitions (complete, sign) belong to the lead; a member's contributions are attributed (`addedBy` on rows/media).
+- **WorksheetRow**: item (spare part or service), quantity, stock location it came from — **the member's own van or another location**, price/discount (visibility role-gated), serial number of the used/replaced part, `addedBy`.
+- **TimeEntry**: **per member** (`userId`): start/stop or manual; type (work / travel / waiting); normal vs overtime; feeds both invoicing (all members' hours are billable lines) and payroll-side reporting per person.
+- **DistanceEntry**: **per member**, driven kilometers for the job — entered directly after the job *or* as odometer before/after (distance computed); `billable` flag decides whether it becomes a travel-item worksheet row at approval (travel item mapping in adapter config) or stays a cost record. Optional feature per tenant; can be made a required field via field policies (below). Future: computed from a routing/telematics API — the entry stays the same, only its source changes.
 - **ChecklistResult**: filled form instance (see ChecklistTemplate), incl. measured values / test results with pass/fail bounds.
 - **Media**: photos (before/after tags), documents, short video/audio notes; EXIF time+geo kept.
 - **Signature**: customer name, signature image, timestamp, geo-point; locks the worksheet content it signs.
+- **CustomerConfirmation** (0..1, Phase 3): remote confirmation of the finished work/report — `{method: portal_confirm | esign | token_link, confirmedBy, confirmedAt, signedFileMediaRef?}`. Written by the portal signoff callback (`08-suite-integration.md` §4) or a tokenized approval link; shown in history and on the report. Where the tenant has WebExcellentAPI, the signed file also attaches to the booking's ERP activity as a record link.
 
 Status flow: `Draft → Assigned → Accepted → In progress → Paused (reason: parts/access/other) → Done → Approved → Synced` (+ `Rejected` back to technician with comment). Invoicing status is tracked on the ServiceOrder (ERP back-link), not on the worksheet.
 
 **Signature lock vs. rejection/correction.** A signature freezes the worksheet content it signed. If a manager rejects a signed worksheet, or the ERP bounces it (closed period, missing account), corrections happen as a **new revision**: the signed revision is kept immutable in history, the worksheet reopens for editing, and if any customer-visible content changed (rows, quantities, work description) a re-signature is required. Manager-side metadata fixes that the customer never sees (account codes, internal notes, stock location corrections) do not invalidate the signature and need no re-sign.
 
-**Assignment.** A worksheet has exactly one assignee; a second technician on the same job gets their own worksheet under the same order (keeps time/parts attribution clean). Reassigning a booking reassigns its linked worksheet if that worksheet is still `Draft`/`Assigned`; from `Accepted` onward reassignment is an explicit manager action on the worksheet.
+**Crew & reassignment.** The lead is set when the worksheet is created (from the booking's technician, or picked by the dispatcher); members are kept in sync with the job's crew bookings (below). Reassigning a member's booking updates the members list; changing the **lead** is an explicit manager/team-lead action. From `Accepted` onward, crew changes are recorded (who joined/left, when) so time attribution stays truthful.
 
 ### Booking (planning)
-Scheduling wrapper: service order (optionally a specific worksheet) × technician × time window, with all-day/estimate flags. Kept separate from Worksheet so a job can be re-planned or split across days without touching the work facts. This is what the dispatch board and technician calendar render.
+Scheduling wrapper: service order (optionally a specific worksheet) × **one technician** × time window, with all-day/estimate flags. Kept separate from Worksheet so a job can be re-planned or split across days without touching the work facts. This is what the dispatch board and technician calendar render.
 
-- A booking always references a ServiceOrder; the worksheet link is optional (planning can precede worksheet creation). When a technician accepts/starts a booking that has no worksheet yet, the app creates one (status `Assigned`) and links it.
-- Status: `planned → confirmed → cancelled` (+ `rescheduled` recorded as cancel-and-recreate with a link, matching herbe.calendar's booking status vocabulary). Execution progress (en route, on site, done) lives on the Worksheet/TimeEntry, not on the booking.
-- One worksheet may have many bookings (multi-day jobs); each booking has exactly one technician.
+- A booking always references a ServiceOrder; the worksheet link is optional (planning can precede worksheet creation). When a technician accepts/starts a booking that has no worksheet yet, the app creates one (status `Assigned`, lead = that technician) and links it.
+- Status: `planned → confirmed → cancelled` (+ `rescheduled` recorded as cancel-and-recreate with a link). Execution progress (en route, on site, done) lives on the Worksheet/TimeEntry, not on the booking.
+- Times are stored **UTC + explicit site/tenant timezone** (herbe.calendar's `booked_utc`/`host_timezone` lesson); the adapter converts to/from ERP-local date+time at the boundary using the connection's timezone config.
 
-Bookings sync two-way with ERP **Activities (`ActVc`)** — the same register in Standard ERP and Excellent Books (one product family; herbe.calendar reads and writes it over plain REST in production). Each booking is stored as an activity on the linked technician's ERP calendar (activity type/symbol per connection config), so ERP-side calendars and herbe.calendar see the same schedule. Activities created/moved in the ERP for the mapped activity types flow back as bookings. WebExcellentAPI, where the installation has it, additionally enables activity deletion, comments, and attachments.
+**Team jobs**: a crew on one job = one booking *per technician*, sharing a `crewGroupId`. The dispatch board moves the group as one (or detaches a member — e.g. the apprentice leaves at lunch: split their booking, others unchanged). Different members can have different windows on the same job. All crew bookings point at the same worksheet, whose members list stays in sync with the bookings.
+
+Bookings sync two-way with ERP **Activities (`ActVc`)** — the same register in Standard ERP and Excellent Books (one product family; herbe.calendar reads and writes it over plain REST in production). The mapping is richer than a calendar entry — full detail incl. **multi-person crew activities as the primary mode**, workflow-stage mirror, native Service Order / Service Item fields, two-way notes, record links and echo suppression: `04-erp-sync.md` "Booking ↔ Activity mapping". Activities created/moved in the ERP for the mapped activity types flow back as bookings.
+
+### DocumentTemplate & GeneratedDocument
+Tenant-defined DOCX mail-merge templates per document type (worksheet report, order confirmation, compliance certificate…), with selection rules and number series; generated documents are immutable, versioned Media records linked to their root entity and the service item nodes they certify. Full design: `12-documents-templates.md`.
 
 ### ChecklistTemplate
 Reusable forms attached by item type, work type, or customer contract: sections, field types (bool, number with min/max, text, photo-required, selection), required-on-completion flags. Versioned; results always reference the template version.
 
+### Contract (service contract / agreement)
+Referenced from Phase 1 (`ServiceOrder.relatedContract`, `ServiceItem.serviceContractLink` — nullable until Phase 3), built as a feature in Phase 3. Fields: customer, covered service item nodes (subtree references — coverage view in `11-service-items-and-parts.md`), response-time terms, price-rule reference (informational; the ERP owns pricing), validity period, recurring-service rules (calendar-based generation, horizon). Ownership: app-owned initially; both ERPs have a service-contracts register — whether to sync (and which direction) is a Phase 0 "confirm" item in the `04-erp-sync.md` register table.
+
 ### HistoryEvent (service history)
-Denormalized, append-only view per ServiceItem and per Customer: every completed worksheet, part replacement, measurement, status change. Built server-side from synced facts (including pre-app history imported from the ERP) so the technician sees full history offline even for work done directly in ERP.
+Denormalized, append-only view per ServiceItem node and per Customer: every completed worksheet, part replacement, measurement, status change — with group-level events **projected** to covered descendants and rolled up to ancestors (`11-service-items-and-parts.md`).
+
+**Production rules** (the projector is a first-class Phase 1 component, not an afterthought): events are emitted (a) on worksheet status transitions server-side, (b) on ERP-poll ingest of historical/foreign records (pre-app history import, work done directly in ERP), and (c) on service item status changes. Every event carries a deterministic key (source record id + event type + revision) so re-running the projector is idempotent; a full rebuild per company is an admin action (`07-ui-screens.md` A8). Events ship to devices through the normal `changeSeq` delta feed.
 
 ### User, Role, IdentityLink
-See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to Microsoft Entra ID (OIDC subject), a Standard ERP person (`EmplVc`-style code), and/or an Excellent Books employee.
+See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to a Standard ERP / Excellent Books person (`EmplVc`-style code) and/or (optionally, net-new for the suite) a Microsoft Entra ID subject or eID.
+
+## Field policies (hidden / optional / required)
+
+Whether a field is shown, editable, or mandatory is **tenant configuration, not code** — the DistanceEntry question ("optional here, mandatory there") generalizes:
+
+- **FieldPolicy**: entity/form × field × state (`hidden / read-only / optional / required`) × scope (**role**, and where relevant **work type**). Example rows: *DistanceEntry.km required for technicians on work type "on-site"*, *WorksheetRow.price hidden for technicians*, *fault/cause/remedy required for managers at approval*.
+- **Enforcement at status transitions**, not per keystroke (offline-friendly): `required` blocks the transition it is bound to (technician can't set *Done* without km; manager can't *Approve* without remedy code) with a clear list of what's missing. Client enforces for UX, server enforces for truth — same state machine as `03-architecture.md` conflicts.
+- Defaults ship sensible (everything optional beyond the structural minimum); policies live in tenant settings, travel in settings export/import (`04-erp-sync.md`), and are edited in admin alongside checklist templates — the same "required-on-completion" idea, applied to the built-in forms.
+- Deliberately **not** a form builder: fields are the spec'd ones; policies only tune visibility/necessity. Custom fields, if ever, are a separate later decision.
 
 ## Sync metadata (on every synced entity)
 - `id` — client-generated UUID (idempotency key)
-- `erpRef` — per company connection: register, record id/UUID, last known `@sequence`
+- `erpRef` — for the record's company connection: register, record id/UUID, last known `@sequence` (the connection itself is fixed by `erp_company_id`)
 - `syncState` — `local / pending / synced / conflict`
 - `updatedAt`, `updatedBy`, `deletedAt` (tombstone)
-- `origin` — `app / erp` (the company connection is already fixed by `erp_company_id`)
+- `origin` — `app` or the connection id it arrived from (adapter-agnostic; not an enum of ERP products, so new adapters need no schema change)
+
+## Record merges (field-created duplicates)
+
+When back office merges a field-created provisional record into an existing one (`07-ui-screens.md` O7), the merge must survive offline replicas that still hold the old UUID:
+
+- A server-side **alias row** (`oldId → survivingId`, permanent) is written; all server FKs re-point to the survivor in the same transaction.
+- The delta feed ships a **tombstone-with-redirect** for the old id; clients re-point local FKs and drop the provisional record.
+- Queued outbox ops still referencing the old id are rewritten through the alias table at ingest — never rejected.
+- History events of the provisional record re-attach to the survivor via the projector (deterministic keys make this idempotent).
 
 ## Master-data ownership
 
@@ -103,9 +139,13 @@ See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to
 |---|---|---|
 | Customers, contacts, Items, Price lists | ERP | create-new + limited fields (phones, geo, notes), synced back |
 | Stock levels | ERP | via stock transactions only |
-| Service items | shared | yes (two-way) |
+| Service items: `unit` nodes (serials) | shared | yes (two-way, flat serial register) |
+| Service item tree, `system`/`lot` nodes, coverage | app | yes; never pushed to ERP (`11-service-items-and-parts.md`) |
+| ItemModel registry, part compatibility, alternatives | app | yes; seedable from ERP classifiers |
 | Service orders | shared | yes (two-way) |
-| Worksheets, time, media, checklists, signatures | app | yes; pushed to ERP on approval |
+| Contracts | app (ERP sync = Phase 0 confirm) | yes |
+| Worksheets, time, distance, media, checklists, signatures | app | yes; pushed to ERP on approval |
 | Invoices | ERP | never — read-only status back-link |
 | Bookings | app | yes; mirrored two-way as ERP Activities (`ActVc`) |
-| Users, roles, checklist templates | app | yes; not synced to ERP |
+| Users, roles, checklist templates, field policies | app | yes; not synced to ERP |
+| Document templates, generated documents | app | yes; finished PDFs attach to ERP records as links (`12-documents-templates.md`) |

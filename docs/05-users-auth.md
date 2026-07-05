@@ -1,43 +1,51 @@
 # herbe.service — Users, Auth & Roles
 
-Status: draft v0.2 (2026-07-04) — rewritten after reviewing sibling codebases: the suite runs **Auth.js (next-auth v5)**, not Supabase Auth; Entra ID login exists in neither sibling today.
+Status: v0.3 (2026-07-05) — spec-line merge: **role-shaped login** (magic link for office, PIN + biometrics on paired field devices) folded into the verified suite baseline (Auth.js v5 everywhere; Entra ID login exists in neither sibling today).
 
 ## Model (verified suite pattern)
 
-Auth runs on **Auth.js v5** — both siblings do (calendar: pg adapter + DB sessions; portal: Drizzle adapter + JWT sessions with a `session_version` revocation counter). The app's own `users` table (tenant, role, profile, status) is what the rest of the schema references. External identities attach as links, not as identity itself: removing a link never deletes the user or their history.
+Auth runs on **Auth.js v5** — both siblings do (calendar: pg adapter + DB sessions, magic link only; portal: Drizzle adapter + JWT sessions with a `session_version` revocation counter, password+TOTP, magic link, Google, Smart-ID, Dokobit, eParaksts). Each suite app runs its own independent auth instance; there is no shared auth tenant. The app's own `users` table (tenant, role, profile, status) is what the rest of the schema references. External identities attach as links, not as identity itself: removing a link never deletes the user or their history.
 
 ```
-User (app table) ── IdentityLink[] ── { provider: entra-id | standard-erp | excellent-books,
+User (app table) ── IdentityLink[] ── { provider: standard-erp | excellent-books | entra-id | eid | ...,
                                         externalId, linkedAt, linkedBy }
 ```
 
-- **Local**: email/password (argon2id) + optional TOTP — the portal's credentials provider, reused. Magic-link as the low-friction fallback (both siblings ship one).
-- **Microsoft Entra ID**: an Auth.js OIDC provider, per-tenant configurable. Note: neither sibling has Entra *login* today (calendar uses Graph for mail/directory only), so this is net-new — but it's a standard Auth.js provider, not infrastructure work. Optional Graph-driven provisioning (auto-create from a security group, deactivate on removal) follows the calendar's directory-sync pattern.
-- **Strong eID (optional, per tenant)**: Smart-ID / Dokobit / eParaksts providers exist ready-made in the portal (`lib/auth/*-provider.ts`) if a tenant wants them for managers/back office.
-- **ERP link**: maps the app user to the ERP employee/person code so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code ↔ Azure object id, per account) for the employee side — this is the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern).
+## Login methods are role-shaped
+
+- **Admins / managers / back office**: **email magic link** (the suite's shared flow — calendar's only provider, present in the portal too; reuse the known-user gating + Graph/SMTP sender pattern). Optional per tenant: password (argon2) + **TOTP** for admin roles (portal's proven implementation: `otpauth`, envelope-encrypted secret, hashed recovery codes, replay guard), Baltic eID (Smart-ID / Dokobit / eParaksts providers exist ready-made in the portal), and **Microsoft Entra ID** OIDC (net-new for the suite — a standard Auth.js provider, added per tenant when needed; optionally Graph/SCIM provisioning: auto-create from a security group, deactivate on removal).
+- **Technicians**: **PIN-code login on a paired device** — a phone is enrolled once via a one-time link/QR issued by an admin (or the technician's own magic link); after that, daily login is the PIN, validated locally against the device-bound session. **Biometrics (Face ID etc.) replace or accompany the PIN** where the platform exposes them (native wrapper where the PWA can't reach them — Phase 3). No email round-trip in the field: no connectivity, no inbox, gloves — a magic link can't be the daily field path.
+
+The PIN/biometric unlock is the technician's *login*, but security-wise it is a local re-verification of a long-lived device session: the server still sees the Auth.js session token, the device registry governs its lifetime, and PIN attempts are rate-limited with wipe-on-N-failures (tenant policy).
+
+- **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code, per account) for the employee side — the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern). Enforcement rules for unlinked users: `04-erp-sync.md` (booking write queues with a warning; worksheet approval blocks).
 
 One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table).
 
-**Suite SSO — DECIDED 2026-07-04: deferred.** There is no shared identity provider across herbe apps today and none is built now. Near-term: same email + same login methods across apps (low-friction, not SSO). Entra ID is added as a per-tenant Auth.js provider **when a tenant needs it** — no upfront work. Revisit suite-level SSO only if real cross-app friction shows up.
+**Suite SSO — DECIDED 2026-07-04: deferred.** There is no shared identity provider across herbe apps today and none is built now. Near-term: same email + same login methods across apps. Entra ID is added as a per-tenant Auth.js provider when a tenant needs it. Revisit suite-level SSO only if real cross-app friction shows up (`13-suite-change-requests.md` SUITE-1).
 
 ## Roles
 
+Two levels, deliberately separate: the **tenant role** (what a person may do in general) and the **per-job lead** (elevation on one worksheet). Any technician can be made *lead of a job* — that grants status transitions and signature collection on that worksheet only, and is not a role change (`02-data-model.md` team model).
+
 | Role | Can |
 |---|---|
-| **Technician** | see own (and optionally team) bookings/worksheets; execute worksheets: parts, time, checklists, photos, signature; create service orders/customers/service items in the field (tenant-configurable); see own van stock; see service history; prices hidden/shown per tenant policy |
-| **Team lead** | technician + see/reassign team's work |
-| **Dispatcher / Service manager** | all orders & worksheets; plan board; approve/reject worksheets; manage checklist templates; see sync health; prices & margins |
-| **Back office** | read-most; customer/item edits; reports |
-| **Admin** | tenant settings, users/roles, ERP adapter config, API keys |
+| **Technician** | see own (and optionally team) bookings/worksheets; execute worksheets as member: parts from own van, own time/distance, checklists, photos; as **job lead**: status transitions + customer signature on that job; create service orders/customers/service items in the field (tenant-configurable); see own van stock; see service history; prices hidden/shown per tenant policy |
+| **Team lead / crew manager** | technician + see and reassign the team's bookings/worksheets, edit crew composition on the team's jobs, review the team's time entries; optionally (tenant flag) approve the team's worksheets |
+| **Dispatcher / Service manager** | all orders & worksheets; dispatch board incl. crew scheduling; approve/reject worksheets; bulk operations on the service item tree (`11`); manage checklist templates; trigger/override document generation (`12`); see sync health; prices & margins |
+| **Back office** | read-most; customer/item edits; reports; document delivery follow-up |
+| **Admin** | tenant settings incl. theme/whitelabel; users/roles; device enrolment links + registry; ERP connections & transformations, settings import/export (`04`); document templates, computed fields, number series (`12`); structure templates (`11`); API tokens (incl. the `/api/ext` tokens for herbe.portal) |
 
-Permissions are capability flags grouped into these default roles (custom roles later, not v1).
+Permissions are capability flags grouped into these default roles (custom roles later, not v1); the flags let a tenant tune the edges — e.g. whether team leads approve worksheets, whether technicians see prices, who may issue device enrolments. Field-level visibility and mandatoriness are the separate, role-aware **field policies** in `02-data-model.md` — rights say *what you may do*, field policies say *what a form demands of you*.
 
 ## Sessions & devices
 
-- Auth.js session with lifetime extended for field devices (offline work must survive weeks without re-auth). Pattern: portal's JWT strategy (24 h rolling / 30 d absolute) with the absolute window raised for the technician role, **plus** the portal's `session_version` counter so role changes/offboarding invalidate live sessions at next contact. For the native-wrapper path, calendar's `mobile_tokens` (hashed bearer, 90-day sliding expiry) is the reference.
-- Device registry per user: named devices, last sync, remote sign-out (session revocation via `session_version` bump / token delete) + local data wipe on next contact (lost phone / offboarding).
-- Offline PIN/biometric app-lock re-verifying the cached session locally.
+- Auth.js JWT session with a rolling window plus a hard absolute cap enforced in the `jwt` callback against the token's `iat` (portal's pattern: 24 h rolling / 30 d absolute — Auth.js has no native absolute-cap setting), **plus** the portal's `session_version` counter so role changes/offboarding invalidate live sessions at next contact. Both windows extended well beyond office defaults for the technician role: offline work must survive weeks without re-auth. For the native-wrapper path, calendar's `mobile_tokens` (hashed bearer, 90-day sliding expiry) is the reference.
+- Device registry per user: named devices, enrolment date, last sync, remote sign-out (session revocation via `session_version` bump / token delete) + local data wipe on next contact (lost phone / offboarding). Device-at-rest security scope: `03-architecture.md` "Device data at rest".
+- Office roles get standard web sessions; the technician PIN/biometric login above is the device session's local unlock.
 
 ## Multi-tenancy
 
-Tenant = one customer deployment (decided: own deployment + DB, `03-architecture.md`). Within a deployment there can be **several ERP company connections**, each a fully separate data scope (`02-data-model.md` "Company scoping"); users are deployment-level, get access per company, and switch the active company in the UI — technicians typically live in one company, back office may span several. Cross-deployment contractor accounts are out of scope for v1. Suite-level SSO is deferred — see above.
+Tenant = one customer deployment (decided 2026-07-04: own deployment + DB, `03-architecture.md` — Q1 confirmation pending, `10-spec-review-gaps.md`). Within a deployment there can be **several ERP company connections**, each a fully separate data scope (`02-data-model.md` "Company scoping"); users are deployment-level, get access per company, and switch the active company in the UI — technicians typically live in one company, back office may span several. Cross-deployment contractor accounts are out of scope for v1.
+
+Portal users (the *customer's* people) are a different population entirely — they live in herbe.portal, keyed to Contacts/identity links, and never appear in this user store. herbe.service's own tokenized customer links (`08-suite-integration.md` §4) are scoped tokens, not accounts.
