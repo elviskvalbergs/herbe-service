@@ -1,6 +1,6 @@
 # herbe.service — Feature Roadmap by Development Phase
 
-Status: v0.3 (2026-07-05) — spec-line merge: item hierarchy, team jobs, document templates, field policies and kilometers placed into phases; review-round-2 phase fixes (P1–P12 in `10-spec-review-gaps.md`) applied. Sizing assumes a small team (2–3 devs + design shared with the suite); durations are calendar estimates, to be re-planned after Phase 0 — **note: Phase 1 scope grew in this merge (tree, kilometers, team-ready model); the 10–14 week estimate predates that and needs re-checking.**
+Status: v0.4 (2026-07-05, round 3: pause reasons P1, seven locales, unlinked-activity P1 home, QR scheme freeze, ops package, open items refreshed). Previous: v0.3 — spec-line merge: item hierarchy, team jobs, document templates, field policies and kilometers placed into phases; review-round-2 phase fixes (P1–P12 in `10-spec-review-gaps.md`) applied. Sizing assumes a small team (2–3 devs + design shared with the suite); durations are calendar estimates, to be re-planned after Phase 0 — **note: Phase 1 scope grew in this merge (tree, kilometers, team-ready model); the 10–14 week estimate predates that and needs re-checking.**
 
 ## Phase 0 — Foundations (4–6 weeks)
 
@@ -30,7 +30,7 @@ Goal: a technician can do a full day's work offline; a manager can approve it; t
 
 **Service orders & worksheets**
 - Service order CRUD, rows per service item, priorities, statuses (derivation rules server-side)
-- Worksheet execution: parts (with stock location), services, time entries (start/stop + manual, work/travel), **driven kilometers per member** (direct km or odometer; billable → travel-item row at approval; optional, tenant can require via field policy — policy *engine* ships Phase 1 with seeded defaults, config UI Phase 2), work description, fault/cause/remedy
+- Worksheet execution: parts (with stock location), services, time entries (start/stop + manual, work/travel), **driven kilometers per member** (direct km or odometer; billable → travel-item row at approval; optional, tenant can require via field policy — policy *engine* ships Phase 1 with seeded defaults, config UI Phase 2), work description, fault/cause/remedy, **pause with reason** (parts/access/other — ships with the state machine)
 - **Data model is team-ready from day one** (lead + members, per-member time/rows — `02-data-model.md`); Phase 1 UX assigns one technician per job (lead only), crew UX arrives with the Phase 2 dispatch board
 - Photos (before/after), basic fixed checklists (seeded templates managed as data; builder UI Phase 2), customer signature with content lock + revision rule
 - Manager approval / rejection with comment; approval triggers the ERP push group (worksheet + stock txn, ordering rules in `04-erp-sync.md`)
@@ -48,7 +48,7 @@ Goal: a technician can do a full day's work offline; a manager can approve it; t
 
 **Platform**
 - Users, roles (technician / dispatcher-manager / admin in Phase 1; team lead and back office activate in Phase 2); **role-shaped login**: magic link for office roles (TOTP optional), PIN on paired device for technicians (enrolment link/QR; biometrics with the Phase 3 wrapper); ERP identity links (match-by-email helper), device registry + remote wipe
-- The ERP adapter (one product family, one adapter, portal-style multi-company connections with `erp_company_id` scoping in the schema from day one): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back; **bookings ↔ `ActVc` two-way incl. multi-person crew activities and echo suppression** (`04-erp-sync.md`) — this is what makes the technician's Phase 1 calendar and herbe.calendar see the same schedule
+- The ERP adapter (one product family, one adapter, portal-style multi-company connections with `erp_company_id` scoping in the schema from day one): inbound master data + service orders; outbound customers, service items, orders, approved worksheets + stock consumption; invoice number/status read-back; **bookings ↔ `ActVc` two-way incl. multi-person crew activities, echo suppression and void-in-place cancellation** (`04-erp-sync.md`) — this is what makes the technician's Phase 1 calendar and herbe.calendar see the same schedule. Unlinked inbound activities surface on the sync-health screen in Phase 1 (O11; the dispatch-board pool takes over in Phase 2)
 - ERP connection configuration UI: connection definition, add-company-from-same-server, capability probe, activity-type mapping, poll cadences (declarative transformations UI + JS hooks and settings import/export land Phase 2; Phase 1 maps live as reviewed config data)
 - Notification/email sending via the portal's TemplateKey engine (reused) — Phase 1 needs it for worksheet PDF mail and rejection notices
 - **License/seat enforcement** (per-user pricing decided): licensed seat count per deployment, activation blocked beyond seats, usage visible in admin
@@ -66,9 +66,9 @@ Goal: the planner and the warehouse join the loop; the config surfaces become pr
 - **Dispatch board**: day/week, technician rows, drag-and-drop bookings, unassigned-work pool, technician self-assignment option, reassignment. Scope: **time × technician capacity view only** — the pipeline/Kanban status view is delegated to herbe.calendar's Kanban via the status→workflow-stage mapping on the booking activity (`08-suite-integration.md` §3); we don't build a second Kanban
 - **Crew scheduling UX**: several technicians on one job — crew bookings with `crewGroupId`, moved as a group or detached individually; one shared worksheet (lead + members), each member logging own time/parts from own van; one multi-person `ActVc` activity per crew job (`04-erp-sync.md`)
 - **Map view** of the day's jobs and (coarse) technician positions
-- Booking notifications on assign/change; pause reasons (waiting parts / no access); **Web Push infrastructure** (VAPID keys, subscription store, fan-out worker) as a named platform item
+- Booking notifications on assign/change (pause reasons already ship Phase 1); **Web Push infrastructure** (VAPID keys, subscription store, fan-out worker) as a named platform item
 - **Van stock**: per-technician location, stock lookup across all locations (incl. offline cache), transfers, min-stock indication
-- **Barcode/QR**: scan parts into worksheet rows; printable QR labels for service items — units *and* `system`/`lot` nodes (zone plaques) → scan opens the node card/history, confirms arrival, starts work
+- **Barcode/QR**: scan parts into worksheet rows; printable QR labels for service items — units *and* `system`/`lot` nodes (zone plaques) → scan opens the node card/history, confirms arrival, starts work. **The label resolver-URL scheme (`labelId`, login-routed — `08-suite-integration.md` §4a) is frozen here, before the first label is printed** — the portal customer route merely joins it in Phase 3
 - **Item hierarchy at scale** (`11-service-items-and-parts.md`): `lot` nodes + group-coverage order/worksheet rows ("all detectors in zone 2", `n of m` + exceptions) with history projection; structure templates ("standard store"); spreadsheet import/export with dry-run diff; bulk operations (filter → move / assign contract / print labels / create group service order)
 - **Parts compatibility** (`11-service-items-and-parts.md`): PartCompatibility (model × part × role), alternative groups + supersession, fits-this-model-first technician lookup with in-stock substitutes offered automatically — all offline in the briefcase
 - Checklist/form **template builder** (field types, required rules, measured values with pass/fail bounds), templates by item/work type
@@ -116,7 +116,7 @@ Prioritize by pilot data, not upfront:
 
 ## Cross-cutting, every phase
 
-- Suite design-language compliance; Estonian/English/Latvian/Lithuanian/Finnish/Norwegian localization readiness from Phase 1 (i18n scaffolding in Phase 0 — next-intl with the portal's locale set `lv,en,et,lt,fi,sv,no`; translation of service strings beyond en+lv is a launch-planning item, not automatic)
+- Suite design-language compliance; localization readiness from Phase 1 for the portal's full seven-locale set `lv,en,et,lt,fi,sv,no` (i18n scaffolding in Phase 0 — next-intl, portal setup reused; translation of service strings beyond en+lv is a launch-planning item, not automatic)
 - In-app docs wiki grows with every feature; `DocLink` `?`-icons at feature entry points (portal pattern)
 - Accessibility of field UI: glove-sized targets, high contrast, one-hand reach
 - GDPR: data minimization on device, device-at-rest scope per `03-architecture.md`, retention policies
@@ -125,9 +125,12 @@ Prioritize by pilot data, not upfront:
 
 ## Open items
 
-Everything else from earlier rounds is decided or folded into the docs; the live list is `10-spec-review-gaps.md` (open questions Q1–Q5 + external items). Short version:
+Everything else from earlier rounds is decided and folded into the docs (Q1–Q5 all answered 2026-07-05 — `10-spec-review-gaps.md` §3; round-3 tracker: `16-spec-review-round-3.md`). Live list:
 
-1. **Q1 tenancy confirmation** (deployment-per-customer vs shared-schema — two contradictory owner decisions recorded 2026-07-04; blocks the walking-skeleton schema)
-2. **Register codes / field maps** to confirm against the launch tenant (Phase 0 list above)
-3. **Design-system import** into `herbe-design-system` (interim: portal tokens + `14-design-handoff.md`)
-4. Pricing/packaging final call (inputs: verified competitor prices in `01-competitive-analysis.md` v0.2; per-user pricing decided, seat licensing in Phase 1; whitelabel/multi-company as packaging axes)
+1. **Crew-model owner confirmation** — the parallel `dl0dp4` review branch recorded a contradicting owner answer ("one activity per technician") to the canonical multi-person-primary decision; one line of confirmation needed, then retire that branch (`16` §1.1, §1.4)
+2. **Branch hygiene / spec governance** — land the portal service-modules spec on the portal's real mainline; one canonical spec branch per repo; delete stale session branches (`16` §1.4)
+3. **Register codes / field maps** to confirm against the launch tenant (Phase 0 list above; incl. calendar's `AccessGroup`-field TODO on `ActVc`)
+4. **Design-system import** into `herbe-design-system` (interim: portal tokens + `14-design-handoff.md`)
+5. Pricing/packaging final call (inputs: verified competitor prices in `01-competitive-analysis.md` v0.2; per-user pricing decided, seat licensing in Phase 1; whitelabel/multi-company as packaging axes)
+6. **Operations & lifecycle package** (accept as Phase 2/3 scope; backup/restore + `/api/ext` rate limiting land with Phase 1 hardening): DR/rollback story, tenant offboarding & data export, shared→dedicated migration mechanics, retention enforcement (`16` §2.9)
+7. Phase 1 re-estimate at Phase 0 exit (Q5)
