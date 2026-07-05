@@ -54,10 +54,17 @@ Seam gaps (W) from review round 2, with the resolution's home:
 | W18 | Reporting needs invoice rows | `04` back-link section: `IVVc` rows via portal mappers (Phase 3) |
 | W19 | "On the way" ETA mechanism | `06` P3: "On my way" tap + static route estimate |
 | W20 | Booking-status vocabulary claim wrong | `02`: false cross-reference dropped |
-| W21 | Vercel cron can't drive 1–5 min polls | `03`: external ops-runner is the **primary** scheduler |
+| W21 | Vercel cron limits vs 1–5 min polls | **Owner-decided 2026-07-05**: Vercel cron primary via a per-minute dispatcher route (`/api/cron/sync-tick` fans out by DB due-times); ops-runner + `CRON-HANDOFF.md` maintained as documented fallback (`03`) |
 | W22 | Portal-side contract nits | `08` §4 "Portal-side implementation notes" (relay to portal owner) |
 
 Phase gaps (P1–P12): all applied in `06-roadmap.md` v0.3 — `/api/ext` + tokens in Phase 2 (P1), quote flow Phase 3 (P2), standalone wizard Phase 2 (P3), HistoryEvent projector named P1 (P4), Contract stub P1 (P5), Web Push infra named P2 (P6), calendar C1–C3 commitment raised in `13` (P7), survey noted email-only (P8), PDF-engine ADR in Phase 0 (P9), audit log named P1 (P10), token store rides P1/P2 (P11), merge tooling + remap rule P1 (P12).
+
+## 2b. Owner inputs 2026-07-05 (applied)
+
+1. **Activity-purpose map**: every distinct ActVc use (bookings, intake, time-entry mirror, document vessel, history import) gets its own activity-type setting per connection — `04` adapter configuration model, `07` A4.
+2. **Sync administration tools**: observe/act/audit surface specified — per-record sync inspector, force full sync, pause/resume, DLQ edit-and-retry, conflict queue — `04` "Error handling & sync administration", `07` O11.
+3. **Cron**: Vercel cron primary for now (dispatcher-route pattern); external ops-runner docs maintained as fallback — `03` (supersedes the round-2 W21 resolution).
+4. **Quote sending automation**: portal's send endpoint exists but is session-bound; new ask POR-6 (token-authenticated trigger) — `13`, wired into the `04` quote flow.
 
 ## 3. Open questions for the product owner
 

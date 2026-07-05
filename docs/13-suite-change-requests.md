@@ -18,6 +18,7 @@ Status: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Pha
 | POR-3 | portal | Cross-links from portal to herbe.service customer pages | Phase 3 | small feature | customer uses our links from email/QR only |
 | POR-4 | portal | ~~Native service-data feed~~ — **superseded/committed 2026-07-04**: portal service modules reading `/api/ext/v1` (design spec delivered) | service Phase 2 (API) / portal Phase 3 (UI) | committed | tokenized links carry the flows for non-portal tenants |
 | POR-5 | portal | Messaging threads on service entities | optional, later | feature | portal messaging stays invoice-only; service questions via email |
+| POR-6 | portal | Token-authenticated "send quotation for approval" API | Phase 3 (quote flow) | small feature | human sends from the portal quotation view, or service emails its own tokenized approval link |
 | SUITE-1 | both | Suite identity decision (shared IdP or stay separate) | Phase 0 (decision) | decision | stay separate — herbe.service is designed for it |
 | SUITE-2 | both | ~~Repo access~~ — resolved: `BITBUCKET_APP_PASSWORD` works via REST API | — | done | mirrors optional convenience |
 | SUITE-3 | both | Shared theme-token vocabulary published as a reference | Phase 0–1 | docs | herbe.service transcribes portal's tokens from source (started — `14-design-handoff.md`) |
@@ -72,6 +73,10 @@ Where a customer already lives in the portal, let them reach the service flows i
 ### POR-4 — Native service-data feed (optional, later)
 
 **Superseded — this is now the committed plan** (2026-07-04): the portal grows service modules (service items + history, orders/worksheets incl. request intake, report signoff) reading herbe.service’s `/api/ext/v1` with scoped bearer tokens; full design in `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`, service-side contract in `08-suite-integration.md` §4. herbe.service’s tokenized links remain the surface for non-portal tenants and for QR/ETA/feedback flows.
+
+### POR-6 — API to trigger quotation sending (Phase 3, small)
+
+Verified in portal code: `POST /api/c/{companyId}/quotations/{sernr}/send` already emails the share-token link to chosen recipients — but it requires an authenticated portal user session + CSRF header, so herbe.service cannot call it after pushing a quote into `QTVc` (`04-erp-sync.md` quote flow). Ask: a token-authenticated variant (same bearer-token pattern as the other service↔portal calls) taking `{sernr, recipients?}` — recipients defaulting to the customer's confirmed identity-link contacts — so quote delivery is automated end-to-end. Fallback: the quote still lands in the portal's quotations module; a human sends it from the quotation view, or herbe.service emails its own tokenized approval link.
 
 ### POR-5 — Messaging on service entities (optional, later)
 

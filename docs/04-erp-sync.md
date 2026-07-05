@@ -143,8 +143,9 @@ The portal's quotations module (`QTVc`, accept/reject with public share view) is
 
 1. Manager creates a **quote draft** from the service order (rows from a work template or an estimated worksheet; prices are ERP-truth — `windowactions` preview where available, otherwise post-and-read-back).
 2. The push queue posts it to `QTVc` with the order reference (same back-link convention as invoices); `erpRef` stored.
-3. The customer confirms in herbe.portal (its existing QTVc module — note: viewing is public via share token, accept/reject requires portal login + confirmed scope) or the ERP directly.
-4. The `QTVc` poll picks up the status change → order gains a `quote accepted/rejected` event: accepted → dispatcher notified, order proceeds to planning; rejected → order flagged for follow-up. Never auto-cancel on rejection.
+3. Delivery to the customer: verified in portal code — the send exists (`POST /api/c/{companyId}/quotations/{sernr}/send` emails a share-token link) but is **session-bound UI plumbing, not callable service-to-service**. Ask POR-6 (`13-suite-change-requests.md`): a token-authenticated variant so herbe.service can trigger the send automatically after the QTVc push. Fallback until then: the quote appears in the portal and a human sends it from the quotation view, or service emails its own tokenized quote-approval link.
+4. The customer confirms in herbe.portal (its existing QTVc module — note: viewing is public via share token, accept/reject requires portal login + confirmed scope) or the ERP directly.
+5. The `QTVc` poll picks up the status change → order gains a `quote accepted/rejected` event: accepted → dispatcher notified, order proceeds to planning; rejected → order flagged for follow-up. Never auto-cancel on rejection.
 
 ### Write mechanics & normalization (data modified on read/send)
 
@@ -157,13 +158,24 @@ Verified against calendar/portal production code — encode these as adapter rul
 
 ## Adapter configuration model (suite conventions)
 
-- **Connection definition.** A named ERP connection per company: API base URL, auth (OAuth via Standard ID, or Basic — the same two options the suite apps offer), company number, register set, capability flags (WebExcellentAPI probed at setup), timezone, per-register sync cadence, own sync state (`@sequence` high-water marks), display label/color, activity-type + intake-type mapping, invoice back-link field.
+- **Connection definition.** A named ERP connection per company: API base URL, auth (OAuth via Standard ID, or Basic — the same two options the suite apps offer), company number, register set, capability flags (WebExcellentAPI probed at setup), timezone, per-register sync cadence, own sync state (`@sequence` high-water marks), display label/color, the activity-purpose map (below), invoice back-link field.
+- **Activity-purpose map (product owner, 2026-07-05).** Every distinct use of `ActVc` gets its **own configured activity type(s) + symbol** — one setting per purpose, never one shared "service activity type" (the portal already has the same shape: per-company `activity-config`). Known purposes, each independently optional per connection:
+  - `booking` — the two-way booking mirror (the core mapping above);
+  - `intake` — types that auto-convert to ServiceOrder + Booking (Smart Booking / ERP-side request entry);
+  - `timeEntry` — optional outbound mirror of approved TimeEntries as time-class activities on the technician's ERP calendar (for ERP-side time reporting; off by default, one-way app→ERP);
+  - `documentVessel` — the type carrying generated documents through the portal's delivery-confirmation flow (`12-documents-templates.md`);
+  - `historyImport` — which historical activity types count as service events for the pre-app history import.
+  New ActVc-backed features must add a purpose here rather than reusing another purpose's type. Inbound polling imports only types present in the map; everything else in the register is ignored.
 - **Transformations on import/export.** Two tiers, per register, both directions: **declarative maps** (field maps, value/code conversions — units, VAT codes, classifiers — defaults, skip/filter conditions) for the common cases, and **sandboxed JS transform hooks** for the rest — a function receiving the record + related context, returning the transformed record. Versioned per tenant, editable without deployments — this is where per-installation ERP customizations are absorbed. The same JS-hook engine powers document computed fields (`12-documents-templates.md`): one sandbox, one skill, two uses.
 - **Settings import/export.** The complete adapter configuration (connections minus secrets, register maps, transformations, status→stage maps) exports and imports as a file — for support diagnostics, cloning a proven setup to a new tenant or company, staging→production promotion, and provisioning whitelabel deploys. Secrets never travel in exports; they are re-entered on import.
 
-### Error handling
-- Failed pushes go to a per-tenant dead-letter queue with human-readable reason (typed error classification — transient errors auto-retry with backoff, permanent errors and maintenance windows don't spam the queue), surfaced in a back-office "Sync health" screen (count, last success per register, retry button honoring the push-group rules above). Silent sync failure is the #1 trust-killer for two-way integrations — this screen is a Phase 1 deliverable, not an afterthought.
+### Error handling & sync administration
+- Failed pushes go to a per-tenant dead-letter queue with human-readable reason (typed error classification — transient errors auto-retry with backoff, permanent errors and maintenance windows don't spam the queue), surfaced in the "Sync health" screen. Silent sync failure is the #1 trust-killer for two-way integrations — this screen is a Phase 1 deliverable, not an afterthought.
 - Validation mismatches (ERP rejects a row: closed period, missing account, credit-blocked customer) bounce back as actionable tasks to the service manager, with the worksheet returned to `Done` (not lost).
+- **Admin sync tools** (product owner, 2026-07-05 — operating the sync is a product surface, not a developer task; full screen spec in `07-ui-screens.md` O11):
+  - *Observe*: per connection × register — status, cursor/`@sequence`, last incremental/full sync, row counts, error-class breakdown; push-queue depth and oldest pending op; per-record **sync inspector** reachable from any record's detail (its `erpRef`, seq, last push/pull, last error).
+  - *Act*: force full sync per register; run key-sweep reconciliation now; pause/resume a connection; set maintenance windows; DLQ browser with payload view, **edit-and-retry** (fix the mapped payload, resubmit through the push group) and discard-with-reason; conflict queue with side-by-side versions and pick/merge resolution.
+  - *Audit*: every manual intervention (retry, discard, forced sync, conflict resolution) lands in the audit log with who/when/what.
 
 ## Pricing & invoicing boundary
 

@@ -45,7 +45,7 @@ Suite look & feel: design-system tokens (`--herbe-*`), portal non-negotiables ap
 | O8 | **Stock overview** | 2 | back office | Levels per location, transfers, consumption log (ERP-synced). |
 | O9 | **Checklist template builder** | 2 | manager | Sections, field types, required rules, bounds; versioning; assignment by item/work type. Phase 1 ships seeded fixed templates managed as data, no builder UI. |
 | O10 | **Reports** | 3 | manager, back office | Utilization, first-time-fix, MTTR, revenue/technician (ERP-priced). |
-| O11 | **Sync health** | 1 | admin, manager (read) | Per-register: last sync, cursor, status, row counts (portal cache-status panel pattern) + **dead-letter queue** with human-readable reasons and retry buttons. |
+| O11 | **Sync health & administration** | 1 | admin, manager (read) | Per connection × register: status, cursor, last incremental/full sync, row counts, error classes (portal cache-status panel pattern). Actions: force full sync, run reconciliation now, pause/resume connection. **DLQ browser**: payload view, edit-and-retry, discard-with-reason. **Conflict queue**: side-by-side versions, pick/merge. **Per-record sync inspector** linked from every record detail. All interventions audited. (`04-erp-sync.md` "Error handling & sync administration") |
 
 ## Screen inventory — admin
 
@@ -56,7 +56,7 @@ All Phase 1 unless noted; follows the portal's `/admin` console structure.
 | A1 | Tenant settings | Company profile, number series (standalone), price visibility policy, field-creation permissions, locale defaults. |
 | A2 | Users & roles | Invite, role assignment, deactivate (triggers remote wipe), **device enrolment links/QR** (technician PIN pairing, `05-users-auth.md`), ERP identity links (person-code mapping table with match-by-email helper). **Seat counter**: licensed vs active users; activation beyond the licensed count is blocked with an upgrade prompt. |
 | A3 | Device registry | Per-user devices, last sync, remote sign-out + wipe. |
-| A4 | ERP connection | Adapter choice, credentials, capability probe result (incl. WebExcellentAPI), register/field map versions, activity-type + intake-type mapping for bookings, invoice back-link field, timezone, poll cadences, maintenance window; **transformations editor (declarative maps + JS hooks) and settings import/export** (P2, `04-erp-sync.md`); **`/api/ext` service API tokens** (mint/revoke per company connection, P2). |
+| A4 | ERP connection | Adapter choice, credentials, capability probe result (incl. WebExcellentAPI), register/field map versions, **activity-purpose map** (per-purpose ActVc type/symbol: booking, intake, time-entry mirror, document vessel, history import — `04-erp-sync.md`), invoice back-link field, timezone, poll cadences, maintenance window; **transformations editor (declarative maps + JS hooks) and settings import/export** (P2, `04-erp-sync.md`); **`/api/ext` service API tokens** (mint/revoke per company connection, P2). |
 | A5 | Email/notification templates | Portal's template editor reused: per-key defaults + overrides, variables panel, locale tabs. |
 | A6 | Modules | Feature toggles per tenant (stock, checklists, portal exposure…), portal `MODULES` pattern. |
 | A7 | Audit log | Who/when/what/device for every state change. |
