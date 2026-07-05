@@ -65,7 +65,7 @@ Phase gaps (P1–P12): all applied in `06-roadmap.md` v0.3 — `/api/ext` + toke
 2. **Sync administration tools**: observe/act/audit surface specified — per-record sync inspector, force full sync, pause/resume, DLQ edit-and-retry, conflict queue — `04` "Error handling & sync administration", `07` O11.
 3. **Cron**: Vercel cron primary for now (dispatcher-route pattern); external ops-runner docs maintained as fallback — `03` (supersedes the round-2 W21 resolution).
 4. **Quote sending automation**: portal's send endpoint exists but is session-bound; new ask POR-6 (token-authenticated trigger) — `13`, wired into the `04` quote flow.
-5. **Testing**: TDD mandated; full strategy + owner-arranged items list in new `15-testing-strategy.md` (test ERP instance, planned version upgrade, reference devices, sibling test instances, eID sandboxes, Graph test tenant).
+5. **Testing**: TDD mandated; full strategy + owner-arranged items list in new `15-testing-strategy.md` (test ERP instance, planned version upgrade, reference devices, sibling test instances, eID sandboxes, Graph test tenant). **UI/UX enablement built into the engine** (owner ask 2026-07-05): seed engine with deterministic scenario packs, fixed role personas, guarded test-login + Playwright storageState, staging re-seed — `15` §5.
 
 ## 3. Open questions — ALL ANSWERED 2026-07-05
 

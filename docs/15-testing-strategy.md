@@ -1,13 +1,13 @@
 # herbe.service — Testing Strategy (TDD)
 
-Status: v1.0 (2026-07-05, product owner directive: TDD everywhere; everything automatable is automated; the rest listed explicitly for the owner to arrange — §5).
+Status: v1.0 (2026-07-05, product owner directive: TDD everywhere; everything automatable is automated; the rest listed explicitly for the owner to arrange — §6).
 
 ## 1. Policy
 
 - **TDD is the default working mode.** Every behavior named in docs 02–12 lands as a failing test before its implementation: red → green → refactor. A task is not "done" without its tests; a bug fix starts with the regression test that reproduces it.
 - **Spec rules are executable.** The tables and rules in the spec map 1:1 to named test suites (traceability below, §3). When the spec changes, the corresponding suite changes in the same PR.
 - **CI blocks on red.** Unit + integration + E2E smoke run on every PR; merge is blocked on failure. Coverage gates: ≥90 % lines/branches on the core-logic packages (state machines, mappers, sync engine, transformation sandbox, projector, coverage/rollups), ≥80 % overall. Coverage is a floor, not a target — the real gate is "every spec rule has a suite".
-- Performance budgets (`03-architecture.md`) are CI assertions (Lighthouse CI + scripted timings on throttled CPU), re-verified on real devices per release (§5.3).
+- Performance budgets (`03-architecture.md`) are CI assertions (Lighthouse CI + scripted timings on throttled CPU), re-verified on real devices per release (§6.3).
 - Tooling: **Vitest** (unit/integration, portal convention), **Playwright** (E2E, incl. offline emulation and PWA install), **Testcontainers Postgres** (integration DB), **Gotenberg container** (PDF render smoke, Phase 2), **Mailpit** (email capture). All run headless in CI.
 
 ## 2. The architecture is test-shaped — keep it that way
@@ -16,7 +16,7 @@ The hard parts of this product are deliberately pure logic with injected I/O; th
 
 Three pieces of test infrastructure are Phase 0 deliverables, built before the features that need them:
 
-1. **Fake ERP server** — an HTTP test double of the HansaWorld register API, driven by **recorded fixtures from the real test ERP** (§5.1): register list/paging, `updates_after`/`@sequence`, sequence-reset replay, `filter` unreliability mode, HSESSION lifecycle, WebExcellentAPI's HTTP/1.1-only + Basic-only behavior, control characters and locale decimals in payloads, form-encoded write echo. Every adapter behavior in `04-erp-sync.md` is tested against this double in CI — fast and deterministic. A **nightly live-contract job** replays the same suite against the real test ERP and alerts on drift (fixtures stale, ERP version changed); it never blocks PRs.
+1. **Fake ERP server** — an HTTP test double of the HansaWorld register API, driven by **recorded fixtures from the real test ERP** (§6.1): register list/paging, `updates_after`/`@sequence`, sequence-reset replay, `filter` unreliability mode, HSESSION lifecycle, WebExcellentAPI's HTTP/1.1-only + Basic-only behavior, control characters and locale decimals in payloads, form-encoded write echo. Every adapter behavior in `04-erp-sync.md` is tested against this double in CI — fast and deterministic. A **nightly live-contract job** replays the same suite against the real test ERP and alerts on drift (fixtures stale, ERP version changed); it never blocks PRs.
 2. **Sync simulation harness** — N virtual devices (in-process clients with their own local store + outbox) against a real server + Postgres. Scenarios are scripts: work offline for a day, replay; two members edit the same worksheet offline; manager rejects while technician is offline; duplicate merge while a device holds the old UUID; sequence reset mid-poll; push-group partial failure with DLQ retry. This harness is how every conflict/idempotency rule in `03`/`04` is proven, and it runs in CI on every PR touching sync.
 3. **Golden-fixture library** — anonymized recorded ERP payloads per register (see §5.1 data rules) used by mapper tests portal-style (`tests/unit/erp/.../mappers`), plus DOCX template fixtures and expected merge outputs for the document engine.
 
@@ -46,9 +46,46 @@ Three pieces of test infrastructure are Phase 0 deliverables, built before the f
 
 ## 4. What automation covers honestly vs. not
 
-Playwright's offline emulation, throttled-CPU timings and the fake ERP get us ~90 % of the risk surface deterministically. The remainder is physics and third parties — listed in §5 for the owner. Interim rule: anything in §5 that isn't arranged yet gets a **manual test script** in `docs/testing/manual/` (numbered steps, expected results, run per release and recorded), so the gap is visible, not silent.
+Playwright's offline emulation, throttled-CPU timings and the fake ERP get us ~90 % of the risk surface deterministically. The remainder is physics and third parties — listed in §6 for the owner. Interim rule: anything in §6 that isn't arranged yet gets a **manual test script** in `docs/testing/manual/` (numbered steps, expected results, run per release and recorded), so the gap is visible, not silent.
 
-## 5. What I need arranged (owner action list)
+## 5. UI/UX test enablement — seeded data, personas, test login (built into the engine)
+
+UI tests need three things the product must provide, not the test suite improvise: known data, known users, and a fast way past login. All three ship as **product code** (owner directive 2026-07-05) — they also power sales demos, staging, and tenant onboarding examples.
+
+### 5.1 Seed engine (`lib/seed/` + CLI + admin action)
+
+Deterministic, scenario-based data generation — seeded faker, so **every run produces byte-identical data**: stable IDs, names, order numbers. That is what makes Playwright selectors, screenshot baselines and acceptance scripts reproducible.
+
+Scenario packs, composable per tenant:
+- `baseline` — 2 companies in one tenant (isolation tests need both), customers + sites + a service-item tree (systems/units/lots), item catalog with compatibility rows, orders/worksheets/bookings in **every status** the spec defines (incl. a signed worksheet, a rejected one, a crew job, a DLQ'd push, a conflict task), contracts, checklist templates, document templates.
+- `sync-edge` — unlinked inbound activities, pending merge duplicates, sequence-reset state, half-completed push groups — the sync-admin screens (O11) get real content to test against.
+- `volume` — production-scale row counts for perf budgets.
+- `empty` — fresh-tenant onboarding flows.
+
+The seed packs and the **fake ERP fixtures are generated from one source definition**, so seeded records carry matching `erpRef`s — a seeded tenant looks authentically mid-sync, and inbound/outbound flows can be exercised end-to-end without a real ERP. Seeds are versioned with the schema: CI fails if a migration lands without its seed update. A staging/demo deployment re-seeds nightly (admin "reset demo tenant" action, A8).
+
+### 5.2 Personas (fixed test users, one per role)
+
+Stable users with fixed UUIDs/emails across every environment: `tech.anna@…` (technician), `lead.bruno@…` (team lead), `dispatch.dace@…` (dispatcher/manager), `office.eva@…` (back office), `admin.karlis@…` (admin) — plus a second-tenant persona and a no-company-access persona for negative tests. Because personas are fixed, the **access-rights matrix becomes a generated test**: every route/action × persona → expected allow/deny, run as fast integration tests on every PR, with a thin Playwright smoke on top. Field policies get the same treatment (persona × work type × required-field matrix).
+
+### 5.3 Test login (guarded, never in production)
+
+- A **test-auth provider + `/api/test/login` endpoint**, registered only when `TEST_AUTH=1` **and** the deployment is not production (double guard: env flag + hard check against production domains/`NODE_ENV`; the module is excluded from production builds). It mints a real Auth.js session for a persona in one call.
+- Playwright logs in **once per persona per run** via that endpoint and saves `storageState` — every test starts already authenticated as the right role; a full run costs five login calls, not five hundred.
+- The auth flows themselves (magic link via Mailpit capture, PIN enrolment + unlock, TOTP, session revocation) are tested through the **real UI** in a dedicated auth suite — the bypass is for everything that isn't testing login.
+- Device/PIN: a test enrolment endpoint pairs a virtual device per persona so field-shell tests run against a device-bound session like a real phone.
+
+### 5.4 How the three test purposes use it
+
+| Purpose | Runs | Against | Data |
+|---|---|---|---|
+| **Feature development** | Playwright (watch/headed) + unit, on every change | local docker compose: app + Postgres + Mailpit + fake ERP | `baseline` (+ scenario pack for the feature) |
+| **Regression** | full Playwright + integration suite, every PR (smoke) and nightly (full, incl. visual snapshots on seeded screens per locale) | CI, ephemeral | re-seeded per run — deterministic |
+| **Acceptance** | `@acceptance`-tagged happy-path journeys (the eight `07` workflow contracts) + human UAT with the same personas | staging deployment, nightly re-seed | `baseline` + `sync-edge` |
+
+Portal-side bonus: the seeded deployment's `/api/ext/v1` serves the same deterministic dataset — the portal team tests its service modules against it without needing our codebase (noted in their design-spec addendum).
+
+## 6. What I need arranged (owner action list)
 
 1. **A dedicated test ERP** — the single most important item. An Excellent Books / Standard ERP **test company** (never production) with: REST API credentials; Service Orders module enabled; **two configurations reachable** — one with WebExcellentAPI, one without (or a toggle); permission to freely create/modify/delete records; a known seed dataset we script. Used for fixture recording, the nightly live-contract job, register-code verification (Phase 0), and `updates_after`/filter capability probing. Ideally also: a copy with **realistic production-scale data (anonymized)** for full-sync/history-import performance tests — per data policy, we record structure + volumes, and only anonymized samples ever leave the instance.
 2. **One planned ERP version upgrade** on that test instance during Phase 0/1, announced in advance — the only way to observe real sequence-reset behavior and validate the recovery path.
@@ -60,8 +97,8 @@ Playwright's offline emulation, throttled-CPU timings and the fake ERP get us ~9
 
 Items 1–2 are Phase 0 blockers for the adapter workstream; 3–4 are needed from mid-Phase 1; 5–7 from Phase 2/3.
 
-## 6. Roadmap hooks
+## 7. Roadmap hooks
 
-- **Phase 0**: fake ERP + fixture recorder, sync simulation harness, CI pipeline with coverage gates, manual-script skeleton, first golden fixtures from the test ERP (item §5.1). TDD from the first walking-skeleton commit.
+- **Phase 0**: fake ERP + fixture recorder, sync simulation harness, CI pipeline with coverage gates, manual-script skeleton, first golden fixtures from the test ERP (item §6.1). TDD from the first walking-skeleton commit.
 - **Phase 1**: full suites for the field loop (§3 rows 1–10); Playwright offline journeys; perf budgets in CI; manual device pass per release.
 - **Phase 2+**: document-engine suites (Gotenberg in CI), `/api/ext` contract tests published as fixtures the portal team can test against, suite round-trip tests on the shared test ERP.
