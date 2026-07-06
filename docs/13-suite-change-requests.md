@@ -4,6 +4,8 @@ Status: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Pha
 
 **Framing: nothing here blocks the MVP.** The customer surface is **herbe.portal, exclusively** (owner 2026-07-05): the portal service modules (decided 2026-07-04, design spec + 2026-07-05 addendum delivered to the portal repo) are the customer's only window into service data — POR-4 below is superseded by that committed plan, and POR-3 inverted accordingly. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app; it needs only configuration agreements (CAL-1, CAL-2, POR-2). Everything else buys latency, coverage, or one-window convenience, and each request lists its fallback so it can be declined or deferred without breaking herbe.service's roadmap.
 
+**Standing principle (added 2026-07-06): herbe.service never creates or writes records directly in herbe.portal, for any register.** Every one of these asks — POR-6, POR-7 included — only ever carries a reference (a `sernr`, an `activityId`) across the wire to trigger a notification or fast-path a sync; the underlying data always travels service → ERP → portal via the portal's own ERP sync, never service → portal directly. Where no such trigger API exists yet, the ERP-mediated tier-0 flow is the working baseline, not a stopgap.
+
 ## Summary
 
 | ID | App | Request | Needed by | Type | Fallback if declined |
@@ -19,6 +21,7 @@ Status: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Pha
 | POR-4 | portal | ~~Native service-data feed~~ — **superseded/committed 2026-07-04**: portal service modules reading `/api/ext/v1` (design spec delivered) | service Phase 2 (API) / portal Phase 3 (UI) | committed | tokenized links carry the flows for non-portal tenants |
 | POR-5 | portal | Messaging threads on service entities | optional, later | feature | portal messaging stays invoice-only; service questions via email |
 | POR-6 | portal | Token-authenticated "send quotation for approval" API | Phase 3 (quote flow) | small feature | human sends from the portal quotation view, or service emails its own tokenized approval link |
+| POR-7 | portal | Token-authenticated "send delivery-confirmation request" API (worksheet/document signing) | Phase 3 (signing flow) | small feature | tier-0 poll-based flow already works end-to-end — this is a latency optimization only, not a blocker |
 | SUITE-1 | both | Suite identity decision (shared IdP or stay separate) | Phase 0 (decision) | decision | stay separate — herbe.service is designed for it |
 | SUITE-2 | both | ~~Repo access~~ — resolved: `BITBUCKET_APP_PASSWORD` works via REST API | — | done | mirrors optional convenience |
 | SUITE-3 | both | Shared theme-token vocabulary published as a reference | Phase 0–1 | docs | herbe.service transcribes portal's tokens from source (started — `14-design-handoff.md`) |
@@ -56,7 +59,7 @@ Calendar already merges busy-times across ERP/Outlook/Google per person. Our sch
 
 ## herbe.portal
 
-The portal hosts the **entire** customer surface as service modules reading our `/api/ext/v1` API (decided 2026-07-04, exclusivity confirmed 2026-07-05; `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` + addendum). herbe.service ships no customer pages. POR-1/POR-2/POR-6 remain integration touchpoints; POR-3 and POR-4 are superseded.
+The portal hosts the **entire** customer surface as service modules reading our `/api/ext/v1` API (decided 2026-07-04, exclusivity confirmed 2026-07-05; `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` + addendum). herbe.service ships no customer pages. POR-1/POR-2/POR-6/POR-7 remain integration touchpoints; POR-3 and POR-4 are superseded.
 
 ### POR-1 — Invoice ↔ service order cross-link (Phase 3, small)
 
@@ -77,6 +80,10 @@ Where a customer already lives in the portal, let them reach the service flows i
 ### POR-6 — API to trigger quotation sending (Phase 3, small)
 
 Verified in portal code: `POST /api/c/{companyId}/quotations/{sernr}/send` already emails the share-token link to chosen recipients — but it requires an authenticated portal user session + CSRF header, so herbe.service cannot call it after pushing a quote into `QTVc` (`04-erp-sync.md` quote flow). Ask: a token-authenticated variant (same bearer-token pattern as the other service↔portal calls) taking `{sernr, recipients?}` — recipients defaulting to the customer's confirmed identity-link contacts — so quote delivery is automated end-to-end. Fallback: the quote still lands in the portal's quotations module; a human sends it from the quotation view, or herbe.service emails its own tokenized approval link.
+
+### POR-7 — API to trigger delivery-confirmation / signing requests (Phase 3, small)
+
+Same shape as POR-6, for worksheet and document signing instead of quotations. Unlike POR-6, this one is **not blocking today**: herbe.service already pushes the approved worksheet to `WSVc` and attaches the generated document to the ERP `ActVc` activity via record links (`04-erp-sync.md` mapping, `12-documents-templates.md` §Generation & delivery); the portal picks the activity up through **its own ERP sync**, presents it via its existing delivery-confirmation flow, and the outcome (approved/signed/rejected + comment) returns as the activity's workflow stage, which herbe.service polls — this already works end-to-end at tier 0, no suite API required. Ask: a token-authenticated endpoint (same bearer-token pattern as POR-6) taking `{activityId, documentId?}` — no document content in the call, just the reference — that herbe.service can call right after the document/activity link is confirmed persisted, to skip the poll-cycle wait and put the confirmation request in front of the customer immediately. Fallback (the default until this ships): the tier-0 poll-based flow above — a latency optimization only, not a blocker, so herbe.service's worksheet-push and document-generation work proceeds regardless of when/whether this lands.
 
 ### POR-5 — Messaging on service entities (optional, later)
 
