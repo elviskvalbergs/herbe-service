@@ -126,3 +126,24 @@ Sweep of every feature named in docs 02–15 against the roadmap:
 - `08-suite-integration.md` — notification-ownership table; QR resolver routing; customer-visible status mapping (frozen contract).
 - `07-ui-screens.md` — O11 gains the Phase 1 unlinked-activity task list; O4 media-completeness state.
 - This document; spec viewer regenerated.
+
+---
+
+## 5. Round 4 — owner decisions 2026-07-06, applied
+
+A fourth pass (on branch `spec-review-gaps-ukjna3`, initially run from a stale base — merged onto this line afterward; the branch-hygiene warning in §1.4 proved itself) re-raised a set of seams; the owner answered on 2026-07-06. All applied:
+
+| # | Owner decision | Applied in |
+|---|---|---|
+| 1 | Portal integration stays as specified — no change | — |
+| 2a | Order `Work done` = **manual technician "job done"**; `Confirmed` = **manual manager** review gate; in-flight states stay derived; auto-transitions are a future opt-in workflow feature | `02` transition rules, `06` P1, `07` O2/O3 |
+| 2b | **Work-entry modes**: booking-first / worksheet-prepared-ahead / walk-up-no-booking — one flexible model, all three first-class | `02` Booking, `07` F1/F2/F7/O2 |
+| 2c | **Activity as integration vessel**: distinct activity type per purpose incl. a **`worksheetShadow`** mirror (shallow two-way: time window, customer, links, stage) so ERP/calendar/CRM see execution as well as planning | `04` purpose map + "not mapped" note, `06` P2 |
+| 3 | **Charge type per worksheet row** (`invoiceable/warranty/contract/goodwill`), default on ServiceOrder → Worksheet, override per row; maps to ERP chargeable/warranty handling | `02`, `04` push flow + register table, `06` P1, `07` O4 |
+| 4 | Scoped replication: classical **scope-membership + scope-exit purge** design approved | `03` offline sync, `06` P0 ADR + P1 |
+| 5 | ActVc echo/orphan/delete rules confirmed as specced (round 2/3 had closed them); phase homes verified (booking mirror P1, shadow P2) | — |
+| 6 | **Multiple service items per order and worksheet stay; every row attributes to a node**; checklists attributed; time stays per member | `02` row attribution, `06` P1, ER diagram |
+| 7 | Stock/invoicing pushes clarified: **the worksheet is the only document we deliver by design** — ERP-native Work Sheet processing owns stock + invoice basis; explicit stock posts demoted to a per-connection fallback, Phase 0 confirms which tier each connection needs | `04` worksheet flow + saga note, `06` P0 ADR |
+| 8 | Re-signature after corrections is a **manager judgment** (system diffs + recommends; decision audited); immutable after manager approval — confirming and refining the round-3 revision rule | `02` signature lock, `07` O4 |
+
+Still open from §1: the crew-model one-liner (1.1) and branch retirement (1.4) — this round's stale-base episode makes 1.4 worth doing this week.
