@@ -24,6 +24,7 @@ For service companies: service orders in, planned work on a board, technicians e
 | [14-design-handoff.md](docs/14-design-handoff.md) | Design-system handoff: what's missing for a field-service app |
 | [15-testing-strategy.md](docs/15-testing-strategy.md) | TDD policy, test infrastructure, spec-rule traceability, and what the owner must arrange |
 | [16-spec-review-round-3.md](docs/16-spec-review-round-3.md) | Review round 3 (fork reconciliation, seam fixes, plan readiness) + round-4 owner decisions 2026-07-06 |
+| [17-erp-register-reference.md](docs/17-erp-register-reference.md) | Verified ERP register field reference: `SVOVc`, `WSVc`, `SVOSerVc`, `DelAddrVc`, `ItemStatusVc`, `RLinkVc`, `UserVc` |
 | [docs/research/](docs/research/) | Raw competitor + suite research notes (appendix) |
 
 ## Product principles

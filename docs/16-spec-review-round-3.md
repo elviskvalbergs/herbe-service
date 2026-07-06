@@ -150,3 +150,24 @@ A fourth pass (on branch `spec-review-gaps-ukjna3`, initially run from a stale b
 | 9 | **Work segments → ERP activities** (from a real Frontu↔Standard ERP customer request): discrete work/travel segments with direction, per-kind optional activity types (`travelTo`/`work`/`travelBack`), live or on-approval delivery; return-travel after `Done` attaches to the worksheet and syncs via the outbox with no manual send; tenant-cutoff auto-stop for forgotten timers | `02` TimeEntry, `04` purpose map, `06` P1/P2, `07` F4 |
 
 §1 items closed 2026-07-06: **crew model confirmed — one shared multi-person activity is primary** (1.1; the `dl0dp4` per-person answer is retired). `spec-review-gaps-ukjna3` is the canonical spec branch; the stale herbe-service session branches (`5l1cby`, `9a23yu`, `y0zu1u`, `6v7x5r`, `dl0dp4`, `j9xlbi`, `kva02d`) are all merged/superseded and cleared for deletion — the session environment can't delete remote branches (push restricted to its own branch), so the owner runs the delete. Remaining from 1.4: landing the portal service-modules spec on the portal's Bitbucket mainline (the portal/calendar mirror branches must **not** be deleted until then).
+
+---
+
+## 6. Round 5 — register verification, 2026-07-06 (owner + halocron)
+
+The owner supplied live ERP export structures for `SVOVc` and `WSVc` and enabled the halocron MCP (register dictionary + HAL source); the remaining register unknowns from the Phase 0 checklist were resolved without waiting for demo-system access:
+
+| # | Finding / owner answer | Applied in |
+|---|---|---|
+| 1 | `SVOVc` (service orders) and `WSVc` (work sheets) verified — **available via REST even where the module UI isn't licensed**; full field structures captured | `04` table + findings, `17` (new) |
+| 2 | **Posting `WSVc` does not consume stock; `OKFlag=1` does — and the OK is done by a manager in the ERP for v1** (adapter never sets it); `UpdStockFlag` set at POST, immutable after OK | `04` worksheet flow + findings |
+| 3 | Stock levels read from **`ItemStatusVc`** (item × location, incl. `InWSheet`); app shows levels, never computes or posts them; technician van location = `UserVc.Location` (`ServLocation` variant to confirm) | `04` table + findings, `17` |
+| 4 | Invoice/worksheet back-link: **record links (`RLinkVc`/`getrecordlinks`) primary**, portal-style; field-map + heuristic fallbacks retained | `04` back-link bullet |
+| 5 | Serial registry = **`SVOSerVc`**; Sites = **`DelAddrVc`** (referenced by `SVOVc.DelAddrCode`) | `02`, `04`, `17` |
+| 6 | **Legacy REST runs no window actions — ERP does not compute prices on POST**; baseline = app-filled base prices from `INVc`/`PLVc`; customer-specific pricing flagged as an open REST-tier limitation | `04` pricing boundary |
+| 7 | `updates_after`/`deletes_after` = base registers only (`UUID`+`ServerSequence` present); `SVOVc`/`WSVc` lack them → windowed scans + `SerNr` key-sweep | `04` API family |
+| 8 | WebExcellentAPI `document` PDF does **not** yet cover `SVOVc`/`WSVc` (ERP-side work in progress); app-generated report PDF is the Phase 1 default anyway | `04` findings |
+| 9 | Booking activity types: per-purpose per-connection setting reconfirmed (already specced as the activity-purpose map) | — |
+| 10 | `UserVc` confirmed as the technician person-code register | `04` table |
+
+Remaining for the demo probe (also in `06` Phase 0): charge-type row fields on `WSVc` rows, `RLinkVc` REST readability, the no-`updates_after` assumption, service-contracts register code, `UserVc.Location` vs `ServLocation` convention, WebExcellentAPI presence, `ActVc` types per connection. Demo access arrives as env vars (host + company number + user/pw) in the session environment.
