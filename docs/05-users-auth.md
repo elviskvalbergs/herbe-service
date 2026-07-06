@@ -20,7 +20,7 @@ The PIN/biometric unlock is the technician's *login*, but security-wise it is a 
 
 - **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code, per account) for the employee side — the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern). Enforcement rules for unlinked users: `04-erp-sync.md` (booking write queues with a warning; worksheet approval blocks).
 
-One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table).
+One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table). A **test-auth provider** (persona login for UI tests) exists behind a double guard — env flag + non-production check, excluded from production builds; see `15-testing-strategy.md` §5.3.
 
 **Suite SSO — DECIDED 2026-07-04: deferred.** There is no shared identity provider across herbe apps today and none is built now. Near-term: same email + same login methods across apps. Entra ID is added as a per-tenant Auth.js provider when a tenant needs it. Revisit suite-level SSO only if real cross-app friction shows up (`13-suite-change-requests.md` SUITE-1).
 
