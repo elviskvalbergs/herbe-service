@@ -1,6 +1,6 @@
 # herbe.service — Two-way ERP Sync (Standard ERP & Excellent Books)
 
-Status: v0.5 (2026-07-06, owner decisions — round 4: `worksheetShadow` activity purpose, charge-type row mapping, ERP-native worksheet processing as the primary stock/invoice path with explicit stock posts demoted to fallback). Previous: v0.4 (2026-07-05, round 3: activity void-in-place on cancel/reschedule, resumable key-sweep cursor). Previous: v0.3 — spec-line merge + review-round-2 resolutions: store topology pinned (cache → ingest → domain, portal loader pattern per product owner), full `ActVc` mapping with **multi-person crew activities**, echo suppression, push-queue ordering, quote flow, adapter configuration model with transformations and settings export.
+Status: v0.6 (2026-07-06, round 5 — **register verification**: owner-provided `SVOVc`/`WSVc` export structures + halocron register dictionary. Service-module codes verified, OK-flag stock semantics confirmed, REST-tier pricing limitation established, record-links back-link decided, `ItemStatusVc` stock reads, PDF-printout gap. Field reference: `17-erp-register-reference.md`). Previous: v0.5 (2026-07-06, owner decisions — round 4: `worksheetShadow` activity purpose, charge-type row mapping, ERP-native worksheet processing as the primary stock/invoice path with explicit stock posts demoted to fallback). Previous: v0.4 (2026-07-05, round 3: activity void-in-place on cancel/reschedule, resumable key-sweep cursor). Previous: v0.3 — spec-line merge + review-round-2 resolutions: store topology pinned (cache → ingest → domain, portal loader pattern per product owner), full `ActVc` mapping with **multi-person crew activities**, echo suppression, push-queue ordering, quote flow, adapter configuration model with transformations and settings export.
 
 ## Principle
 
@@ -61,7 +61,7 @@ ERP registers ──(poll/loader)──► cached_{register}  ──(ingest/mapp
 Standard ERP and Excellent Books expose the identical HansaWorld register API (same product). Verified from the API docs (api-docs.excellent.ee):
 
 - `GET /api/<company>/<Register>` — list; `filter.Field=value`, `sort`, `range`, `offset`/`limit`. **The first path segment is the company number on the ERP server** (`/api/1/INVc` = items of company 1). Observed variants in production code: calendar uses `updates_after` on these paths; portal uses `filter[Field]=value` syntax. The adapter's URL builder is per-connection config, not a constant.
-- `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark. Sequences are **per company**. **Not guaranteed on every installation/register**: the portal runs `supportsIncrementalSync: false` in production and full-scans instead. Incremental reads are a per-connection *capability*, probed at setup; the sync engine must be correct with full-scan-only connections (slower cadence, same result).
+- `?updates_after=<seq>` — only records changed after sequence number; response carries `@sequence` to store as the new high-water mark. Sequences are **per company**. **Not guaranteed on every installation/register**: the portal runs `supportsIncrementalSync: false` in production and full-scans instead. Incremental reads are a per-connection *capability*, probed at setup; the sync engine must be correct with full-scan-only connections (slower cadence, same result). **Per-register rule (verified 2026-07-06)**: the API docs scope `updates_after`/`deletes_after` to *base registers* — the ones carrying `UUID` + `ServerSequence` fields (`CUVc`, `UserVc`, `DelAddrVc`, …). The register dictionary shows **`SVOVc` and `WSVc` do not carry these fields** → assume no incremental params on the service registers; poll them with windowed `TransDate`-range scans and key-sweep by `SerNr` (they are date-bounded working sets, so this is cheap). Verify the assumption once on the demo system.
 - Caveat verified in calendar code: server-side `filter[…]` matching is unreliable on some registers — the portal deliberately full-scans + filters app-side for CUVc/ContactRelVc. Treat ERP-side filters as an optimization, never as the correctness mechanism.
 - `POST /api/<company>/<Register>` — create/update records
 - Records carry `UUID` and `@url`
@@ -80,7 +80,7 @@ Checked against both sibling apps' actual deletion handling — they differ, and
 
 ## Register mapping
 
-Verified register codes (from API docs) vs. to-confirm (service module codes differ per version — confirm against the actual tenant ERPs during Phase 0):
+Register codes verified 2026-07-06 (owner-provided ERP export structures for `SVOVc`/`WSVc`; halocron register dictionary for the rest — full field tables in `17-erp-register-reference.md`):
 
 | App entity | Standard ERP / Excellent Books register | Status |
 |---|---|---|
@@ -88,21 +88,32 @@ Verified register codes (from API docs) vs. to-confirm (service module codes dif
 | Price list | `PLVc` | verified |
 | Item classifier | `DIVc` | verified |
 | Customer class | `CCatVc` | verified |
-| Employee (for user linking) | `EmplVc` | verified |
+| Employee (for user linking) | `UserVc` — owner-confirmed 2026-07-06 as the source of technician person codes (`WSVc.EMCode`, `ActVc` persons); `EmplVc` exists but is not our link target | verified |
 | Customer | Contacts register (`CUVc`) | verified (portal syncs it in production) |
 | Contact person | `CUVc` (flag-distinguished) + relations `ContactRelVc` | verified (portal) |
 | Employee/portal user lookup | `UserVc` | verified (portal + calendar) |
-| Site (service address) | `CUVc` address rows / delivery addresses / Objects | confirm — model per tenant during Phase 0; Sites stay first-class app-side regardless |
-| Customer service item / serial (`unit` nodes only — the tree stays app-side, `11-service-items-and-parts.md`) | Known Serial Numbers | confirm code |
-| Service order | Service Orders register (Service Orders module) | confirm code |
-| Worksheet | Work Sheets register — `WSVc` (per product owner; verify casing/version) | near-confirmed |
+| Site (service address) | `DelAddrVc` (delivery addresses; `SVOVc.DelAddrCode` pins a service order to one — owner decision) | **verified 2026-07-06** |
+| Customer service item / serial (`unit` nodes only — the tree stays app-side, `11-service-items-and-parts.md`) | `SVOSerVc` (serial, item, customer, sold date, warranty/coverage detail, contract link, mother unit) | **verified 2026-07-06** |
+| Service order | `SVOVc` — available via REST even where the module UI isn't licensed (owner) | **verified 2026-07-06** |
+| Worksheet | `WSVc` — linked to its order via `SVONr`; technician in `EMCode`; stock location in `Location` | **verified 2026-07-06** |
 | Service contract | service-contracts register (exists in both brands) | confirm code + sync direction (`02-data-model.md` Contract) |
 | Quotation (out-of-contract quotes, Phase 3) | `QTVc` | verified (portal syncs + writes it in production) |
-| Stock level | stock/item-status lookup or report API | confirm |
-| Stock transaction (van transfer; consumption only on fallback-tier connections — see worksheet flow) | Stock Depreciation / Stock Movement | confirm code + whether REST-created Work Sheets trigger ERP-native stock/invoice processing |
-| Worksheet row charge type (invoiceable/warranty/contract/goodwill) | Work Sheet row chargeable/warranty fields | confirm fields |
+| Stock level | `ItemStatusVc` — item × location: `Instock`, `RsrvQty`, `OrddOut`, `POQty`, `InShipment`, `InWSheet`, `WOrd`. Read-only in the app (owner: know and show levels, nothing more) | **verified 2026-07-06** |
+| Stock transaction (van transfer Phase 2; consumption never — Work Sheet OK owns it, see worksheet flow) | Stock Movement (transfers) | confirm code Phase 2 |
+| Worksheet row charge type (invoiceable/warranty/contract/goodwill) | Work Sheet row chargeable/warranty fields (`WSVc` row candidates: `Invd`, `ovst`, `Returned` — pick with halocron/demo) | confirm fields |
+| Record links (invoice/worksheet/order/activity cross-references) | `RLinkVc` (`FromRecidStr`/`ToRecidStr`, `LinkType`) — the portal-proven linkage mechanism | **verified 2026-07-06**; confirm REST readability vs `getrecordlinks`-only |
 | Invoice (status back-link; rows for reporting via portal's mappers) | `IVVc` (+ `ARVc` for payment status) | verified |
 | Booking | Activities `ActVc` (same register in both brands) | verified — herbe.calendar runs two-way `ActVc` end-to-end in production (form writes, `updates_after` pull, MainPerson/CCPerson mapping) |
+
+### Register verification findings (2026-07-06)
+
+What the `SVOVc`/`WSVc` structures and the HAL source establish beyond the codes themselves:
+
+- **`SVOVc` maps our ServiceOrder almost 1:1**: header carries `CustCode`, `DelAddrCode` (→ `DelAddrVc` site), `SalesMan`, `TechnicianID`, `ServLocation`, `DoneMark`, `RegDate`/`RegTime`, `ConfirmationNo`, `PlanShipDate`, four-line `CustComplaint` (→ our fault/request description) and `TechComment`/`Note` blocks; rows carry `ArtCode` + `SerialNr` (→ our ServiceOrderRow per service item), `StandProblem`/`StdProblemMod` (→ work templates later), `DiagnosticCode`, `ContractNr`, `MotherNr`, `Quant`/`Price`/`Cost`/`MaxCost`, plus `WOSerNr`/`WOEnum`/`WOMade`/`Invd` tracking downstream processing.
+- **`WSVc` links and processes as expected**: `SVONr` ties the worksheet to its service order (the ERP's own create-from-order paste sets it — `RecordAction_raPasteSVOInWS`; the adapter sets it on POST); `EMCode` is the technician's `UserVc` code; `Location` is the stock location consumption draws from; `PrelOK`, `OKFlag`, `InvFlag`, `UpdStockFlag`, `Invalid`/`InvalidDate` drive processing state.
+- **OK-flag semantics (owner + HAL source)**: **posting a `WSVc` record does NOT touch stock.** Stock write-off and invoice basis fire when the Work Sheet is marked OK (`OKFlag=1`). `UpdStockFlag` decides whether OK affects stock; it is permission-gated (`AllowWSUpdateStockChange`) and immutable once OK'd — the adapter must set it correctly at POST time.
+- **Technician van-stock location**: `UserVc.Location` by default (owner). Note `UserVc.ServLocation` also exists (service-module variant) and `SVOVc` has a header `ServLocation` — confirm which convention the tenant populates during onboarding, per connection.
+- **PDF printouts**: WebExcellentAPI `action=document` does **not** yet cover `SVOVc`/`WSVc` (owner is adding it; the spec assumes it lands). Until then the app-generated report PDF (`12-documents-templates.md`) is the only service-document printout — which is the Phase 1 default anyway.
 
 ## Sync flows
 
@@ -121,8 +132,8 @@ Flows:
 - New customer / service item created in field → pushed immediately (with duplicate-check by reg. number / serial before create).
 - Service order created in app → pushed on creation, ERP number stored back into `erpRef`.
 - Booking created/moved on the dispatch board → written as an Activity (`ActVc`); full mapping below. Inbound: activities of the mapped types poll on the fast cadence and update/create bookings, so a schedule change made in the ERP (or in herbe.calendar) shows on the technician's phone within minutes.
-- Worksheet → pushed when **Approved** by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time, billable distance rows, **per-row charge type** — the app's `invoiceable/warranty/contract/goodwill` maps to the ERP worksheet's chargeable/warranty row handling, exact fields per tenant field map, Phase 0 confirm). **The worksheet is the only document we aim to deliver**: the ERP's own Service Orders machinery is what turns an OK'd Work Sheet into stock consumption and invoice basis — the app feeds that machinery rather than replicating it. Phase 0 confirms per connection whether a REST-created Work Sheet triggers that processing (and whether the adapter must set the OK flag); **only where it doesn't** does the adapter fall back to posting an explicit stock transaction alongside (the "stock transaction" step in the push-group ordering above — skipped on connections where ERP-native processing covers it). Invoice is then created **in the ERP** by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history. **The assignee mapping requires an identity link**: approval of a worksheet whose lead/members lack ERP person codes is blocked with an actionable error (a wrong technician code on the ERP document is worse than a delay).
-- **Invoice back-link mechanics**: the pushed worksheet/order record carries the app's order number in an agreed ERP field (order-number field or a custom field — fixed per tenant field map, confirmed in Phase 0). The `IVVc` poll matches invoices back by that reference (fallback: customer + date + amount heuristic flagged for manual confirm, never silently linked). Payment status enrichment reuses the portal's `ARVc` (open-balances) mapper; Phase 3 reporting ("revenue per technician, ERP-priced") reads `IVVc` rows through the portal's invoice mappers rather than inventing a second parser.
+- Worksheet → pushed when **Approved** by service manager (not per keystroke): worksheet header + rows (parts with stock location, services, time, billable distance rows, **per-row charge type** — the app's `invoiceable/warranty/contract/goodwill` maps to the ERP worksheet's chargeable/warranty row handling, exact fields per tenant field map, Phase 0 confirm). **The worksheet is the only document we aim to deliver**: the ERP's own Service Orders machinery is what turns an OK'd Work Sheet into stock consumption and invoice basis — the app feeds that machinery rather than replicating it. **Confirmed 2026-07-06**: posting `WSVc` does not consume stock; consumption fires on `OKFlag=1`, and **for now the OK is done by a manager in the ERP, not by the adapter** — the app pushes the approved worksheet un-OK'd (with `UpdStockFlag` and `Location` set correctly at POST — `UpdStockFlag` is immutable after OK), and the `WSVc` poll reads `OKFlag=1` back as the "ERP-processed" event on the order timeline. Adapter-side OK is a future per-connection option, not v1. Explicit stock posts remain only as the fallback for connections whose process bypasses Work Sheet OK entirely (the "stock transaction" step in the push-group ordering above — skipped everywhere else). Invoice is then created **in the ERP** by existing ERP flows; the adapter reads back invoice number/status for display in the app's service history. **The assignee mapping requires an identity link**: approval of a worksheet whose lead/members lack ERP person codes is blocked with an actionable error (a wrong technician code on the ERP document is worse than a delay).
+- **Invoice back-link mechanics (decided 2026-07-06): record links first.** The most reliable linkage is the ERP's record links (`RLinkVc` / WebExcellentAPI `getrecordlinks` — exactly how herbe-portal resolves related records): invoices produced by Work Sheet processing carry links to their source documents, and the adapter follows them back to the order/worksheet. Where links are unavailable on a connection: the app's order number in an agreed ERP field per tenant field map; last resort a customer + date + amount heuristic flagged for manual confirm, never silently linked. Phase 0 demo probe: whether `RLinkVc` is readable over plain REST or only via `getrecordlinks`. Payment status enrichment reuses the portal's `ARVc` (open-balances) mapper; Phase 3 reporting ("revenue per technician, ERP-priced") reads `IVVc` rows through the portal's invoice mappers rather than inventing a second parser.
 - Attachments: pushed as record links where the ERP supports it; otherwise the app remains the system of record for media and the ERP record carries a deep link into herbe.service.
 
 ### Booking ↔ Activity (`ActVc`) mapping in detail
@@ -182,7 +193,13 @@ Verified against calendar/portal production code — encode these as adapter rul
 
 ## Pricing & invoicing boundary
 
-The app shows prices for informational purposes (role-gated); the ERP owns pricing truth. Baseline flow (REST tier only): on worksheet approval the adapter POSTs the record and reads the created record back with ERP-computed prices/VAT. Tenants with WebExcellentAPI get the nicer variant — `windowactions` pre-computes values before posting, so the manager sees final prices at approval time. The app never generates invoices.
+The app shows prices for informational purposes (role-gated); the ERP owns pricing truth. The app never generates invoices.
+
+**REST-tier limitation (owner-confirmed 2026-07-06): the legacy REST API runs no window actions** — a POSTed record is stored exactly as sent; the ERP does **not** compute prices, discounts or VAT on the posted rows, and reading the record back returns our own values. Consequences:
+
+- Baseline (REST tier): the app fills row prices itself from the Item card's base price (`INVc`) and, where the field maps cover it, the customer's price list (`PLVc`). These are informational and feed the ERP document as sent.
+- **Customer-specific/contract pricing is an open limitation on the REST tier** — quantity breaks, customer discount matrices, and any ERP-side pricing rules are not applied. Flagged to tenants during onboarding; final money remains whatever the ERP computes at invoicing (which is one more reason the app never shows its prices as final). Bridge to be crossed when a tenant actually needs computed prices pre-invoice (owner: "cross this bridge when we come to the river").
+- Tenants with WebExcellentAPI get the real variant — `windowactions` computes prices/VAT ERP-side before posting, so the manager sees final prices at approval time. This is a capability-gated enhancement, not the baseline.
 
 ## Standalone mode
 
