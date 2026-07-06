@@ -127,8 +127,8 @@ Prioritize by pilot data, not upfront:
 
 Everything else from earlier rounds is decided and folded into the docs (Q1–Q5 all answered 2026-07-05 — `10-spec-review-gaps.md` §3; round-3 tracker: `16-spec-review-round-3.md`). Live list:
 
-1. **Crew-model owner confirmation** — the parallel `dl0dp4` review branch recorded a contradicting owner answer ("one activity per technician") to the canonical multi-person-primary decision; one line of confirmation needed, then retire that branch (`16` §1.1, §1.4)
-2. **Branch hygiene / spec governance** — land the portal service-modules spec on the portal's real mainline; one canonical spec branch per repo; delete stale session branches (`16` §1.4)
+1. ~~Crew-model owner confirmation~~ **confirmed 2026-07-06: multi-person activity is primary** (`16` §1.1); stale herbe-service branches deleted the same day — `claude/spec-review-gaps-ukjna3` is the canonical spec branch
+2. **Branch hygiene / spec governance, portal side** — land the portal service-modules spec (+ v1.1 addendum, currently only on the GitHub mirror branches) on the portal's real Bitbucket mainline; until then the mirror branches must not be deleted (`16` §1.4)
 3. **Register codes / field maps** to confirm against the launch tenant (Phase 0 list above; incl. calendar's `AccessGroup`-field TODO on `ActVc`)
 4. **Design-system import** into `herbe-design-system` (interim: portal tokens + `14-design-handoff.md`)
 5. Pricing/packaging final call (inputs: verified competitor prices in `01-competitive-analysis.md` v0.2; per-user pricing decided, seat licensing in Phase 1; whitelabel/multi-company as packaging axes)
