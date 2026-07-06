@@ -195,3 +195,11 @@ Prompted by inspecting `SVOVc`'s field list in `17-erp-register-reference.md` wh
 **Decision:** `Closed` is set by ERP sync-back, the same rule as `Invoiced`, never a manual app action and not app-derived from worksheet/order state. The exact source field is unresolved — `DoneMark`/`InvMark` are candidates but neither reads unambiguously as "closed" — so it's added to the Phase 0 demo-probe checklist (`18-demo-probe-handoff.md` #12) rather than guessed at.
 
 **Applied in:** `02-data-model.md` (ServiceOrder status flow), `04-erp-sync.md` (new bullet next to the invoice back-link mechanics), `18-demo-probe-handoff.md` (checklist #12).
+
+### 7.3 Walk-up jobs were claiming ERP/calendar visibility a full phase before the mechanism existed
+
+Found by review: `02-data-model.md`'s walk-up work-entry mode claimed booking-less worksheets "reach the ERP/calendar via the worksheet's shadow activity… so dispatch still sees reality." Walk-up mode ships in Phase 1 (F7 "Start ad-hoc job" is phase-tagged 1 in `07-ui-screens.md`). But `worksheetShadow` — the *only* mechanism giving a booking-less worksheet any ERP/calendar footprint — was specced as Phase 2 only in `06-roadmap.md`. Net effect: for the entire Phase 1 window, a walk-up job would have been invisible to the ERP and to herbe.calendar, directly contradicting the data model's own claim.
+
+**Decision: move `worksheetShadow` into Phase 1, minimal.** Rather than water down the data-model claim to "walk-up jobs are dark until Phase 2," the fix is to ship a fixed-behavior version of the mechanism itself: `worksheetShadow` created when work starts, with the workflow-stage mirror, and no per-connection configurability yet. **Phase 2 keeps** the one genuinely deferrable piece — the per-connection choice of creation timing (on worksheet creation vs. on work start) — plus the separate, more elaborate `workSegment` per-segment activity purpose, which was never required for basic dispatch visibility.
+
+**Applied in:** `06-roadmap.md` (Phase 1 platform bullet, Phase 2 bullet split), `04-erp-sync.md` (activity-purpose map — `worksheetShadow` entry split into Phase 1 fixed behavior / Phase 2 enrichment), `02-data-model.md` (walk-up mode bullet — claim now accurate from Phase 1).
