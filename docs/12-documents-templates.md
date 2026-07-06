@@ -22,7 +22,7 @@ Each **document type** has a root entity and a documented **field catalog** (bro
 
 | Document type | Root | Context includes |
 |---|---|---|
-| Worksheet report / protocol | Worksheet | order, customer, site, service item node(s) + paths + models, rows, per-member time, checklist results (values, bounds, pass/fail), coverage incl. exception lists, media, signature, lead + members |
+| Worksheet report / protocol | Worksheet | order, customer, site, service item node(s) + paths + models, rows, time, checklist results (values, bounds, pass/fail), coverage incl. exception lists, media, signature (crew jobs: the report can roll up the job's sibling worksheets by `crewGroupId` — one customer-facing report per job, not per technician — round 6, `02-data-model.md`) |
 | Service order document (confirmation, quote) | ServiceOrder | rows, requested/promised dates, contract terms reference, price summary (role-gated), booking slots + technicians |
 | Compliance certificate | Worksheet **or** ServiceItem node | everything above, plus subtree rollups: covered units table, last/next service dates, coverage % — certificates are often issued per *object* ("fire safety, Building A"), which is exactly a `system` node |
 | Contract summary (Phase 3) | Contract | covered nodes tree, PM schedule, response terms |

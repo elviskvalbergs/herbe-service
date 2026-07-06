@@ -16,7 +16,7 @@ Conflicts adjudicated:
 
 | # | Topic | Line A said | Line B said | Merged as |
 |---|---|---|---|---|
-| 1 | Crew model | One worksheet per technician (C10) | One worksheet per job, lead + members; multi-person `ActVc` primary | **Line B — owner-confirmed 2026-07-05.** `02`, `04`, `05`, `07` rewritten |
+| 1 | Crew model | One worksheet per technician (C10) | One worksheet per job, lead + members; multi-person `ActVc` primary | **Line B — owner-confirmed 2026-07-05.** `02`, `04`, `05`, `07` rewritten. **Reverted 2026-07-06 (round 6, `WSVc` evidence): back to Line A's one-worksheet-per-technician** — `WSVc.EMCode` is a single technician field; the shared-worksheet model has no clean ERP push target. Multi-person `ActVc` scheduling is unaffected. See `16-spec-review-round-3.md` §7. |
 | 2 | Customer surface | Portal service modules (decided, spec delivered) | Own tokenized customer pages, portal feed "optional, later" | **Owner 2026-07-05: portal exclusively** — no customer-facing surface in service at all; tokenized-pages layer removed again (`08` §4, Q2 answer) |
 | 3 | Tenancy | Deployment-per-customer (portal model) — "decided 2026-07-04" | Shared-schema `account_id` (calendar model) — also "decided 2026-07-04" | **Owner 2026-07-05: both** — multi-tenant core (`tenant_id` in schema) + dedicated deployments for whitelabel/overlay customers (`03`, Q1 answer) |
 | 4 | Reuse mechanics | Extract `@herbe/erp-core` + `@herbe/email-templates`, copy-first rest (decision log) | No shared packages at all — copy the approach, separate codebases | **Decided 2026-07-05 (delegated)**: extract `@herbe/erp-core` only; email templates and everything else copy-first (`08` §6, Q3 answer) |

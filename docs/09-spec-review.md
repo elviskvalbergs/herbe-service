@@ -1,6 +1,8 @@
 # herbe.service — Spec Review (2026-07-04)
 
 > **2026-07-05 note:** this document is a historical record of review round 1. Two of its resolutions were later superseded by the spec-line merge (`10-spec-review-gaps.md`): **C10** (second technician = own worksheet) is replaced by the team-job model — one worksheet per job with lead + members, multi-person `ActVc` as the primary mode (`02-data-model.md`, `04-erp-sync.md`); B3's UI answers are updated accordingly in `07-ui-screens.md`. The tenancy decision recorded below (B4) was resolved 2026-07-05 as a hybrid: multi-tenant core + dedicated deployments for whitelabel (`03-architecture.md`).
+>
+> **2026-07-06 note (round 6):** **C10 is back.** `WSVc` register verification (`17-erp-register-reference.md`) confirmed the ERP Work Sheet header carries a single `EMCode` (technician) — the 2026-07-05 "one worksheet per job, lead + members" merge has no clean 1:1 ERP push target, so it's reverted: one worksheet per technician again, crew jobs sharing a `crewGroupId` across worksheets instead of sharing one worksheet's membership. The multi-person `ActVc` scheduling decision is unaffected — it's a separate layer (one shared calendar entry, N worksheets underneath). See `16-spec-review-round-3.md` §7.
 
 Scope: full consistency + completeness review of spec v0.1 (docs 01–06) against the five questions below, **with code-level review of the actual herbe-calendar and herbe-portal repositories** (mirrored to GitHub 2026-07-04; the design-system repo is still unavailable). Fixes marked ✅ were applied in this branch (spec v0.2); items marked ⚠ need a human decision and are also listed in `06-roadmap.md` Open items.
 
