@@ -1,6 +1,6 @@
 # herbe.service — Suite Integration & Reuse (herbe.calendar, herbe.portal)
 
-Status: v0.3 (2026-07-05) — owner decision applied: **the portal is the only customer-facing surface**; service ships no customer pages. Tier framing, Kanban delegation, Smart Booking intake and the activity-vessel signing fallback folded in from the audit line; `/api/ext` scoping and portal-side implementation notes from review round 2. Written from code-level review of both sibling repos (calendar `main`-merge b57fcbd, portal v1.0.24).
+Status: v0.4 (2026-07-05, round 3: notification-ownership table, QR resolver routing, customer-visible status mapping, `/api/ext` rate-limit line). Previous: v0.3 — owner decision applied: **the portal is the only customer-facing surface**; service ships no customer pages. Tier framing, Kanban delegation, Smart Booking intake and the activity-vessel signing fallback folded in from the audit line; `/api/ext` scoping and portal-side implementation notes from review round 2. Written from code-level review of both sibling repos (calendar `main`-merge b57fcbd, portal v1.0.24).
 
 ## 1. Suite reality (verified, not assumed)
 
@@ -53,7 +53,22 @@ Portal-side scope is specified for the portal dev team in `herbe-portal/docs/sup
 **Signoff**: where a tenant wants formal digital signature instead of/in addition to the on-site canvas signature — `SigningModuleDescriptor` for the worksheet report, `onAllSigned` → `POST /api/ext/v1/worksheets/{id}/confirm`, which writes `CustomerConfirmation` on the worksheet (`02-data-model.md`) and attaches the signed file to the booking's ERP activity where WebExcellentAPI allows. The `ActVc` **activity-vessel** route through the portal's delivery-confirmation flow remains a config-level fallback for compliance documents (POR-2, `12-documents-templates.md`); without any portal, confirmation is the on-site signature.
 
 **Technical contract (service side, built in Phase 2, consumed by portal Phase 3):**
-- `GET /api/ext/v1/…` — service items (+ tree paths, `labelId=` QR resolution), orders (detail incl. booking slots, `enRoute` flag, ETA), approved worksheets, history; `POST /api/ext/v1/requests` (idempotency key required); `POST /api/ext/v1/worksheets/{id}/confirm`; `POST /api/ext/v1/orders/{id}/feedback` (v1.1 addendum). All list endpoints take `customerCodes=` + `after=<changeSeq>`.
+- `GET /api/ext/v1/…` — service items (+ tree paths, `labelId=` QR resolution), orders (detail incl. booking slots, `enRoute` flag, ETA), approved worksheets, history; `POST /api/ext/v1/requests` (idempotency key required); `POST /api/ext/v1/worksheets/{id}/confirm`; `POST /api/ext/v1/orders/{id}/feedback` (v1.1 addendum). All list endpoints take `customerCodes=` + `after=<changeSeq>`. Rate limiting is part of the contract (429 + `Retry-After`; calendar's `lib/rateLimit.ts` pattern).
+- **Customer-visible order status** (frozen with the contract — the internal 8-state machine is never exposed verbatim): `New/Accepted → received`, `Planned → scheduled` (+ slot), `In progress/Paused → in progress` (+ `enRoute` flag), `Work done/Confirmed → work done`, `Invoiced/Closed → completed`, `Cancelled → cancelled`.
+
+**§4a — QR labels (one sticker, two audiences).** One physical label per service item node encodes **one resolver URL** carrying the node's stable `labelId` (`02-data-model.md`); routing is by login: technician with the app → service item card (F6); portal customer → portal `service-items/[id]` (portal addendum A3, resolved via `labelId=`); unknown visitor → login choice; unknown/unscoped label → friendly "not available", no data leak. **The URL scheme is fixed in Phase 2 before the first label is printed** — stickers outlive software; the portal route merely joins in Phase 3.
+
+**§4b — Notification ownership** (one table so no email is sent twice or never; all portal links assume portal login; every channel is email-only in practice — portal SMS/in-app are stubs):
+
+| Event | Sender | Template system | Link target |
+|---|---|---|---|
+| Request received (ack + order number) | herbe.portal | portal `service_request_received` | portal order page |
+| Booking confirmed / changed; rejection notices to technicians | herbe.service | service templates (copied TemplateKey engine) | app / portal order page |
+| "Technician on the way" + ETA | herbe.service | service templates | portal order detail (ETA view) |
+| Work done + report ready (+ signing invite when signoff enabled) | herbe.portal | portal `service_work_done` (+ existing `signing_invite`) | portal order detail |
+| Report PDF to customer (Phase 1, pre-portal) | herbe.service | service templates, PDF attached | attachment only |
+| Satisfaction survey ask | part of work-done email | herbe.portal | portal feedback block |
+| Quote to confirm | herbe.portal (triggered by service, POR-6) | portal quotation templates | portal quotations module |
 - **Token scoping**: one hashed bearer token per (service deployment, **company connection**) — matching the portal's per-`erp_company_id` `service_connection_config`; all data scoped to that company; the caller's `customerCodes` narrow, never widen, the token's own customer-code scope. Minted/revoked in service admin (A4), stored portal-side envelope-encrypted.
 - Webhook-less v1: portal fetches on page view; `changeSeq` deltas keep polls cheap.
 

@@ -1,6 +1,6 @@
 # herbe.service — UI: Screens, Roles, Workflows
 
-Status: draft v0.1 (2026-07-04). Added by the spec review — the v0.1 spec had no UI coverage. Wireframes per screen are a Phase 0/1 design task; this doc fixes the inventory, navigation, and flow contracts so design and development can start.
+Status: v0.2 (2026-07-05, round 3: O4 media gate + correction entry, O11 unlinked-activity list). Originally added by the spec review — the v0.1 spec had no UI coverage. Wireframes per screen are a Phase 0/1 design task; this doc fixes the inventory, navigation, and flow contracts so design and development can start.
 
 ## Two shells, one app
 
@@ -38,14 +38,14 @@ Suite look & feel: design-system tokens (`--herbe-*`), portal non-negotiables ap
 | O1 | **Orders list** | 1 | manager, back office | Filterable register list (portal `register-list` pattern): status, priority, customer, dates. Create order. |
 | O2 | **Order detail** | 1 | manager | Header + rows (service items, symptoms), status timeline (derived — `02-data-model.md`), worksheets, bookings. Actions: accept, **create booking** (Phase 1 planning happens here: pick technician + time slot), create worksheet, cancel. |
 | O3 | **Worksheet approval queue** | 1 | manager | Worksheets in `Done`, oldest first; approve/reject per item or bulk. |
-| O4 | **Worksheet review** | 1 | manager | Full worksheet read-out: rows with prices (ERP-computed at approval; `windowactions` preview when the tenant has WebExcellentAPI), time, checklist results, photos, signature. Actions: **Approve** (triggers ERP push) / **Reject with comment** (returns to tech, F10). ERP-bounce tasks reopen here with the ERP's reason. |
+| O4 | **Worksheet review** | 1 | manager | Full worksheet read-out: rows with prices (ERP-computed at approval; `windowactions` preview when the tenant has WebExcellentAPI), time, checklist results, photos (with **media upload state — Approve blocks on missing referenced media**, audited waive override; `02-data-model.md`), signature, billing-adjustment entry on signed content. Actions: **Approve** (triggers ERP push) / **Reject with comment** (returns to tech, F10). ERP-bounce tasks reopen here with the ERP's reason; post-sync mistakes start a **correction worksheet** from here. |
 | O5 | **Dispatch board** | 2 | dispatcher | Day/week × technician rows (**time × capacity only — the pipeline/Kanban view is delegated to herbe.calendar**, `08-suite-integration.md` §3); drag-and-drop bookings; **crew scheduling** (crew bookings move as a group, detach a member); unassigned-work pool incl. **unlinked inbound activities** (attach to order / create order / dismiss, `04-erp-sync.md`); conflicts flagged inline; self-assignment pool toggle. Realtime-ish via delta polling. |
 | O6 | **Map view** | 2 | dispatcher | Day's jobs + coarse technician positions. |
 | O7 | **Customers / sites / service items registers** | 1 | back office | List + detail (portal `RegisterDetailLayout` pattern); edit app-owned fields; merge duplicates from field creation. |
 | O8 | **Stock overview** | 2 | back office | Levels per location, transfers, consumption log (ERP-synced). |
 | O9 | **Checklist template builder** | 2 | manager | Sections, field types, required rules, bounds; versioning; assignment by item/work type. Phase 1 ships seeded fixed templates managed as data, no builder UI. |
 | O10 | **Reports** | 3 | manager, back office | Utilization, first-time-fix, MTTR, revenue/technician (ERP-priced). |
-| O11 | **Sync health & administration** | 1 | admin, manager (read) | Per connection × register: status, cursor, last incremental/full sync, row counts, error classes (portal cache-status panel pattern). Actions: force full sync, run reconciliation now, pause/resume connection. **DLQ browser**: payload view, edit-and-retry, discard-with-reason. **Conflict queue**: side-by-side versions, pick/merge. **Per-record sync inspector** linked from every record detail. All interventions audited. (`04-erp-sync.md` "Error handling & sync administration") |
+| O11 | **Sync health & administration** | 1 | admin, manager (read) | Per connection × register: status, cursor, last incremental/full sync, row counts, error classes (portal cache-status panel pattern). Actions: force full sync, run reconciliation now, pause/resume connection. **DLQ browser**: payload view, edit-and-retry, discard-with-reason. **Conflict queue**: side-by-side versions, pick/merge. **Unlinked inbound activities** (Phase 1 home): mapped-type activities without an order — attach to order / create order / dismiss; moves to the O5 unassigned pool in Phase 2. **Per-record sync inspector** linked from every record detail. All interventions audited. (`04-erp-sync.md` "Error handling & sync administration") |
 
 ## Screen inventory — admin
 
