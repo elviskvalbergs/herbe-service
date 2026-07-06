@@ -171,3 +171,27 @@ The owner supplied live ERP export structures for `SVOVc` and `WSVc` and enabled
 | 10 | `UserVc` confirmed as the technician person-code register | `04` table |
 
 Remaining for the demo probe (also in `06` Phase 0): charge-type row fields on `WSVc` rows, `RLinkVc` REST readability, the no-`updates_after` assumption, service-contracts register code, `UserVc.Location` vs `ServLocation` convention, WebExcellentAPI presence, `ActVc` types per connection. Demo access arrives as env vars (host + company number + user/pw) in the session environment.
+
+---
+
+## 7. Round 7 — owner corrections, 2026-07-06 (acting on the round-6 register evidence)
+
+Two corrections raised directly against the just-verified `WSVc`/`SVOVc` field structures (`17-erp-register-reference.md`), both owner-confirmed same day:
+
+### 7.1 Crew model: reverted to one worksheet per technician (C10 is back)
+
+`WSVc`'s header carries a single `EMCode` (technician) — there is no field structure for a multi-person Work Sheet. The round-4/§1.1 "one shared worksheet, lead + members" model (adopted from spec-line B, `10-spec-review-gaps.md` conflict #1) has no clean 1:1 push target for a crew job: it would need to either fan one worksheet out into N `WSVc` rows at push time (re-deriving per-person attribution from `addedBy` that the round-4 model was designed to avoid keeping elsewhere) or drop the crew members' individual authorship entirely.
+
+**Decision: revert to spec-line A's original answer (C10) — one worksheet per technician.** A crew job now creates **N worksheets**, one per crew booking, sharing the booking's `crewGroupId`. This maps to the ERP with no translation layer: one worksheet's `userId` is one `WSVc.EMCode`, pushed independently, each on its own approval/status lifecycle. The one piece of the round-4 model worth keeping — a single customer signature per job, not one per technician — is preserved via a **lead-worksheet signature reference**: the lead's worksheet captures the signature, sibling worksheets in the `crewGroupId` point to it.
+
+**Applied in:** `02-data-model.md` (Worksheet, Booking, Crew & reassignment sections — v0.8), `04-erp-sync.md` (assignee mapping, `ActVc` crew mapping), `05-users-auth.md` (per-job lead role description), `06-roadmap.md` (Phase 1/2 crew bullets), `07-ui-screens.md` (F4, F5, O3), `08-suite-integration.md` (integration diagram), `09-spec-review.md` and `10-spec-review-gaps.md` (historical annotations pointing here).
+
+**Not affected:** the multi-person `ActVc` **scheduling** decision (§1.1 above, confirmed 2026-07-05) — a crew job is still one shared calendar activity for the whole crew; it's a separate layer from the execution documents underneath, and the adapter already treated "N crew bookings ↔ 1 activity" and "N worksheets" as independent mappings, so only the worksheet side changes.
+
+### 7.2 ServiceOrder `Closed`: ERP-sync-set, not a manual/derived app transition
+
+Prompted by inspecting `SVOVc`'s field list in `17-erp-register-reference.md` while resolving 7.1: no field named exactly `Closed` was among the mapped fields, but the order's terminal lifecycle (like `Invoiced`) should be an ERP fact, not something the app decides on its own — the app doesn't have visibility into everything that keeps an ERP-side order "live" (credit holds, pending documents, accounting period rules).
+
+**Decision:** `Closed` is set by ERP sync-back, the same rule as `Invoiced`, never a manual app action and not app-derived from worksheet/order state. The exact source field is unresolved — `DoneMark`/`InvMark` are candidates but neither reads unambiguously as "closed" — so it's added to the Phase 0 demo-probe checklist (`18-demo-probe-handoff.md` #12) rather than guessed at.
+
+**Applied in:** `02-data-model.md` (ServiceOrder status flow), `04-erp-sync.md` (new bullet next to the invoice back-link mechanics), `18-demo-probe-handoff.md` (checklist #12).

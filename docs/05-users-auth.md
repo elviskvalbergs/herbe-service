@@ -26,11 +26,11 @@ One user may hold all links. Login methods per tenant are configurable (e.g. "SS
 
 ## Roles
 
-Two levels, deliberately separate: the **tenant role** (what a person may do in general) and the **per-job lead** (elevation on one worksheet). Any technician can be made *lead of a job* — that grants status transitions and signature collection on that worksheet only, and is not a role change (`02-data-model.md` team model).
+Two levels, deliberately separate: the **tenant role** (what a person may do in general) and the **per-job lead** (elevation within a crew job — round 6: each crew member has their own worksheet, `02-data-model.md`). Any technician can be made *lead of a job* — that makes their worksheet the crew's **lead worksheet**: it alone collects the customer signature for the whole job, and its `Done` transition is normally what prompts the order's manual "job done" action. It is not a role change, and it grants no authority over other members' own worksheets — each technician still owns their own status transitions.
 
 | Role | Can |
 |---|---|
-| **Technician** | see own (and optionally team) bookings/worksheets; execute worksheets as member: parts from own van, own time/distance, checklists, photos; as **job lead**: status transitions + customer signature on that job; create service orders/customers/service items in the field (tenant-configurable); see own van stock; see service history; prices hidden/shown per tenant policy |
+| **Technician** | see own (and optionally team) bookings/worksheets; execute their own worksheet: parts from own van, own time/distance, checklists, photos; as **job lead**: also collects the customer signature for the whole crew job; create service orders/customers/service items in the field (tenant-configurable); see own van stock; see service history; prices hidden/shown per tenant policy |
 | **Team lead / crew manager** | technician + see and reassign the team's bookings/worksheets, edit crew composition on the team's jobs, review the team's time entries; optionally (tenant flag) approve the team's worksheets |
 | **Dispatcher / Service manager** | all orders & worksheets; dispatch board incl. crew scheduling; approve/reject worksheets; bulk operations on the service item tree (`11`); manage checklist templates; trigger/override document generation (`12`); see sync health; prices & margins |
 | **Back office** | read-most; customer/item edits; reports; document delivery follow-up |

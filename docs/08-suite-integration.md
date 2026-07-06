@@ -113,7 +113,7 @@ Ranked by value; "coupling" = what must be untangled to reuse outside the source
  plan/move activity ────► crew bookings (ActVc, multi-person)
  Kanban drag stage ─────► status change (validated)
  Smart Booking intake ──► ServiceOrder + Booking
-                          dispatch → worksheet (lead+members)
+                          dispatch → worksheet per technician (crewGroupId)
                           execute offline, sign on site
                           manager approves ────────────► worksheet + stock txn (push group)
                                                           invoice created

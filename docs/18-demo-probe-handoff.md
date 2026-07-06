@@ -30,6 +30,7 @@ Record per step: request made (sans credentials), HTTP status, relevant response
 | 9 | Service-contracts register | ask halocron for the contracts register code (service agreements), then `GET` it | code + availability (last unverified register) |
 | 10 | **Write test — opt-in, test company only** (skip unless the owner explicitly confirmed writes are OK) | `POST /api/$COMPANY/SVOVc` minimal order → `POST WSVc` with `SVONr` + one item row (`UpdStockFlag`, `Location` set); read `ItemStatusVc` for that item×location before/after → confirm **no stock change**; leave the record un-OK'd and ask the owner to OK it in the ERP, then re-read: `OKFlag=1`, stock decreased, `RLinkVc` links created | end-to-end confirmation of the worksheet flow in `04-erp-sync.md` |
 | 11 | `ActVc` types on this install | `GET /api/$COMPANY/ActTypeVc?limit=…` + `ActTypeGrVc` | available type/class-group codes (candidates for the activity-purpose map) |
+| 12 | `SVOVc` completion/"closed" field | Read a handful of finished (invoiced) orders; inspect `DoneMark`, `InvMark`, and any of the remaining ~29 unmapped fields (full field list via halocron `list_registers SVOVc`) for a boolean/date that means "this order is closed, no more activity expected" | which field(s) the app should read to set the app's `Closed` order state — round-6 decision in `02-data-model.md`/`04-erp-sync.md` is ERP-sync-set, field TBC |
 
 ## Deliverables
 
