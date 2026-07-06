@@ -2,7 +2,7 @@
 
 Status: v1.0 (2026-07-05). Scope: the merged spec (docs 01–15 as of `62d63ac`), reviewed for (a) blind spots in how the specified parts work **together**, and (b) whether every feature sits cleanly in a phase so an implementation plan can be written. Verified against the sibling repos again this round (calendar mirror `b57fcbd`, portal mirror v1.0.24 + service-modules spec v1.1).
 
-**Verdict up front: the spec is implementation-plan-ready for Phase 0 and Phase 1 after this round's fixes, with two exceptions that need the owner** (§1.1 crew-model contradiction between parallel review branches, §1.4 branch hygiene). Round 3 found no new blocker-class design gaps — the seams found this time are short, patchable rules (all patched in this branch, §4) plus a set of operational-lifecycle topics the spec has never mentioned (§2.9) that don't block Phase 0/1 but must be decided before a paying tenant depends on the product.
+**Verdict up front: the spec is implementation-plan-ready for Phase 0 and Phase 1 after this round's fixes** (§1.1 crew contradiction closed by the owner's direct statement on the canonical branch; §1.4 branch hygiene remains a process ask). Round 3 found no new blocker-class design gaps — the seams found this time are short, patchable rules (all patched in this branch, §4) plus a set of operational-lifecycle topics the spec has never mentioned (§2.9) that don't block Phase 0/1 but must be decided before a paying tenant depends on the product.
 
 ---
 
@@ -10,7 +10,9 @@ Status: v1.0 (2026-07-05). Scope: the merged spec (docs 01–15 as of `62d63ac`)
 
 Round 2 already merged two spec lines. This round found a **third**: branch `claude/spec-review-gaps-dl0dp4` (2026-07-05 13:28–14:44) ran an independent round-2 review from the stale v0.2 base, unaware of the canonical merge — and it **records owner answers of its own**, some of which never reached the canonical line. Reconciliation:
 
-### 1.1 ⚠ OWNER — Contradicting owner decisions on the crew ↔ activity model
+### 1.1 ~~⚠ OWNER~~ RESOLVED — Contradicting owner decisions on the crew ↔ activity model
+
+> **Closed 2026-07-05 (canonical-branch merge):** the owner's direct statement — "the version with multi-person ActVc … is legit" — predates and answers this. Multi-person primary stands; the `dl0dp4` record is superseded. `dl0dp4` can be retired per §1.4.
 
 Two records, both attributed to the owner, both dated 2026-07-05:
 
