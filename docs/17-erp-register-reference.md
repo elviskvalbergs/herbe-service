@@ -1,6 +1,6 @@
 # herbe.service — ERP Register Reference (service module)
 
-Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed; `ActStateVc` added (activity workflow states behind the shadow-Kanban). Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
+Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed; `ActStateVc` added (activity workflow states behind the shadow-Kanban); `SVCVc` added (service levels / recurring-service schedules behind the `COVc` row `SVCCode`). Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
 
 Types are HAL M4 types: `M4Str`/`M4UStr` string (UStr = uppercase), `M4Code` code string, `M4Long`/`M4Int` integers, `M4Val`/`M423Val`/`M4Qty`/`M4Rate` decimals, `M4Date`/`M4Time`, `M4Mark` checkbox bool, `M4Set` enum. Size = max length (0 for numeric/date).
 
@@ -112,7 +112,22 @@ Discovered 2026-07-06 via halocron while investigating `WSVc` row charge-type fi
 
 ## `COVc` — Contracts (service/recurring agreements, 100 fields)
 
-**Added 2026-07-06 (demo probe, `19-demo-probe-results.md` §9)** — the service-contracts register referenced from `04-erp-sync.md`'s register mapping. Found via halocron; distinct from the HR/payroll contract registers (`ContractVc`, `EPContractVc`, `EmplContractVc`), which are a different module. Key: `CustCode` + `SerNr`. Notable fields: `CODate`, `startDate`/`endDate`, `perType`/`perLength`/`invDtype`/`invDays`/`lastInvDate` (recurring billing period), `OKFlag`, `ContractClass`, `PriceList`, `SalesMan`, `TotQuant`, `InvoiceNr`, `CancelDate`. Confirmed REST-readable with real data (`GET /api/<company>/COVc` → 200, real contracts with dates and `OKFlag` set). **Sync direction: inbound / read-only** (decided 2026-07-07) — the header is a contract base; covered items are on the rows (the dictionary dumps only the header, as with `WSVc`). herbe.service reads it for the `contract` charge-type default, coverage, and PM cycles, and layers app-owned per-contract/per-service-level detail that has no ERP structure and does not sync back (`02-data-model.md` Contract, `04-erp-sync.md` register table). No native rich "service level" field — `ContractClass` is the nearest; `ChildSerNr` gives contract hierarchy.
+**Added 2026-07-06 (demo probe, `19-demo-probe-results.md` §9)** — the service-contracts register referenced from `04-erp-sync.md`'s register mapping. Found via halocron; distinct from the HR/payroll contract registers (`ContractVc`, `EPContractVc`, `EmplContractVc`), which are a different module. Key: `CustCode` + `SerNr`. Notable fields: `CODate`, `startDate`/`endDate`, `perType`/`perLength`/`invDtype`/`invDays`/`lastInvDate` (recurring billing period), `OKFlag`, `ContractClass`, `PriceList`, `SalesMan`, `TotQuant`, `InvoiceNr`, `CancelDate`. Confirmed REST-readable with real data (`GET /api/<company>/COVc` → 200, real contracts with dates and `OKFlag` set). **Sync direction: inbound / read-only** (decided 2026-07-07) — the header is a contract base; covered items are on the rows (the dictionary dumps only the header, as with `WSVc`). herbe.service reads it for the `contract` charge-type default, coverage, and PM cycles, and layers app-owned per-contract/per-service-level detail that has no ERP structure and does not sync back (`02-data-model.md` Contract, `04-erp-sync.md` register table). Contract-level classification is `ContractClass`; `ChildSerNr` gives contract hierarchy. **Per-row service level: the `COVc` row field `SVCCode`** (owner-confirmed; the row matrix isn't in the dictionary dump) **→ `SVCVc`** (below).
+
+## `SVCVc` — service levels / recurring-service schedules (12 fields)
+
+Verified via halocron 2026-07-07 — the per-tenant register behind the `COVc` row's `SVCCode` (the service level on each covered item). A "service level" is effectively a **recurring-service template**:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `Code` | M4Code 5 | service-level code (`COVc` row `SVCCode` references it) |
+| `Comment` | M4Str 60 | display name |
+| `DaysBetween`, `NrOfTimes`, `DaysFromStart`, `Weekends` | int/long | the recurring cadence (interval, count, offset, weekend handling) |
+| `ActType` | M4Code 5 | activity type the schedule generates |
+| `MainPersons` / `CCPersons` | M4UStr 60 | who the generated activity is assigned to |
+| `TodoFlag`, `SymbNr` | M4Set | activity flags / symbol |
+
+**Inbound / read-only.** The PM cadence per service level is therefore ERP-sourced (read from `SVCVc`); herbe.service overlays only the extras `SVCVc` can't express — checklists, response-time terms, richer coverage rules (`02-data-model.md` Contract). Service levels are tenant-defined (a per-tenant register).
 
 ## `UserVc` — relevant fields only (124 total)
 
