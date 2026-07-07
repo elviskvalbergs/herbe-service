@@ -230,6 +230,19 @@ follow-up read-back) before marking a push-queue step as succeeded, in
 addition to checking for an explicit `<error>` tag. This should be added to
 the "Write mechanics & normalization" rules in `04-erp-sync.md`.
 
+**`SVOVc` no-op — diagnosed 2026-07-07 (halocron HAL source).** The
+"Jau reģistrēts" ("already registered") no-op is a **`SerNr` collision**, not
+a missing field. The ERP's own creates allocate the number via
+`SerNr = NextSerNr("<Reg>", TransDate, -1, false, "")` after `RecordNew`, and
+the serial guard (cf. `FindNewProperIVSerNr`) refuses a store when a supplied
+`SerNr` already exists ("record already exists") but allocates the next number
+when it is blank. So the create must POST with **no `SerNr`** and let
+`NextSerNr` assign it; sending `0`/a reused value/the API default is what
+caused the no-op. Confirming write test (still to run on an allowlisted host):
+POST an `SVOVc` with no `SerNr`, and confirm an `SVOVc` number series is
+defined for the period and available to the REST API user (`NextSerNr` returns
+`-1` otherwise, which also aborts the create). Recorded in `04-erp-sync.md`.
+
 ## Step 11 — `ActVc` types on this install
 
 `ActTypeVc` (66 types) and `ActTypeGrVc` (13 groups) are both available and
