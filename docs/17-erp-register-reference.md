@@ -1,6 +1,6 @@
 # herbe.service — ERP Register Reference (service module)
 
-Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed. Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
+Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed; `ActStateVc` added (activity workflow states behind the shadow-Kanban). Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
 
 Types are HAL M4 types: `M4Str`/`M4UStr` string (UStr = uppercase), `M4Code` code string, `M4Long`/`M4Int` integers, `M4Val`/`M423Val`/`M4Qty`/`M4Rate` decimals, `M4Date`/`M4Time`, `M4Mark` checkbox bool, `M4Set` enum. Size = max length (0 for numeric/date).
 
@@ -119,3 +119,15 @@ Discovered 2026-07-06 via halocron while investigating `WSVc` row charge-type fi
 `Code` (M4Code 10 — the technician person code used in `WSVc.EMCode` and `ActVc` persons; **owner-confirmed as our identity-link target**), `Name`, `emailAddr` / `LoginEmailAddr` (identity matching), `Location` (M4UStr 10 — **default stock location = van stock**, owner), `ServLocation` (M4UStr 10 — service-module variant; confirm tenant convention), `ReservLocation`/`ReservLocAccess`, `JobGroup`, `Department`, `SalesGroup`, `CostPrHour`/`PricePrHour` (labor cost/price — Phase 2 payroll-side reporting candidate), `Closed`, `TerminatedFlag`. Has `UUID`/`ServerSequence` → base register.
 
 **Live-probe finding (2026-07-06, `19-demo-probe-results.md` §7)**: on the demo system, neither `Location` nor `ServLocation` is populated on any of the 40 users, including the two technicians actually referenced by real `WSVc.EMCode` values. `UserVc.Code` matching `WSVc.EMCode` exactly was confirmed for both. The van-stock convention cannot be assumed from this (or any single) tenant — confirm per real launch tenant during onboarding.
+
+## `ActStateVc` — activity workflow states (3 fields)
+
+Verified via halocron 2026-07-07. The register behind `ActVc.ActState` — the workflow-state codes the shadow-activity Kanban uses (`04-erp-sync.md` shadow-Kanban; `08-suite-integration.md` §3).
+
+| Field | Type | Maps to |
+|---|---|---|
+| `Code` | M4Code 5 | the state code (`ActVc.ActState` references it) |
+| `Comment` | M4Str 100 | display name |
+| `PipelineColNr` | M4Set 46 | the Kanban column this state maps to (the calendar's `lib/pipeline` reads it) |
+
+herbe.service maps each worksheet/order status → an `ActState` code (per-connection A4 setting) and can **seed these records over the API** (a one-click setup tool POSTs `Code` + `Comment` + `PipelineColNr`), so no manual ERP setup is required to stand up the manager Kanban.
