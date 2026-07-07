@@ -23,7 +23,7 @@ No `UUID`/`ServerSequence` fields → not a "base register": assume no `updates_
 | `ServLocation` | M4UStr 10 | service stock location |
 | `CustComplaint1–4` | M4Str 100 | fault/request description (4×100 chars) |
 | `TechComment1–4`, `Note1–4`, `Comment1–4` | M4Str 100 | technician comments / internal notes |
-| `DoneMark`, `InvFlag`, `InvMark`, `WOMark`, `WSMark` | flags | processing state. **Confirmed live 2026-07-07 (finished order 230015, `19` §12):** `DoneMark = 1` = **order closed** (the app's ERP-sync-set `Closed` state — also the flag `PasteSVOInWS` checks to refuse new worksheets); `InvFlag = 1` = **invoiced** (the app's `Invoiced` state; `InvMark` is the paired display mark); `WSMark = 1` = a Work Sheet exists. All poll-read only. `SVOVc` has **no `OKFlag`** |
+| `DoneMark`, `InvFlag`, `InvMark`, `WOMark`, `WSMark` | flags | processing state. **Confirmed live 2026-07-07 (finished order 230015, `19` §12):** `DoneMark = 1` = **order closed** (the app's ERP-sync-set `Closed` state — also the flag `PasteSVOInWS` checks to refuse new worksheets); `WSMark = 1` = a Work Sheet exists. **`InvFlag`/`InvMark` are NOT reliable "invoiced" flags** — a freshly created warranty order (230022) came back with both = 1 (warranty needs no invoice), so the app derives `Invoiced` from an actual linked `IVVc` (`getrecordlinks`), not these flags (`19` §10). All poll-read only. `SVOVc` has **no `OKFlag`** |
 | `PlanShip`, `PlanShipDate` | str/date | promised/planned dates |
 | `ConfirmationNo` | M4Str 20 | confirmation reference |
 | `CustOrdNr` | M4Str 60 | customer's own order no. |
