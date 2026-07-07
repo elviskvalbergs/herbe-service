@@ -1,6 +1,6 @@
 # herbe.service — Service Item Hierarchy & Spare Parts Compatibility
 
-Status: draft v0.1 (2026-07-03). Solves two scale problems: customers with very many service items (a retail chain: stores × HVAC systems × machines; a building: fire sprinklers, pumps, detectors, extinguishers per object) and catalogs with very many spare parts (which part fits which machine, what substitutes what). Prior art deliberately reused: SAP PM functional locations, IFS installed base, D365 customer asset hierarchy, AllDevice's device tree.
+Status: draft v0.2 (2026-07-07, ERP-boundary rule stated once: the tree structure never syncs — a group path crosses the API only as free text on pushed worksheet rows). Previous: v0.1 (2026-07-03). Solves two scale problems: customers with very many service items (a retail chain: stores × HVAC systems × machines; a building: fire sprinklers, pumps, detectors, extinguishers per object) and catalogs with very many spare parts (which part fits which machine, what substitutes what). Prior art deliberately reused: SAP PM functional locations, IFS installed base, D365 customer asset hierarchy, AllDevice's device tree.
 
 ## Part 1 — The service item hierarchy
 
@@ -94,7 +94,7 @@ Admin: model registry CRUD (merge duplicate models — import hygiene), compatib
 | PartCompatibility, alternatives | **app** | if a tenant's ERP holds alternative-item data, the adapter imports it as seed (capability flag); the app remains master |
 | Structure templates | **app** | tenant config; in settings export/import |
 
-Adapter note: none of this changes the `04-erp-sync.md` contract — serialized units ride the existing serviced-item register mapping; everything else never crosses the API.
+Adapter note: none of this changes the `04-erp-sync.md` contract — serialized units ride the existing serviced-item register mapping. **The tree structure itself never syncs**: a group's path crosses the API only as the free-text reference on pushed worksheet rows (table above), never as structure — no node, hierarchy, coverage or quantity data is ever written to or read from an ERP register.
 
 ## Roadmap placement (updates `06-roadmap.md`)
 

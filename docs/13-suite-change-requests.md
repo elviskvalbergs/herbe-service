@@ -1,35 +1,38 @@
 # herbe.service — Change Requests for herbe.calendar & herbe.portal
 
-Status: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Phase 0 coordination agenda from `06-roadmap.md`, written as concrete, individually decidable requests. Basis: `08-suite-integration.md` (integration design), the sibling apps' source review (`03-architecture.md`, `04-erp-sync.md`), and herbe.calendar's public docs.
+Status: v0.3 (2026-07-07 — reduced portal integration applied per owner decision; tokenized service customer pages scrubbed everywhere; CAL-6…CAL-8 added for the service-aware calendar features `08` §3 depends on; CAL-1 renamed to the verified `ActType`/`ActState` fields; CAL-4 gains the reschedule/cancel-link ask; POR-5 premise corrected; SUITE-3 closed as shipped). Previous: draft v0.2 (2026-07-04). Audience: the Burti suite team; this is the Phase 0 coordination agenda from `06-roadmap.md`, written as concrete, individually decidable requests. Basis: `08-suite-integration.md` (integration design), the sibling apps' source review (`03-architecture.md`, `04-erp-sync.md`), and herbe.calendar's public docs.
 
-**Framing: nothing here blocks the MVP.** The customer surface is **herbe.portal, exclusively** (owner 2026-07-05): the portal service modules (decided 2026-07-04, design spec + 2026-07-05 addendum delivered to the portal repo) are the customer's only window into service data — POR-4 below is superseded by that committed plan, and POR-3 inverted accordingly. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app. Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app; it needs only configuration agreements (CAL-1, CAL-2, POR-2). Everything else buys latency, coverage, or one-window convenience, and each request lists its fallback so it can be declined or deferred without breaking herbe.service's roadmap.
+**Framing: nothing here blocks the MVP.** The customer surface is **herbe.portal, exclusively** (owner 2026-07-05); herbe.service ships no customer-facing pages, tokenized or otherwise. The portal service module is being developed **independently** on the portal side and must stand on its own, with limited functionality, even without herbe.service (owner 2026-07-07) — so the concrete near-term asks on the portal team shrink to the worksheet-approval trigger (POR-4, reduced), the quotation-approval trigger (POR-6) and, tentatively, label/QR handling; the wider module (equipment registry, intake, tracking, feedback) is the portal team's own scope and herbe.service adapts once it settles (`08-suite-integration.md` §4). Tier 0 — the ERP as the shared bus (`ActVc` activities, invoices) — requires **zero code changes** in either sibling app; it needs only configuration agreements (CAL-1, CAL-2, POR-2). Everything else buys latency, coverage, or one-window convenience, and each request lists its fallback so it can be declined or deferred without breaking herbe.service's roadmap.
 
 ## Summary
 
 | ID | App | Request | Needed by | Type | Fallback if declined |
 |---|---|---|---|---|---|
-| CAL-1 | calendar | Shared activity-type & workflow-stage conventions | Phase 0 | config agreement | none needed — must agree, zero code |
+| CAL-1 | calendar | Shared activity-type & `ActType`/`ActState` conventions | Phase 0 | config agreement | none needed — must agree, zero code |
 | CAL-2 | calendar | Echo-tagging convention for `ActVc` writers | Phase 0 | config agreement | heuristic self-echo detection (fragile) |
 | CAL-3 | calendar | Documented API-token endpoints + activity webhook or delta API | Phase 2–3 (tier 1) | new feature | tier 0 polling, ICS feeds |
-| CAL-4 | calendar | Smart Booking: service-intake template fields (asset reference) | Phase 3 | small feature | free-text serial field + QR-prefilled booking links |
+| CAL-4 | calendar | Smart Booking: service-intake template fields (asset reference) + reschedule/cancel links in the confirmation email | Phase 3 | small feature | free-text serial field + QR-prefilled booking links |
 | CAL-5 | calendar | Availability query API (merged busy-times) | Phase 4 | new feature | herbe.service checks only its own bookings |
+| CAL-6 | calendar | Service-activity recognition (badge/colour for configured service activity types) | Phase 2–3 | small feature | service activities render as ordinary activities |
+| CAL-7 | calendar | Service context + "Open in herbe.service" deep link in `ActivityDrawer`/`ActivityBlock` | Phase 2–3 | small feature | context lives in the activity text fields service writes anyway |
+| CAL-8 | calendar | Guarded editing of service-locked activities | Phase 3 | small feature | service bounces illegal inbound moves to the dispatcher inbox (tier-0 conflict rule) |
 | POR-1 | portal | Invoice ↔ service order cross-link in portal UI | Phase 3 | small feature | customer matches by invoice text reference |
-| POR-2 | portal | Delivery-confirmation flow accepts our documents (activity vessel) | Phase 3 | config/small feature | herbe.service's own approval link + canvas signature |
-| POR-3 | portal | Cross-links from portal to herbe.service customer pages | Phase 3 | small feature | customer uses our links from email/QR only |
-| POR-4 | portal | ~~Native service-data feed~~ — **superseded/committed 2026-07-04**: portal service modules reading `/api/ext/v1` (design spec delivered) | service Phase 2 (API) / portal Phase 3 (UI) | committed | tokenized links carry the flows for non-portal tenants |
-| POR-5 | portal | Messaging threads on service entities | optional, later | feature | portal messaging stays invoice-only; service questions via email |
-| POR-6 | portal | Token-authenticated "send quotation for approval" API | Phase 3 (quote flow) | small feature | human sends from the portal quotation view, or service emails its own tokenized approval link |
+| POR-2 | portal | Delivery-confirmation flow accepts our documents (activity vessel) | Phase 3 | config/small feature | on-site canvas signature + emailed report PDF |
+| POR-3 | portal | ~~Cross-links from portal to herbe.service customer pages~~ — **superseded 2026-07-05**: no service customer pages exist to link to | — | superseded | portal is the only customer surface |
+| POR-4 | portal | ~~Native service-data feed~~ — **reduced 2026-07-07**: near-term = worksheet-approval trigger (`POST /api/ext/v1/worksheets/{id}/confirm`); wider module = portal team's own scope | service Phase 2 (API) | reduced/committed | non-portal tenants: emailed report PDF + on-site canvas signature |
+| POR-5 | portal | Messaging threads on service entities | optional, later | feature | service questions via our notifications + email |
+| POR-6 | portal | Token-authenticated "send quotation for approval" API | Phase 3 (quote flow) | small feature | human sends from the portal quotation view |
 | SUITE-1 | both | Suite identity decision (shared IdP or stay separate) | Phase 0 (decision) | decision | stay separate — herbe.service is designed for it |
 | SUITE-2 | both | ~~Repo access~~ — resolved: `BITBUCKET_APP_PASSWORD` works via REST API | — | done | mirrors optional convenience |
-| SUITE-3 | both | Shared theme-token vocabulary published as a reference | Phase 0–1 | docs | herbe.service transcribes portal's tokens from source (started — `14-design-handoff.md`) |
+| SUITE-3 | both | ~~Shared theme-token vocabulary published~~ — **closed/shipped**: design-system repo is canonical (`tokens.css` + `handovers/SERVICE.md`) | — | done | consume the canonical repo |
 
 ## herbe.calendar
 
-### CAL-1 — Activity-type & workflow-stage conventions (Phase 0, config only)
+### CAL-1 — Activity-type & `ActType`/`ActState` conventions (Phase 0, config only)
 
-Tier 0 interop rides on both apps mapping the **same** activity types and workflow stages. Asks:
+Tier 0 interop rides on both apps mapping the **same** activity types and states. Verified in calendar source: a Kanban drag PATCHes `/api/activities/[id]` with **`ActType`/`ActState`**, and board columns are `(register, register_filter)` pairs synced from ERP views — so the fields are known; what needs agreeing is the values. Asks:
 
-1. Share the register/field names the Kanban writes when a card is dragged (the public docs describe the behavior but not the fields; our adapter must write/read the same workflow-stage field).
+1. Agree the `ActType`/`ActState` value conventions for service bookings (per tenant, with a suite default), so our adapter writes/reads the same type/state values the Kanban moves produce.
 2. Agree a recommended activity type + symbol set for service bookings (per tenant, but with a suite default), so a herbe.service booking renders correctly in calendar views and its Kanban out of the box.
 3. Agree how a multi-person (crew) activity's stage change behaves in the Kanban — one card or per-person cards — so our N-bookings ↔ 1-activity mapping (`04-erp-sync.md`) round-trips.
 
@@ -50,37 +53,57 @@ Fallback: tier 0 covers ERP-connected tenants at poll latency; per-technician IC
 
 Smart Booking templates with an ERP target already create activities with custom fields — that is our self-scheduling intake (`08-suite-integration.md`). Missing for a good service request: an **asset reference**. Ideal: a custom-field type that accepts an external reference (we pre-fill it via QR deep link — the sticker on the machine opens the booking page with the serial already set). Fallback: plain text field for serial + our QR-prefilled links; conversion still works, just without validation at booking time.
 
+Also needed (cited by `06-roadmap.md` for the self-scheduling flow): **reschedule/cancel links in the booking-confirmation email**, so a self-scheduled service request stays self-serviceable end-to-end without a call to the office. Fallback: the customer replies to the confirmation email and the dispatcher re-plans manually.
+
 ### CAL-5 — Availability API (Phase 4)
 
 Calendar already merges busy-times across ERP/Outlook/Google per person. Our scheduling assist should query that merge instead of rebuilding it. Ask: an endpoint "busy windows for person X in range Y" on the token API. Fallback: herbe.service suggests slots from its own bookings only.
 
+### CAL-6 — Service-activity recognition (Phase 2–3, small; `08` §3 C1)
+
+Per-account config mapping which activity types are "service" (the CAL-1 conventions); recognized activities get a service badge / colour class group, so technicians and dispatchers can tell service bookings from ordinary activities at a glance. Fallback: service activities render as ordinary activities — tier 0 still works, they're just visually indistinct.
+
+### CAL-7 — Service context + deep link on the activity (Phase 2–3, small; `08` §3 C2)
+
+For recognized service activities, `ActivityDrawer`/`ActivityBlock` show order number, site and worksheet status — read from the agreed `ActVc` fields herbe.service already writes — plus an **"Open in herbe.service"** deep-link button. Fallback: the same context lives in the activity's text/note fields service writes anyway; users follow a pasted URL instead of a button.
+
+### CAL-8 — Guarded editing of service-locked activities (Phase 3, small; `08` §3 C3)
+
+Recognized service activities that are `OKFlag`-locked or whose linked worksheet is `In progress` or later become read-only in calendar; free re-planning stays while the booking is `planned/confirmed`. Fallback: calendar edits freely and herbe.service's tier-0 conflict rule bounces illegal inbound moves to the dispatcher's inbox — consistency is preserved, at the cost of a rejected-move loop for the calendar user.
+
 ## herbe.portal
 
-The portal hosts the **entire** customer surface as service modules reading our `/api/ext/v1` API (decided 2026-07-04, exclusivity confirmed 2026-07-05; `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md` + addendum). herbe.service ships no customer pages. POR-1/POR-2/POR-6 remain integration touchpoints; POR-3 and POR-4 are superseded.
+The portal hosts the customer surface (exclusivity confirmed 2026-07-05); herbe.service ships no customer pages. The portal's service module is the portal team's **independent** product — it must stand on its own, with limited functionality, even without herbe.service; their v1 design note lives at `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`. Direct integration is reduced (owner 2026-07-07) to the worksheet-approval trigger (POR-4, reduced), the quotation-approval trigger (POR-6) and, tentatively, label/QR handling; everything else flows through the ERP (`08-suite-integration.md` §4). POR-1/POR-2 remain small touchpoints; POR-3 is superseded.
 
 ### POR-1 — Invoice ↔ service order cross-link (Phase 3, small)
 
-Invoices from our approved worksheets already reach the portal through its ERP feed. Ask: render a link/reference from the invoice view to the originating service order (we guarantee the ERP invoice carries the order reference; the link can target our tokenized order-status page), so "what was this for" is one tap. Pure UI addition on data that's already there.
+Invoices from our approved worksheets already reach the portal through its ERP feed. Ask: render a link/reference from the invoice view to the originating service order — we guarantee the ERP invoice carries the order reference. For portal tenants the link targets the portal's own service-order view once their module ships; until then (and for non-portal tenants, who get the emailed report PDF) the reference renders as plain text — herbe.service hosts no customer page to link to. "What was this for" is one tap either way. Pure UI addition on data that's already there.
 
 ### POR-2 — Delivery-confirmation flow for service documents (Phase 3, mostly config)
 
-Portal already routes documents to customers for approval and Smart-ID/Mobile-ID signature (delivery confirmations). `12-documents-templates.md` reuses exactly that flow for *qualified* signatures, with the `ActVc` activity as the vessel: our generated document attaches to an activity via record links; the portal presents it like a delivery confirmation; the outcome returns as the activity's workflow stage. Ask: confirm this generalization — specifically that (a) the portal's flow can be configured to pick up our activity types, and (b) the outcome writes a stage + comment we can poll. If their flow is invoice/delivery-hardcoded, this becomes a small feature request. Fallback: our own emailed approval link + on-site canvas signature (the baseline for tenants without portal anyway).
+Portal already routes documents to customers for approval and Smart-ID/Mobile-ID signature (delivery confirmations). `12-documents-templates.md` reuses exactly that flow for *qualified* signatures, with the `ActVc` activity as the vessel: our generated document attaches to an activity via record links; the portal presents it like a delivery confirmation; the outcome returns as the activity's state (`ActState`). Ask: confirm this generalization — specifically that (a) the portal's flow can be configured to pick up our activity types, and (b) the outcome writes a state + comment we can poll. If their flow is invoice/delivery-hardcoded, this becomes a small feature request. Fallback: the on-site canvas signature plus the emailed report PDF (the baseline for tenants without portal anyway — herbe.service hosts no customer-facing approval page).
 
-### POR-3 — Cross-links to herbe.service customer pages (Phase 3, small)
+### POR-3 — ~~Cross-links to herbe.service customer pages~~ — superseded 2026-07-05
 
-Where a customer already lives in the portal, let them reach the service flows in one tap: portal navigation/dashboard links out to our tokenized pages (equipment, order status, reports) for suppliers that run herbe.service. Plain links, no data integration. Fallback: customers reach our pages from email notifications and QR labels only.
+herbe.service hosts no customer pages, tokenized or otherwise, so there is nothing to link to. The portal is the only customer surface; customer entry points (portal navigation, email notifications, QR labels) all resolve inside the portal. No ask remains.
 
-### POR-4 — Native service-data feed (optional, later)
+### POR-4 — Portal service module — reduced 2026-07-07
 
-**Superseded — this is now the committed plan** (2026-07-04): the portal grows service modules (service items + history, orders/worksheets incl. request intake, report signoff) reading herbe.service’s `/api/ext/v1` with scoped bearer tokens; full design in `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`, service-side contract in `08-suite-integration.md` §4. herbe.service’s tokenized links remain the surface for non-portal tenants and for QR/ETA/feedback flows.
+Previously "superseded/committed" as the full service-modules plan; now **re-cut by owner decision**: the portal service module is developed independently by the portal team and must stand on its own, with limited functionality, even without herbe.service — what exactly it becomes is still moving. Near-term direct integration is only:
+
+1. **Worksheet-approval trigger** — the portal signoff flow calls `POST /api/ext/v1/worksheets/{id}/confirm` with scoped bearer auth.
+2. **Quotation-approval trigger** — POR-6; the decision flows back through `QTVc`.
+3. **Tentatively, label/QR handling** — the portal side of the resolver in `08-suite-integration.md` §4a.
+
+The wider read API (service items + history, orders/ETA, request intake, feedback) is **future** — re-cut against the portal module's settled shape; everything else flows through the ERP as middleman. Fallback / non-portal tenants: the emailed report PDF and the on-site canvas signature — herbe.service exposes nothing web-facing to customers.
 
 ### POR-6 — API to trigger quotation sending (Phase 3, small)
 
-Verified in portal code: `POST /api/c/{companyId}/quotations/{sernr}/send` already emails the share-token link to chosen recipients — but it requires an authenticated portal user session + CSRF header, so herbe.service cannot call it after pushing a quote into `QTVc` (`04-erp-sync.md` quote flow). Ask: a token-authenticated variant (same bearer-token pattern as the other service↔portal calls) taking `{sernr, recipients?}` — recipients defaulting to the customer's confirmed identity-link contacts — so quote delivery is automated end-to-end. Fallback: the quote still lands in the portal's quotations module; a human sends it from the quotation view, or herbe.service emails its own tokenized approval link.
+Verified in portal code: `POST /api/c/{companyId}/quotations/{sernr}/send` already emails the share-token link to chosen recipients — but it requires an authenticated portal user session + CSRF header, so herbe.service cannot call it after pushing a quote into `QTVc` (`04-erp-sync.md` quote flow). Ask: a token-authenticated variant (same bearer-token pattern as the other service↔portal calls) taking `{sernr, recipients?}` — recipients defaulting to the customer's confirmed identity-link contacts — so quote delivery is automated end-to-end. Fallback: the quote still lands in the portal's quotations module; a human sends it from the quotation view. (No service-hosted approval link — herbe.service ships no customer pages.)
 
 ### POR-5 — Messaging on service entities (optional, later)
 
-Portal's contextual messaging exists on invoices. If extended to service orders/worksheets, we'd consume the threads via POR-4-style events. Fallback (default): service communication goes through our notifications + email.
+Portal's contextual messaging (the activities/communication sidebar) is register-generic — verified in source, it rides on ERP records and is mounted across invoices, quotations, deliveries, sales orders, contracts and more. The real gap is that service entities aren't portal ERP registers; the nearest bridge is the booking's `ActVc` activity, which the sidebar could target if the portal ever surfaces service entities. If that happens, we'd consume the threads via POR-4-style events. Fallback (default): service communication goes through our notifications + email.
 
 ## Suite-wide
 
@@ -92,6 +115,6 @@ Verified from source: every suite app runs its own independent Auth.js instance;
 
 The dev environment's `BITBUCKET_APP_PASSWORD` authenticates the Bitbucket REST API against the `burti` workspace: file reads (`/2.0/repositories/burti/<repo>/src/...`) and full source archives (`bitbucket.org/burti/<repo>/get/main.tar.gz`) both work; git-protocol clone does not, and isn't needed. The empty GitHub mirrors are now optional convenience, not a blocker.
 
-### SUITE-3 — Published theme-token vocabulary (Phase 0–1, docs)
+### SUITE-3 — Published theme-token vocabulary — closed/shipped
 
-Both sibling apps implement "the herbe design system" from handover docs, with different tech (`03-architecture.md`): the portal's Tailwind `@theme` Burti brand tokens (`--color-burti-*`, `--brand-*` per-deployment aliases, from `burti-id-brandbook-1909.pdf`) and the calendar's semantic `--app-*` layer. For one tenant branding to span apps, the token vocabulary (names + semantics, not implementations) should be a published suite reference rather than two private docs. The current state of both is captured in `14-design-handoff.md`, which also specifies what herbe.service additionally needs.
+The design-system repo now exists and is canonical: `tokens.css` names the canonical value for every token where the two apps diverged (portal's Tailwind `@theme` Burti brand tokens — `--color-burti-*`, `--brand-*` aliases — vs the calendar's semantic `--app-*` layer), with a reconciliation guide saying which side aligns; `handovers/SERVICE.md` is a ready, prioritised design brief for herbe.service (field density tier, sunlight/high-contrast scheme), sourced from `14-design-handoff.md`. Action: **consume the canonical repo** — do not transcribe portal tokens from source; `14-design-handoff.md` retargets to the repo. No ask remains on the sibling teams.

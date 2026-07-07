@@ -1,6 +1,6 @@
 # herbe.service — Testing Strategy (TDD)
 
-Status: v1.0 (2026-07-05, product owner directive: TDD everywhere; everything automatable is automated; the rest listed explicitly for the owner to arrange — §6).
+Status: v1.1 (2026-07-07) — consistency pass: crew suites rewritten for the one-worksheet-per-technician model (round 6), scoped-replication suite added (`03-architecture.md` v0.4 design), phase hooks corrected (ActVc mapping, write mechanics and auth suites claimed by their real phases), provisioning-ADR reference aligned with the roadmap's Phase 0 list. Previous: v1.0 (2026-07-05, product owner directive: TDD everywhere; everything automatable is automated; the rest listed explicitly for the owner to arrange — §6).
 
 ## 1. Policy
 
@@ -17,7 +17,7 @@ The hard parts of this product are deliberately pure logic with injected I/O; th
 Three pieces of test infrastructure are Phase 0 deliverables, built before the features that need them:
 
 1. **Fake ERP server** — an HTTP test double of the HansaWorld register API, driven by **recorded fixtures from the real test ERP** (§6.1): register list/paging, `updates_after`/`@sequence`, sequence-reset replay, `filter` unreliability mode, HSESSION lifecycle, WebExcellentAPI's HTTP/1.1-only + Basic-only behavior, control characters and locale decimals in payloads, form-encoded write echo. Every adapter behavior in `04-erp-sync.md` is tested against this double in CI — fast and deterministic. A **nightly live-contract job** replays the same suite against the real test ERP and alerts on drift (fixtures stale, ERP version changed); it never blocks PRs.
-2. **Sync simulation harness** — N virtual devices (in-process clients with their own local store + outbox) against a real server + Postgres. Scenarios are scripts: work offline for a day, replay; two members edit the same worksheet offline; manager rejects while technician is offline; duplicate merge while a device holds the old UUID; sequence reset mid-poll; push-group partial failure with DLQ retry. This harness is how every conflict/idempotency rule in `03`/`04` is proven, and it runs in CI on every PR touching sync.
+2. **Sync simulation harness** — N virtual devices (in-process clients with their own local store + outbox) against a real server + Postgres. Scenarios are scripts: work offline for a day, replay; two technicians on one crew job work their own worksheets offline (`crewGroupId` grouping stays consistent, no cross-worksheet interference); office edits a worksheet's order while its technician is offline; a job reassigned away while the old device is offline (scope-exit purge applied on reconnect — access instructions gone); manager rejects while technician is offline; duplicate merge while a device holds the old UUID; sequence reset mid-poll; push-group partial failure with DLQ retry. This harness is how every conflict/idempotency rule in `03`/`04` is proven, and it runs in CI on every PR touching sync.
 3. **Golden-fixture library** — anonymized recorded ERP payloads per register (see §5.1 data rules) used by mapper tests portal-style (`tests/unit/erp/.../mappers`), plus DOCX template fixtures and expected merge outputs for the document engine.
 
 ## 3. Traceability: spec rule → suite
@@ -26,12 +26,13 @@ Three pieces of test infrastructure are Phase 0 deliverables, built before the f
 |---|---|
 | `02` order-status derivation table | table-driven: every rule + rollback-on-new-worksheet + recompute-on-transition |
 | `02` worksheet status flow + signature revision rule | state machine: legal/illegal transitions; signed-revision immutability; re-sign only on customer-visible change |
-| `02` crew model | members follow crew bookings; lead-only transitions; `addedBy` attribution; per-member time/distance |
+| `02` crew model | members follow crew bookings; one worksheet per technician under a shared `crewGroupId` (queue/list grouping); each technician owns their own worksheet's transitions; lead worksheet alone carries the signature (`signatureRef` on the rest); team-lead approval only where the tenant flag allows (`05`); per-worksheet time/distance ownership |
 | `02` record merges | alias re-point, tombstone-redirect delta, outbox-op rewrite, projector re-attach |
 | `02` field policies | required-blocks-transition per role × work type; server-side enforcement equals client |
 | `02` HistoryEvent projector | idempotent re-run (deterministic keys), rebuild equals incremental, group-event projection/rollup |
 | `03` conflict rules | harness scenarios: server-wins master data, technician-wins facts, LWW-per-field with audit, bounced transitions → inbox |
 | `03` delta pull / outbox | high-water-mark correctness, tombstones, replay idempotency (duplicate ops, reordered batches) |
+| `03` scoped replication | per-user scope membership feed (assignment scope + reference closure + tenant-wide small registers); scope-entry backfill emits a full upsert regardless of record seq; scope-exit purge round-trip (record incl. access instructions leaves the device store); outbox ops on records that left scope still accepted server-side; enforcement lives in the feed query — the client never filters for security |
 | `04` store topology | ingest preserves app-owned fields, bumps changeSeq, conflict on same-field; trustworthy-vs-fresh never conflated (portal's CR rules as tests) |
 | `04` push-queue saga | FIFO per order, dependency blocking, resume-from-failed-step, no re-post of succeeded steps, DLQ retry repairs `erpRef` |
 | `04` ActVc mapping | N crew bookings ↔ 1 activity collapse/split; echo suppression (own write ignored, stale inbound never rolls back); intake-type auto-convert; unlinked-activity → inbox; purpose map routing; UTC↔ERP-local tz conversion |
@@ -87,7 +88,7 @@ Stable users with fixed UUIDs/emails across every environment: `tech.anna@…` (
 
 Test environments ride the same Vercel machinery as production — no parallel infrastructure:
 
-- **Per-PR preview deployments** (Vercel's native behavior, same as the portal's `preview` branch flow): every PR auto-deploys to a preview URL with the **Preview environment's** env vars — `TEST_AUTH=1` lives there and in staging only, never in Production (this is the environment half of the §5.3 double guard). CI seeds the preview's database on deploy and runs the Playwright regression suite against the preview URL — UI tests hit real Vercel infrastructure (edge, headers, cron routes), not just local docker. Database per preview: Supabase branching, or schema-per-preview on a shared test project — pick in the Phase 0 provisioning ADR.
+- **Per-PR preview deployments** (Vercel's native behavior, same as the portal's `preview` branch flow): every PR auto-deploys to a preview URL with the **Preview environment's** env vars — `TEST_AUTH=1` lives there and in staging only, never in Production (this is the environment half of the §5.3 double guard). CI seeds the preview's database on deploy and runs the Playwright regression suite against the preview URL — UI tests hit real Vercel infrastructure (edge, headers, cron routes), not just local docker. Database per preview: Supabase branching, or schema-per-preview on a shared test project — pick in the Phase 0 provisioning ADR (on the roadmap's Phase 0 ADR list, `06-roadmap.md`).
 - **Staging/demo** is a first-class entry in the fleet inventory, stamped out by the **same provisioning CLI** as customer deployments (`03-architecture.md` fleet ops) — which means provisioning itself is exercised on every re-provision, not only when a customer signs. Nightly re-seed; acceptance suite + human UAT run here.
 - **The fake ERP deploys as its own small Vercel project** (it is just an HTTP app serving fixtures + scripted behaviors, state in a test DB), so previews and staging reach it like a real ERP endpoint; locally it runs in docker compose.
 - Local development keeps the docker compose (app + Postgres + Mailpit + fake ERP) for the fast inner loop; previews are the shared, reviewable variant of the same thing.
@@ -108,6 +109,6 @@ Items 1–2 are Phase 0 blockers for the adapter workstream; 3–4 are needed fr
 
 ## 7. Roadmap hooks
 
-- **Phase 0**: fake ERP + fixture recorder, sync simulation harness, CI pipeline with coverage gates, manual-script skeleton, first golden fixtures from the test ERP (item §6.1). TDD from the first walking-skeleton commit.
-- **Phase 1**: full suites for the field loop (§3 rows 1–10); Playwright offline journeys; perf budgets in CI; manual device pass per release.
-- **Phase 2+**: document-engine suites (Gotenberg in CI), `/api/ext` contract tests published as fixtures the portal team can test against, suite round-trip tests on the shared test ERP.
+- **Phase 0**: fake ERP + fixture recorder, sync simulation harness (incl. the scoped-replication scenarios), CI pipeline with coverage gates, manual-script skeleton, first golden fixtures from the test ERP (item §6.1); the `05` auth/sessions suite lands with the walking-skeleton login. TDD from the first walking-skeleton commit.
+- **Phase 1**: full suites for the field loop — every `02` and `03` row of the §3 table, plus `04` store topology, push-queue saga, **ActVc mapping** and **write mechanics** (both ship in Phase 1: bookings sync two-way from the MVP); Playwright offline journeys (`07` row); perf budgets in CI; manual device pass per release.
+- **Phase 2+**: document-engine suites (Gotenberg in CI), `11` coverage/rollups suites, `/api/ext` contract tests published as fixtures the portal team can test against (re-cut to the reduced portal-integration surface — `06-roadmap.md` open item 2), `04` quote-flow suites (Phase 3), suite round-trip tests on the shared test ERP.

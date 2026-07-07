@@ -26,6 +26,8 @@ For service companies: service orders in, planned work on a board, technicians e
 | [16-spec-review-round-3.md](docs/16-spec-review-round-3.md) | Review round 3 (fork reconciliation, seam fixes, plan readiness) + round-4 owner decisions 2026-07-06 |
 | [17-erp-register-reference.md](docs/17-erp-register-reference.md) | Verified ERP register field reference: `SVOVc`, `WSVc`, `SVOSerVc`, `DelAddrVc`, `ItemStatusVc`, `RLinkVc`, `UserVc` |
 | [18-demo-probe-handoff.md](docs/18-demo-probe-handoff.md) | Work order for the demo-ERP probe session (env-var setup, checklist, deliverables) |
+| [19-demo-probe-results.md](docs/19-demo-probe-results.md) | Live demo-ERP probe results: register/API behavior confirmed, back-link mechanism decided, write-test findings |
+| [20-spec-review-round-5.md](docs/20-spec-review-round-5.md) | Review round 5 (cross-dimension audit, owner decisions 2026-07-07, doc-sync fixes) |
 | [docs/research/](docs/research/) | Raw competitor + suite research notes (appendix) |
 
 ## Product principles
@@ -35,4 +37,4 @@ For service companies: service orders in, planned work on a board, technicians e
 3. **The ERP owns money.** Prices, VAT, invoices are ERP truth; the app owns the work facts.
 4. **History is the product.** Full service history per serial number and per tree node, offline, including pre-app ERP history.
 5. **Suite-consistent.** Design system, UX patterns, and technical components shared with the other herbe apps — both sibling codebases reviewed and the stack matched to them ([03-architecture.md](docs/03-architecture.md)); the design system still needs the field-app additions in [14-design-handoff.md](docs/14-design-handoff.md).
-6. **Integrate, don't duplicate — but stay a standalone app.** herbe.calendar owns time (team calendars, Kanban boards, Smart Booking); **herbe.portal owns everything customer-facing** — the service modules are the customer's only window into service data (owner decision 2026-07-05); herbe.service owns field work and exposes the service API the portal reads ([08-suite-integration.md](docs/08-suite-integration.md); asks on the sibling teams in [13-suite-change-requests.md](docs/13-suite-change-requests.md)).
+6. **Integrate, don't duplicate — but stay a standalone app.** herbe.calendar owns time (team calendars, Kanban boards, Smart Booking); **herbe.portal owns everything customer-facing** — the portal's service module is the customer's window into service data, developed independently portal-side (owner decisions 2026-07-05 / 2026-07-07); herbe.service owns field work. Direct service↔portal integration is limited to worksheet- and quotation-approval trigger endpoints (plus possibly the QR-label resolver); everything else flows through the ERP as the middleman ([08-suite-integration.md](docs/08-suite-integration.md), [20-spec-review-round-5.md](docs/20-spec-review-round-5.md); asks on the sibling teams in [13-suite-change-requests.md](docs/13-suite-change-requests.md)).

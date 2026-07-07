@@ -1,6 +1,6 @@
 # herbe.service — Competitive Feature Analysis
 
-Status: v0.2 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators; v0.2 re-verified pricing and key claims directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes) — corrections marked inline, details and source lists in [docs/research/](research/).
+Status: v0.3 (2026-07-07). Change: design decision 3 corrected — tenant substatuses marked deferred (Phase-4 candidate), not adopted; they appeared nowhere in the data model/roadmap/UI docs. Previous: v0.2 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators; v0.2 re-verified pricing and key claims directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes) — corrections marked inline, details and source lists in [docs/research/](research/).
 
 Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Field Service, IFS FSM / IFS Cloud Service Management, AllDevice, Odoo Field Service, Acumatica Field Service.
 
@@ -43,7 +43,7 @@ Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Fiel
 
 1. **Adopt the three-document spine** (Salesforce/D365 pattern): ServiceOrder (what), Worksheet (done facts), Booking (when/who). Products that conflate them (Odoo, AllDevice) can't re-plan without corrupting work records.
 2. **Incident-type-style templates later, checklist templates first.** D365 Incident Types (bundled tasks+parts+skills per fault type) are powerful but heavy; start with checklist templates per item/work type (Phase 1–2), grow toward work templates (Phase 3).
-3. **Configurable status machine, fixed core states** (Salesforce lesson): keep our canonical states, allow tenant substatuses and pause reasons — not free-form workflows.
+3. **Configurable status machine, fixed core states** (Salesforce lesson): keep our canonical states and pause reasons (both in the spec, `02-data-model.md`) — not free-form workflows. Tenant substatuses are **deferred, not adopted** (corrected 2026-07-07): a Phase-4 candidate alongside the workflow-configuration/automation-hooks era (`06-roadmap.md`), currently specced nowhere.
 4. **Technician self-assignment pool** (Frontu) — cheap to build, loved by small teams that don't have a dispatcher.
 5. **QR labels on service items** (Frontu + AllDevice): scan → item card, history, start work. Doubles as arrival confirmation. High value/effort ratio.
 6. **Offline "briefcase" priming** (Salesforce): explicit "download my work" scope, not lazy caching.

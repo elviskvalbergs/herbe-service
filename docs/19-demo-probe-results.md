@@ -1,7 +1,10 @@
 # herbe.service — demo-ERP probe results
 
-Status: v0.1 (2026-07-06). Executed against the live demo Standard ERP install per the
-work order in `18-demo-probe-handoff.md`. All requests used the `ERP_DEMO_*`
+Status: v0.2 (2026-07-07, correction: step 12 of the work order was **not run** and is
+now recorded as such below; the summary's open items are extended with the unexplained
+`SVOVc` create no-op and the un-run closed-field probe). Previous: v0.1 (2026-07-06).
+Executed against the live demo Standard ERP install per the
+work order in `18-demo-probe-handoff.md` — **steps 1–11 only; see step 12 below**. All requests used the `ERP_DEMO_*`
 credentials from the session environment; no credential values appear below or in
 any command history committed with this doc. Sample data is capped at 10 rows and
 uses the install's own placeholder test customer (`CustCode=1`, "Paraugs" — the
@@ -267,6 +270,18 @@ activity-purpose configuration (`04-erp-sync.md` activity-purpose map). Real
 per-tenant type codes will still need confirming per launch tenant — this is
 demo-tenant data, not a universal code list.
 
+## Step 12 — `SVOVc` completion/"closed" field: NOT RUN
+
+Recorded 2026-07-07: step 12 of the work order (read a handful of finished/invoiced
+orders and identify which field(s) — `DoneMark`, `InvMark`, or one of the unmapped
+`SVOVc` fields — carry the "order is closed, no more activity expected" signal behind
+the app's ERP-sync-set `Closed` state) was **not executed** in this probe session and
+was omitted from the original write-up without a note. The closed-field question
+(`02-data-model.md` status flow / `04-erp-sync.md` order-`Closed` flow, round-6
+decision: ERP-sync-set, field TBC) therefore **remains open and carries forward** as a
+Phase 0 item — until resolved, the app treats `Invoiced` as its terminal state, per
+the existing rule in those docs.
+
 ## Bonus: this demo system as a test-data sandbox
 
 Beyond this one-off probe, this demo/test ERP company is safe to reuse as a
@@ -285,6 +300,6 @@ rows in anything committed, no credentials in code/commits).
 
 | Doc | Change |
 |---|---|
-| `04-erp-sync.md` | Back-link mechanism decided (WebExcellentAPI `getrecordlinks`, not `RLinkVc` REST parsing); WebExcellentAPI document-missing failure shape documented; create-push must verify persistence, not just absence of `<error>`; **new open item**: Work Order (`WOVc`) chain question for the owner |
+| `04-erp-sync.md` | Back-link mechanism decided (WebExcellentAPI `getrecordlinks`, not `RLinkVc` REST parsing); WebExcellentAPI document-missing failure shape documented; create-push must verify persistence, not just absence of `<error>`; **new open items**: Work Order (`WOVc`) chain question for the owner, and the **unexplained `SVOVc` REST-create silent no-op** (§10 — HTTP 200, `"Jau reģistrēts"`, nothing persisted, cause undiagnosed: no app→ERP `SVOVc` create has ever succeeded live) |
 | `17-erp-register-reference.md` | `RLinkVc` record-id format description corrected (opaque binary, not `RegisterName:SerNr`); `WSVc.WONr` corrected from "unused by us" to "required on create on at least one install — confirm per tenant"; `COVc` added as the confirmed service-contracts register |
-| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types are all resolved (fully or as "confirmed per-tenant, not universal"); charge-type field and the Work Order chain question carry forward as open items |
+| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types are all resolved (fully or as "confirmed per-tenant, not universal"); carrying forward as open items: the charge-type field, the Work Order chain question, the unexplained `SVOVc` create no-op (§10), and the un-run step 12 (`SVOVc` closed-field probe, see above) |

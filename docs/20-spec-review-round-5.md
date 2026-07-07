@@ -1,0 +1,59 @@
+# herbe.service — Spec Review, Round 5: Cross-Dimension Audit, Owner Decisions, Doc Sync (2026-07-07)
+
+Status: v1.0 (2026-07-07). Scope: a six-dimension consistency audit of the full spec (docs 01–19), run as parallel passes: (1) data model ↔ sync contract, (2) architecture ↔ roadmap ↔ auth ↔ testing, (3) UI ↔ design handoff, (4) suite integration vs. the sibling codebases, (5) review-round traceability — do docs `09`/`10`/`16`'s "applied in" claims actually hold against the target docs?, (6) ERP register ground truth re-checked against the live register dictionary (halocron). Numbering note: this is the fifth **full review pass** in the document series (`09` = round 1, `10` = round 2, `16` = rounds 3–4); the "round 5/6/7" labels *inside* `16` refer to owner-correction and register-verification passes, not review passes.
+
+**Verdict up front: after this round's fixes, the spec is implementation-ready for Phase 0.** The traceability audit found the earlier rounds' fixes overwhelmingly real (~89 of 92 checked claims verified in place); the failures were concentrated in three docs (`07` F4, `13`, and the round-6 crew revert's shadow in `03`/`15`) plus a set of owner decisions applied in their primary doc but not propagated to the summaries. One blocker-class inconsistency (the portal contract's status) was resolved by an owner decision this round (§1 #5), which also **reduces** the portal integration surface. Phase 1 implementation *writing* is gated only on the Phase 0 probe outcomes and the owner's create-path decision (§3).
+
+---
+
+## 1. Owner decisions this round (2026-07-07)
+
+| # | Decision | Applied in |
+|---|---|---|
+| 1 | **Back office activates Phase 1**, not Phase 2 (supersedes round-1 C8's phase placement for that role; team lead stays Phase 2) | `06` Phase 1 platform, `07` role column |
+| 2 | **`Closed`: ERP wins, always.** The poll applies the ERP's completion signal even when app-side worksheets are non-terminal; such worksheets are flagged as **manager-queue exceptions** (sync-health/approval task), never a blocked sync. Refines round 7 §7.2 — the source-field question stays open (§3) | `02` status flow, `04` poll rules |
+| 3 | **Charge type: `WSVc` row `ItemType` characterized — an editable invoiceability enum, the mapping target, member values TBC.** HAL evidence (`PrintWSRows`/`USetStr` 7761–7768, the `WSDClassItemTypeEFAfter` → `WSVc_PasteItemType` edit handler): `ItemType` is an editable enum `0`–`4` on the worksheet row with an ERP-computed, context-derived **default** — the probe's read-back value was Latvian `"Jāizr.rēķ."` ("to be invoiced"), which is why round 6 saw it as "ERP-computed"; the round-6 "strongest charge-type candidate" reading stands. It is distinct from `INVc.ItemType` (item classification; the `kItemType*` constants) — an initial re-identification during this round conflated the two and was corrected before landing. **Charge type stays app-owned**; the push maps it to this enum **gated on Phase 0 confirming the member values (warranty-covered test item, or Excellent's `SString` 7761–7768 export) and the REST write format**; row `QtyInvbl` is the complementary lever in the same probe | `02` charge type, `04` push flow + register table, `17` WSVc rows |
+| 4 | **Crew-job grouping UI ships Phase 1** (grouped queues/job cards by `crewGroupId`), not Phase 2 — the data model was already Phase 1; only the dispatch-board crew *scheduling* stays Phase 2 | `06` Phase 1/2 crew bullets, `07` F1/O3, `14` P1 |
+| 5 | **Portal integration reduced.** The portal service module is **developed independently, with limited standalone functionality**; direct service↔portal integration shrinks to **worksheet-approval and quotation-approval trigger endpoints** (+ possibly the label/QR resolver); everything else flows **via the ERP as middleman** (registers + `ActVc`, the suite's existing tier-0 bus). The wider frozen `/api/ext/v1` contract claim is **withdrawn** — this also resolves the round-5 blocker finding that the claimed "handed to mainline" contract had never actually landed (§2). The portal module's final shape drives a re-cut, much smaller contract | `08` §4, `06` P2/P3, `13` POR framing, README |
+| 6 | **Outbound creates are in doubt**: the demo system's `SVOVc` create silently no-ops ("Jau reģistrēts" behavior, `19` §10) and `WSVc` create hard-requires `WONr` — pushing our documents may require **ERP-side creation or a dedicated endpoint** rather than plain REST POST. Owner is deciding; recorded as open (§3), gates the push-queue design | `04` push flow caveat, `06` Phase 0 |
+| 7 | **Order-confirmation PDF dropped from Phase 1.** `12` listed "built-in worksheet report + order confirmation PDFs" for Phase 1; the roadmap (worksheet report only) is authoritative — the order-confirmation document arrives with the Phase 2 template engine | `12` roadmap section |
+| 8 | **Tenant substatuses deferred** (the `01` design decision 3 "allow tenant substatuses" clause is an intent, not Phase 1–3 scope) | `01` d3 note |
+
+## 2. Findings and fixes applied
+
+The audit's confirmed findings, by severity. **All fixes were applied across docs `01`–`08`, `11`–`17`, `19` on 2026-07-07** (this round's doc-sync pass); this document and the annotations in `09`/`10`/`16` are the record.
+
+**Blocker (1):**
+- **Portal contract not landed.** `08` §4 claimed the service-modules spec was "handed to the portal team on their Bitbucket mainline" while `06` open items and `16` §5 said landing it was still open — the frozen `/api/ext/v1` contract existed only on mirror branches. **Resolved by owner decision #5** (integration reduced; frozen-contract claim withdrawn), not by landing the old contract.
+
+**Major:**
+- **`addedBy` remnants of the deleted shared-worksheet model** in `03` (conflict rules: "crew edits are per-member-attributed"), `07` F4 (Parts row list, "per-member" time), `15` (crew suite: "lead-only transitions; `addedBy` attribution"; "two members edit the same worksheet offline" harness scenario) — all contradicted `02`'s round-6 "No `addedBy`" rule. Removed/rewritten.
+- **Stale activity-purpose maps** in `07` A4 and `14` §2: still "booking / intake / time-entry mirror / document vessel / history import" — missing `worksheetShadow` (Phase 1, load-bearing for walk-up visibility) and `workSegment` (which subsumed `timeEntry`). Aligned with `04`.
+- **Stock-consumption drift** in `02`/`06`/`07`/`08`: "worksheet + stock txn/consumption" push phrasing survived the round-4/round-6 decision that Work Sheet OK owns consumption and explicit stock posts are fallback-tier only. Aligned with `04`.
+- **Doc `13` contradicted two owner decisions**: POR-1/3/4/6 bodies still asked the portal to link to herbe.service's *tokenized customer pages* (removed 2026-07-05, Q2), and the calendar context asks (`08` §3's C1–C3: service-activity recognition, drawer context + deep link, guarded editing) — claimed "raised in `13`" by round 2's P7 — were never actually in the doc. Both fixed (POR bodies rewritten; CAL-6 added), then re-framed per decision #5.
+- **Doc `12` signing precedence + phantom Phase 1 PDF**: the activity-vessel signing route was presented ahead of the signing-descriptor primary decided in round 2/3, and Phase 1 listed an order-confirmation PDF the roadmap never had (dropped, decision #7).
+- **Doc `14` stale vs. the now-populated design-system repo**: the handoff still described the design-system import as fully pending while the repo has since received content; starting-point section corrected.
+- **Testing strategy built on the deleted crew model + no scoped-replication coverage**: `15` §3 crew row rewritten for one-worksheet-per-technician; a scoped-replication suite row (scope membership, scope-exit purge, scope-entry backfill — `03`) added.
+- **Phase conflicts**: back office (Phase 2 in `06`/`05` vs. needed Phase 1 — decision #1), crew-grouping UI (decision #4), and Phase 0 walking-skeleton screens listed in `14` that `07` phase-tags as Phase 1. Reconciled; roadmap authoritative.
+- **Register-reference corrections** (live dictionary re-check): `SVOVc` carries **111 fields** (not the "82 mapped so far" count used in round 7's reasoning); **`ItemType` characterized** (decision #3); `MotherSecondarySerialNr` length **60**; `ActVc` person fields are **plural** (`MainPersons`/`CCPersons` — matches what herbe.calendar actually parses); row fields `ovst`, `Returned`, `PosCode`, `QtyInvbl` flagged **unverified** rather than candidate-listed as if probed. Applied in `17`, `04`, `19` (inline corrections, originals preserved).
+
+**Minor** (applied without individual listing): stale status headers (`05`, `12`), dead citations (`10` Q2's "`14` §11" — fixed in `10`), the duplicated sentence in `13` §framing, `EmplVc`-style phrasing in `02`/`05` vs. the verified `UserVc` link target, the six-vs-seven locale list in `14` §3.5, and the review-doc supersession annotations now in `09` C2/C3 and `10` §1/Q2.
+
+## 3. Remaining open items (the honest list)
+
+1. **Work Order (`WOVc`) chain** — mandatory step between `SVOVc` and `WSVc` on some tenants? (`19` §10; gates push-queue design.)
+2. **`SVOVc` "Closed" source field** — probe checklist step 12 (`18` #12) **never ran**; `19` covers steps 1–11 only. Decision #2 fixes the *rule* (ERP wins), not the field.
+3. **Charge-type enum probe** — `ItemType` member values (warranty-covered test item, or Excellent's `SString` 7761–7768 export), integer-vs-localized-string on REST POST, and `QtyInvbl` behavior (decision #3); Phase 0 probe item.
+4. **`SVOVc`/`WSVc` create path** — plain REST POST vs. ERP-side creation vs. dedicated endpoint (decision #6; owner deciding).
+5. **`UserVc.Location` vs `ServLocation`** van-stock convention — inconclusive on the demo tenant; confirm per launch tenant.
+6. **`COVc` sync direction** — still TBD (`04` register table).
+7. **Portal module's independent shape** — decision #5 makes the portal team's design the driver of the re-cut (small) contract; until it exists, only the two approval-trigger endpoints are committed.
+8. **§2.9 operations & lifecycle package** — round-3 recommendation still awaiting explicit acceptance as Phase 2/3 scope (`16` §2.9, `06` open items).
+9. **Pricing/packaging final call** (`06` open items).
+10. **Phase 1 re-estimate at Phase 0 exit** (Q5, deliberate).
+11. **`ActVc.AccessGroup` field verification** (calendar's own TODO; on the register-confirmation checklist).
+12. **Sibling-team responses** to the `13` asks (CAL-1…6, POR set as re-framed, SUITE-1) — requests, not decisions, until answered.
+
+## 4. Readiness verdict
+
+With §2 applied, the spec is again internally consistent across all six audited dimensions, and the review-doc chain (`09` → `10` → `16` → this) is annotated so no superseded resolution reads as current. **Implementation-ready for Phase 0 now.** Phase 1 implementation writing is gated only on the Phase 0 probe outcomes (§3 items 1–3, 5) and the owner's create-path decision (§3 item 4) — exactly the class of unknowns Phase 0 exists to close.

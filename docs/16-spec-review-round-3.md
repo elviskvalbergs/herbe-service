@@ -186,6 +186,8 @@ Two corrections raised directly against the just-verified `WSVc`/`SVOVc` field s
 
 **Applied in:** `02-data-model.md` (Worksheet, Booking, Crew & reassignment sections — v0.8), `04-erp-sync.md` (assignee mapping, `ActVc` crew mapping), `05-users-auth.md` (per-job lead role description), `06-roadmap.md` (Phase 1/2 crew bullets), `07-ui-screens.md` (F4, F5, O3), `08-suite-integration.md` (integration diagram), `09-spec-review.md` and `10-spec-review-gaps.md` (historical annotations pointing here).
 
+> **Correction (2026-07-07, round 5):** the `07-ui-screens.md` application above was incomplete — F5 and O3 were updated, but F4 still carried `addedBy` in the Parts row list and "per-member" in Time & km, both artifacts of the retired shared-worksheet model. `03-architecture.md` (conflict rules) and `15-testing-strategy.md` (crew suite, harness scenarios) carried the same remnants and were never in this list. All fixed in review round 5 (`20-spec-review-round-5.md`).
+
 **Not affected:** the multi-person `ActVc` **scheduling** decision (§1.1 above, confirmed 2026-07-05) — a crew job is still one shared calendar activity for the whole crew; it's a separate layer from the execution documents underneath, and the adapter already treated "N crew bookings ↔ 1 activity" and "N worksheets" as independent mappings, so only the worksheet side changes.
 
 ### 7.2 ServiceOrder `Closed`: ERP-sync-set, not a manual/derived app transition

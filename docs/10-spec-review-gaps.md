@@ -2,6 +2,8 @@
 
 Status: v2.0 (2026-07-05). Round 2 (2026-07-04) found the fork between the two spec lines plus 22 seam gaps and 12 phase gaps; on 2026-07-05 the product owner confirmed the audit line as legitimate ("multi-person ActVc, docs templates etc"), the lines were **merged**, and every resolvable finding was written into the spec. This document is the **single tracker**: what was resolved and where. **All open questions were answered by the owner on 2026-07-05 (§3)** — the spec has no open internal decisions left; remaining externals are listed at the end of §3.
 
+> **2026-07-07 note (round 5):** the "no open internal decisions left" statement was true as of 2026-07-05. Later rounds opened new internal items — the Work Order (`WOVc`) chain question, the `SVOVc` "Closed" source field, the charge-type follow-up (`ItemType` characterization), and the SVOVc/WSVc create-path question. Current tracker: `16-spec-review-round-3.md` §§5–7 and `20-spec-review-round-5.md`.
+
 ---
 
 ## 1. Merge record (2026-07-05)
@@ -72,7 +74,7 @@ Phase gaps (P1–P12): all applied in `06-roadmap.md` v0.3 — `/api/ext` + toke
 | Q | Question | Owner's answer | Applied in |
 |---|---|---|---|
 | Q1 | Tenancy | "Like in portal — SaaS multitenant is an option, as is customer-specific deployment when they need their design or overlay customisations." → **multi-tenant core** (`tenant_id` on every domain table, shared SaaS deployment default) **+ dedicated deployments** (whitelabel domain/theme/overlay hooks) provisioned per customer; same codebase, one version train | `03` tenancy + fleet ops, `02` company scoping, `05` multi-tenancy, `06` Phase 0 |
-| Q2 | Customer surface | "Anything that requires customer input or is the customer's business is in portal. **No customer-facing stuff in service.**" → tokenized-pages layer removed; portal service modules are the entire customer window (equipment/QR target, requests, order status + ETA view, reports, signoff, feedback); non-portal tenants: emailed PDFs + on-site signature. Portal-team scope updated — design-spec **addendum delivered to the portal repo** | `08` §4, `02` CustomerConfirmation, `04` quote/standalone, `06` P3, `12` approval, `13` framing + POR-3/4, `14` §11, README, `01` d12 |
+| Q2 | Customer surface | "Anything that requires customer input or is the customer's business is in portal. **No customer-facing stuff in service.**" → tokenized-pages layer removed; portal service modules are the entire customer window (equipment/QR target, requests, order status + ETA view, reports, signoff, feedback); non-portal tenants: emailed PDFs + on-site signature. Portal-team scope updated — design-spec **addendum delivered to the portal repo** | `08` §4, `02` CustomerConfirmation, `04` quote/standalone, `06` P3, `12` approval, `13` framing + POR-3/4, `14` §4 (customer pages struck from the screen-inventory scope — the "§11" cited here previously never existed; corrected 2026-07-07), README, `01` d12 |
 | Q3 | Shared packages | "No strong opinion — hassle, but possibly worth it for big overlap. You decide." → **extract `@herbe/erp-core` only** (the third-copy risk is real there); email-template engine and everything else copy-first; two-week timebox stands | `08` §6, `04`, `03`, `06` Phase 0 |
 | Q4 | Phase 1 trim | Confirmed: whitelabel option + transformations UI/settings export stay Phase 2 | `06` (no change needed) |
 | Q5 | Phase 1 estimate | Acknowledged: re-estimate at Phase 0 exit | `06` header note (no change needed) |

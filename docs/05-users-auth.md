@@ -1,6 +1,6 @@
 # herbe.service — Users, Auth & Roles
 
-Status: v0.3 (2026-07-05) — spec-line merge: **role-shaped login** (magic link for office, PIN + biometrics on paired field devices) folded into the verified suite baseline (Auth.js v5 everywhere; Entra ID login exists in neither sibling today).
+Status: v0.4 (2026-07-07) — consistency pass: version header corrected (the round-6 crew/lead content below landed 2026-07-06 without a bump), ERP link target fixed to the `UserVc` person code (`04-erp-sync.md` register table is the authority), role activation phases noted (back office moved to Phase 1 — owner 2026-07-07). Previous: v0.3 (2026-07-05) — spec-line merge: **role-shaped login** (magic link for office, PIN + biometrics on paired field devices) folded into the verified suite baseline (Auth.js v5 everywhere; Entra ID login exists in neither sibling today).
 
 ## Model (verified suite pattern)
 
@@ -18,7 +18,7 @@ User (app table) ── IdentityLink[] ── { provider: standard-erp | excelle
 
 The PIN/biometric unlock is the technician's *login*, but security-wise it is a local re-verification of a long-lived device session: the server still sees the Auth.js session token, the device registry governs its lifetime, and PIN attempts are rate-limited with wipe-on-N-failures (tenant policy).
 
-- **ERP link**: maps the app user to the ERP employee/person code (`EmplVc`-style) so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code, per account) for the employee side — the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern). Enforcement rules for unlinked users: `04-erp-sync.md` (booking write queues with a warning; worksheet approval blocks).
+- **ERP link**: maps the app user to the ERP person code (**`UserVc`**, the verified link target — `04-erp-sync.md` register table; `EmplVc` exists in the ERP but is not what we link to) so worksheets and bookings (`ActVc`) sync with the correct ERP technician/salesperson code. Two proven reference implementations: calendar's `person_codes` (email ↔ ERP `UserVc` code, per account) for the employee side — the one herbe.service's model matches — and portal's `identity_links` for the customer/contact side. Fed manually or by email match during initial load, with a periodic re-match job (portal's `identity-rematch` cron pattern). Enforcement rules for unlinked users: `04-erp-sync.md` (booking write queues with a warning; worksheet approval blocks).
 
 One user may hold all links. Login methods per tenant are configurable (e.g. "SSO only" policy), stored the portal way (`auth_providers_enabled`-style table). A **test-auth provider** (persona login for UI tests) exists behind a double guard — env flag + non-production check, excluded from production builds; see `15-testing-strategy.md` §5.3.
 
@@ -35,6 +35,8 @@ Two levels, deliberately separate: the **tenant role** (what a person may do in 
 | **Dispatcher / Service manager** | all orders & worksheets; dispatch board incl. crew scheduling; approve/reject worksheets; bulk operations on the service item tree (`11`); manage checklist templates; trigger/override document generation (`12`); see sync health; prices & margins |
 | **Back office** | read-most; customer/item edits; reports; document delivery follow-up |
 | **Admin** | tenant settings incl. theme/whitelabel; users/roles; device enrolment links + registry; ERP connections & transformations, settings import/export (`04`); document templates, computed fields, number series (`12`); structure templates (`11`); API tokens (incl. the `/api/ext` tokens for herbe.portal) |
+
+Role activation is phased (`06-roadmap.md`): technician, dispatcher/service manager, back office and admin ship in Phase 1 (back office moved up from Phase 2 — owner 2026-07-07); team lead activates in Phase 2. **Dispatcher and service manager are one role** — the docs use both words for the same table row above.
 
 Permissions are capability flags grouped into these default roles (custom roles later, not v1); the flags let a tenant tune the edges — e.g. whether team leads approve worksheets, whether technicians see prices, who may issue device enrolments. Field-level visibility and mandatoriness are the separate, role-aware **field policies** in `02-data-model.md` — rights say *what you may do*, field policies say *what a form demands of you*.
 

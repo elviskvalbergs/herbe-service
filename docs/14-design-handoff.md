@@ -1,35 +1,38 @@
 # herbe.service — Design-System Handoff: What's Missing to Build This App
 
-Status: v0.3 (2026-07-06, round-7 correction: worksheet is one-per-technician, not shared lead+members — removes the per-row `addedBy` crew-attribution ask, adds crew-job grouping). Previous: v0.2 (2026-07-06). Previous: v0.1 (2026-07-03). Audience: whoever does the herbe design-system work (the claude.ai/design project, `fa6160ab-a783-4cce-b0b1-fb2b88c0b84c`, still pending import — `06-roadmap.md` open items) — in practice, `herbe-design-system/handovers/SERVICE.md` is the actionable version of this brief. This is the brief: what the current design system does **not** cover and herbe.service cannot ship without.
+Status: v0.4 (2026-07-07, consistency review against the now-populated `herbe-design-system` repo: §Starting point and §6 re-derived — the design-system import has landed (`tokens.css`, `shared.css`, pattern cards, per-app handovers); §1 asks already satisfied by `tokens.css` dropped, with pointers; device enrolment moved to P0 and the §4 Phase-0 list aligned with the roadmap's walking skeleton; A4 activity-purpose map corrected to the six purposes in `04-erp-sync.md`; state counts fixed; CustomerFeedback rendering removed from this app's screen count; crew-job grouping confirmed P1 by the owner). Previous: v0.3 (2026-07-06, round-7 correction: worksheet is one-per-technician, not shared lead+members — removes the per-row `addedBy` crew-attribution ask, adds crew-job grouping). Previous: v0.2 (2026-07-06). Previous: v0.1 (2026-07-03). Audience: whoever does the herbe design-system work — the `herbe-design-system` repo is the working surface, and `herbe-design-system/handovers/SERVICE.md` is the designer-facing entry point derived from this brief. This is the brief: what the current design system does **not** cover and herbe.service cannot ship without.
 
 **Why v0.2:** v0.1 was written 2026-07-03, before three spec-review rounds (`09`, `10`, `16-spec-review-round-3.md`, plus the round-4 owner decisions folded into `02-data-model.md` v0.7 and `07-ui-screens.md` v0.3). Those rounds materially reshaped the highest-complexity screens (order/worksheet approval, sync administration) and added a whole admin surface (document templates) with no design-system precedent. v0.2 re-derives every section from the current `02-data-model.md` and `07-ui-screens.md` rather than patching v0.1 line by line — treat this as the current source of truth and v0.1 as superseded.
 
-## Starting point (verified from the sibling apps' source, 2026-07-04)
+## Starting point (sibling apps verified from source 2026-07-04; re-verified against the `herbe-design-system` repo 2026-07-07)
 
-- There is **no shared component library** in the suite. "Design system" today = a handover document each app re-implements: herbe.portal with shadcn/ui + Radix + Tailwind v4, herbe.calendar with hand-rolled CSS custom properties (`app/design.css`).
-- The two token implementations, read from source:
+- The **`herbe-design-system` repo is populated and canonical** (v2.0): `tokens.css` (the published token vocabulary — `--burti-*` palette → `--herbe-*` semantic aliases → `--bg`/`--fg`/`--status-*` roles, dense/comfy density-tier presets, a dark-surface override), `shared.css` as the reference component implementation, the principles card, 8 pattern cards + foundation cards under `preview/`, and per-app handover docs under `handovers/` (incl. `SERVICE.md`, the designer entry point for this brief). There is still no shared *code* component library — each app implements the system in its own stack: herbe.portal with shadcn/ui + Radix + Tailwind v4, herbe.calendar with hand-rolled CSS custom properties (`app/design.css`).
+- The two apps' token implementations, read from source (both predate the repo and will converge on `tokens.css` per their handover docs):
   - **herbe.portal** `app/globals.css`: Tailwind v4 `@theme` block titled "BURTI — design tokens, sourced from `burti-id-brandbook-1909.pdf` (Sept 2022)". Self-hosted **Poppins** as `--font-sans`; named brand palette `--color-burti-*` (black `#231F20`, white, rowanberry `#CD4C38`, high-sky `#00AEE7`, forest `#134A40`, mud `#212722`, …). Per-deployment theming: `--brand-*` aliases (e.g. `--brand-accent`, `--brand-danger`) overridden via `<style>` injection at the page root (`lib/theming`); rule in source: "Do not inline hex values in components."
   - **herbe.calendar** `app/design.css`: a **semantic token layer** on top of the Burti palette — `--app-bg/-alt/-soft/-hover/-elev`, `--app-line`, `--app-fg/-muted/-subtle/-faint`, `--app-accent`, `--app-cool/-warn/-danger/-success`, shadows, selection — with **dark as the default theme** and a `[data-theme="light"]` override.
 - herbe.service builds on **shadcn/ui + Radix + Tailwind** (portal's approach — decision in `03-architecture.md`) and should adopt the calendar's *idea* of a semantic layer over the brand palette: components consume semantic tokens, tenants override brand aliases.
 - The existing system (`herbe-design-system` v2.0: principles + 8 pattern cards + foundation cards) is designed for **office web apps**: desktop-first data views, forms, dialogs, settings. That covers herbe.service's back-office surfaces (dispatch, approval, admin) reasonably well, and several existing pattern cards are directly reusable — `pattern-detail-view.html` for order/service-item detail, `pattern-data-table.html` for register lists, `pattern-workflow-modules.html` for status banners and danger zones, `pattern-dropdowns-and-selectors.html` for status/category pickers, `pattern-chips-and-avatars.html` for badges and identity chips.
 - What it has never had to cover is a **field tool**: offline, one-handed, gloves, sunlight, time pressure. That's the gap this document specifies — plus, new since v0.1, a set of **approval/administration surfaces of a complexity neither sibling app has** (media-completeness gating, revision diffing, dead-letter queue triage, licensing).
 
-Design constraints that override everything, including tenant branding (`README.md` principle 1, `03-architecture.md` theming): glove-usable target sizes, sunlight-readable contrast, one-hand reach, zero network dependence on any technician screen.
+Design constraints that override everything, including tenant branding (`03-architecture.md` theming — "field-UI accessibility rules override brand colors where they conflict"; restated in `herbe-design-system/handovers/SERVICE.md`): glove-usable target sizes, sunlight-readable contrast, one-hand reach, zero network dependence on any technician screen.
 
 ## 1. Token-level gaps
 
 | Gap | What's needed |
 |---|---|
 | **Field-mode sizing scale** | Touch targets ≥ 48 px (primary actions 56–64 px), enlarged type scale for arm's-length reading, spacing that tolerates imprecise taps. Defined as a token mode (e.g. `density: field` vs `density: office`), not a separate system — same semantics, bigger values. |
-| **Sunlight / high-contrast mode** | A high-contrast variant of the palette (critical text/controls ≥ 7:1) switchable by the technician (or auto via ambient light where available). Dark mode too — vans at 06:00 in a Nordic winter. |
+| **Sunlight / high-contrast mode** | A high-contrast variant of the palette (critical text/controls ≥ 7:1) switchable by the technician (or auto via ambient light where available). Dark mode too — vans at 06:00 in a Nordic winter (`tokens.css` ships a dark-surface override block to build the field dark scheme on; the high-contrast scheme has no base yet). |
 | **Sync-state colors + iconography** | Canonical tokens for `local / pending / synced / conflict` (`02-data-model.md` "Sync metadata"). These appear on every record chip and list row in the field UI; they must be one vocabulary app-wide, colorblind-safe, and never color-only (icon + color). |
-| **Severity + pass/fail tokens** | `ok / warning / critical` used by checklist results (bool / number-with-min-max / text / photo-required / selection field types — `02-data-model.md` ChecklistTemplate) and by document display rules (`12-documents-templates.md` — "critical KPI prints as a red warning box"). One definition serving UI *and* generated PDFs; the checklist runner's pass/fail rendering and the print-severity boxes are the same token, not two asks. |
-| **Status colors for three state machines** (corrected from v0.1's "two") | ServiceOrder (8 states), Worksheet (9 states), **and Booking** (`planned/confirmed/cancelled/rescheduled` + `enRoute`) all need a stable color/shape language shared by list badges, board chips, and the portal timeline. Additionally: two states in the Order/Worksheet machines are **manual human decisions** (`Work done`, `Confirmed`) rather than derived — see the manual-vs-derived pattern in §3. |
 | **Charge-type badge** | `invoiceable / warranty / contract / goodwill` — a four-value categorical badge on worksheet rows, order defaults, and printed reports ("warranty — no charge"). New since v0.1 (`02-data-model.md` "Charge type"). |
 | **Work-entry-mode indicator** | Small iconography distinguishing booking-first / prepared-ahead / walk-up jobs on the job card (`02-data-model.md` "Work-entry modes") — a booking-less worksheet needs to silently read as normal, not broken. |
 | **Signature revision-state badge** | `signed / superseded-by-correction / re-sign-requested / proceed-on-existing (audited)` — no vocabulary exists yet (`02-data-model.md` "Signature lock vs. rejection/correction"). |
-| **Tenant theme-token vocabulary** | Unify what exists: portal's `--brand-*` aliases over the `--color-burti-*` palette + calendar's semantic `--app-*` layer (see Starting point) into one published vocabulary herbe.service implements (`13-suite-change-requests.md` SUITE-3) — plus the **precedence rule**: accessibility tokens beat brand tokens on field surfaces. |
-| **Print/PDF tokens** | Header/footer, table, and severity styling for generated documents (`12-documents-templates.md`): the built-in worksheet report renders from theme tokens with no DOCX template. Today no print styling exists in the system at all. |
+| **Print/PDF tokens** | Header/footer, table, and severity styling for generated documents (`12-documents-templates.md`): the built-in worksheet report renders from theme tokens with no DOCX template. Verified 2026-07-07: no `@media print` styling exists anywhere in the design-system repo. |
+
+**Already covered by the design system (dropped from the ask list, v0.4)** — three v0.3 asks turned out to be satisfied by the imported repo; herbe.service consumes these rather than commissioning them:
+
+- **Published token vocabulary**: `tokens.css` is the unified vocabulary the v0.3 ask wanted built (`--burti-*` → `--herbe-*` → semantic roles + density presets; `13-suite-change-requests.md` SUITE-3). What survives of the old ask is only the **precedence rule** — accessibility tokens beat brand tokens on field surfaces — already stated in `handovers/SERVICE.md` and `03-architecture.md`.
+- **Severity / pass-fail tokens**: `tokens.css` defines `--status-success/-warning/-danger/-info/-neutral` (each with `-soft`/`-fg` variants); checklist pass/fail and document severity boxes map onto these. The *print* rendering of them is still the Print/PDF row above.
+- **Status colors for the three state machines**: the badge language exists (`--status-*` + `preview/audit-status-badges.html` + `pattern-chips-and-avatars.html`); what remains is the *mapping*, not new tokens — ServiceOrder (9 states incl. `Cancelled`), Worksheet (9 states incl. `Rejected`), Booking (`planned / confirmed / cancelled` — `rescheduled` is recorded as cancel-and-recreate, and `enRoute` is a flag on the booking, not a state; both per `02-data-model.md`). The manual-vs-derived distinction (`Work done`, `Confirmed`) stays a real gap — see the pattern in §3.
 
 ## 2. Component-level gaps
 
@@ -47,7 +50,7 @@ Priority: **P0** = walking skeleton (Phase 0), **P1** = MVP (Phase 1), **P2** = 
 - **P0 — Job card + my-jobs list**: booking/worksheet card with status, time window, customer, site, one-tap call/navigate, work-entry-mode indicator (a booking-less card has no time slot and must still read as intentional, not broken); the single most-used component in the product.
 - **P1 — Day/week technician calendar** (own bookings; renders Bookings, `02-data-model.md`).
 - **P1 — Worksheet execution screen family**: big-target quantity stepper, part row with stock-location badge (a worksheet has exactly one technician — round 6 correction, `02-data-model.md` — so no per-row authorship chip is needed), per-row **charge-type selector** (4 values, field-policy gated), per-row **service-item attribution picker** (when a worksheet spans multiple nodes), start/stop **timer control** (work/travel/waiting, with a **return-travel variant that stays live after the worksheet is `Done`** — a timer that must remain tappable in an otherwise "closed" document, no existing pattern for this), pause-with-reason picker, status-transition button with blocking-requirements list (field policies: "missing: km, remedy code").
-- **P1 — Crew-job grouping**: on a multi-technician job, each technician has their own worksheet sharing a `crewGroupId` — approval queues and job cards need a "grouped by job" treatment (N worksheets, one visual cluster) rather than a single shared document with per-row attribution.
+- **P1 — Crew-job grouping** (P1 confirmed by owner 2026-07-07): on a multi-technician job, each technician has their own worksheet sharing a `crewGroupId` — approval queues and job cards need a "grouped by job" treatment (N worksheets, one visual cluster) rather than a single shared document with per-row attribution. The richer crew UX (dispatch-board crew group chip, detach-member) stays P2 with the board itself.
 - **P1 — Checklist runner**: the five field types (bool, number with min/max + pass/fail rendering, text, photo-required, selection), section progress, required-on-complete errors (`02-data-model.md` ChecklistTemplate).
 - **P1 — Signature capture**: full-screen canvas, name field, legal text slot, content-lock confirmation, plus a **re-entry state** for "signature requested again" after a correction (see revision-chain pattern, §3).
 - **P1 — Camera/media flow**: capture with before/after tagging, thumbnail strip, upload-state per photo (offline-queued).
@@ -92,14 +95,14 @@ This is now the most complex screen family in the product (`07-ui-screens.md` O2
 ### Admin surfaces with no design-system precedent (absent from v0.1 entirely)
 
 - **P1 — Users & roles (A2) additions**: device-enrolment QR/link generator, ERP identity-link mapping table with a match-by-email helper, and a **seat counter + upgrade prompt** (licensed vs. active users, activation beyond the licensed count blocked) — a SaaS-commerce UI pattern with zero precedent in either sibling app.
-- **P1 — ERP connection (A4) additions**: capability-probe result display, **activity-purpose map** (a five-row per-purpose type/symbol mapping table: booking / intake / time-entry mirror / document vessel / history import), invoice back-link field, poll cadence and maintenance-window settings; P2: transformations editor (declarative maps + JS hooks), settings import/export, `/api/ext` token minting/revocation table.
+- **P1 — ERP connection (A4) additions**: capability-probe result display, **activity-purpose map** (a six-row per-purpose type/symbol mapping table, `04-erp-sync.md`: `booking` / `worksheetShadow` (ships Phase 1, minimal) / `intake` / `workSegment` (P2 config; subsumes the earlier "time-entry mirror") / `documentVessel` / `historyImport`), invoice back-link field, poll cadence and maintenance-window settings; P2: transformations editor (declarative maps + JS hooks), settings import/export, `/api/ext` token minting/revocation table.
 - **P2 — Checklist template builder (O9)**: sections, field types, required rules, bounds, versioning, assignment by item/work type — structurally a form-builder; nothing like it exists in portal or calendar. Distinct from, and more complex than, the checklist *runner* (P1, technician-facing) already listed above.
 - **P2 — Document-template library (A9, `12-documents-templates.md`)**: upload, field-catalog browser, test-render + validation report, selection-rule editor, number series, computed-field definitions. No precedent anywhere in the suite; closest reference point is portal's A5 email-template editor (per-key defaults + overrides, variables panel), worth citing as a starting shape even though the domain (DOCX templates, not HTML email) differs.
 
 ### Auth & device (Phase 0–1, `05-users-auth.md`)
 
 - **P0 — PIN pad login**: large-target unlock screen, failure/rate-limit/wipe-warning states.
-- **P1 — Device enrolment**: QR/link pairing flow, device registry admin list (last sync, remote wipe).
+- **P0 — Device enrolment**: QR/link pairing flow + a minimal device list — the walking skeleton's PIN-on-paired-device login (`06-roadmap.md` Phase 0) can't exist without pairing. P1 finishes the registry admin surface (last sync, remote wipe).
 
 ## 3. Pattern-level gaps (design rules, not components)
 
@@ -115,39 +118,40 @@ This is now the most complex screen family in the product (`07-ui-screens.md` O2
 
 ## 4. Screen inventory needing design (Phase 0–1 order first, then P2/P3)
 
-Re-derived against `07-ui-screens.md` v0.3 in full (superseding v0.1's list, which predated round 4 and several screens below).
+Re-derived against `07-ui-screens.md` v0.5 in full (superseding v0.1's list, which predated round 4 and several screens below).
 
-**Phase 0 — walking skeleton**
-1. PIN login + device enrolment (A2, A3)
-2. Today / My jobs — read-only list, including booking-less worksheets (F1, F2)
+**Phase 0 — walking skeleton** (matches the roadmap's skeleton scope, `06-roadmap.md` Phase 0)
+1. PIN login + device enrolment (A2, A3 — the Phase 0 minimal cut: enrolment link/QR + device list)
+2. Read-only master-data list — items/customers pulled from one ERP, displayed offline, in a tenant theme (the walking-skeleton screen; **not** the Today feed — F1/F2 are Phase 1)
 
 **Phase 1 — MVP**
-3. Job / booking detail (site access notes, history shortcut) (F3)
-4. Worksheet execution: parts / time & km / checklist / photos tabs, charge type + service-item attribution per row, return-travel-after-done timer (F4)
-5. Signature capture, incl. re-sign re-entry state (F5)
-6. Service item card + full service history timeline (F6)
-7. Customer / site card, incl. field-creation and ad-hoc job start (F7)
-8. Inbox — conflict tasks, assignment notices, rejection comments (F10)
-9. More / profile — briefcase, device info, offline lock (F11)
-10. Orders list + Order detail, incl. manual `Work done`/`Confirmed` actions and prepared-ahead worksheet creation (O1, O2)
-11. Worksheet approval queue — both queue types (O3)
-12. Worksheet review — the full component set in §2 above (O4)
-13. Customers / sites / service items registers, incl. merge flow (O7)
-14. Sync health & administration — status cards, DLQ browser, conflict queue, per-record inspector, unlinked-activity triage (O11)
-15. Tenant settings, Users & roles incl. seat counter, ERP connection incl. activity-purpose map (A1, A2, A4)
-16. Email/notification templates, Modules, Audit log, Migrations/ops (A5–A8)
+3. Today / My jobs — bookings and booking-less worksheets in one list, plus the own-bookings day/week calendar (F1, F2)
+4. Job / booking detail (site access notes, history shortcut) (F3)
+5. Worksheet execution: parts / time & km / checklist / photos tabs, charge type + service-item attribution per row, return-travel-after-done timer (F4)
+6. Signature capture, incl. re-sign re-entry state (F5)
+7. Service item card + full service history timeline (F6)
+8. Customer / site card, incl. field-creation and ad-hoc job start (F7)
+9. Inbox — conflict tasks, assignment notices, rejection comments (F10)
+10. More / profile — briefcase, device info, offline lock (F11)
+11. Orders list + Order detail, incl. manual `Work done`/`Confirmed` actions and prepared-ahead worksheet creation (O1, O2)
+12. Worksheet approval queue — both queue types, crew jobs grouped by `crewGroupId` (P1, owner 2026-07-07) (O3)
+13. Worksheet review — the full component set in §2 above (O4)
+14. Customers / sites / service items registers, incl. merge flow (O7)
+15. Sync health & administration — status cards, DLQ browser, conflict queue, per-record inspector, unlinked-activity triage (O11)
+16. Tenant settings, Users & roles incl. seat counter, ERP connection incl. activity-purpose map (A1, A2, A4)
+17. Email/notification templates, Modules, Audit log, Migrations/ops (A5–A8)
 
 **Phase 2**
-17. Van stock, Scanner (F8, F9)
-18. Dispatch board incl. crew group chip, Map view (O5, O6)
-19. Stock overview (O8)
-20. Checklist template builder (O9)
-21. Item tree browser + coverage picker + bulk-operations bar (`11-service-items-and-parts.md`)
-22. Document-template library (A9)
+18. Van stock, Scanner (F8, F9)
+19. Dispatch board incl. crew group chip, Map view (O5, O6)
+20. Stock overview (O8)
+21. Checklist template builder (O9)
+22. Item tree browser + coverage picker + bulk-operations bar (`11-service-items-and-parts.md`)
+23. Document-template library (A9)
 
 **Phase 3**
-23. Reports (O10)
-24. CustomerFeedback rendering, ETA/`enRoute` UI on Booking (portal-side and field-side respectively — see `08-suite-integration.md`)
+24. Reports (O10)
+25. ETA/`enRoute` UI on Booking, field-side (`08-suite-integration.md`; CustomerFeedback rendering is portal-side and not part of this app's screen inventory)
 
 **Still correctly out of scope** — carried over from v0.1 and unchanged: ~~customer-facing pages~~ removed (owner 2026-07-05): the customer surface is herbe.portal's service modules, designed portal-side within the portal's design system (`08-suite-integration.md` §4); herbe.service needs no customer-facing screens.
 
@@ -160,6 +164,6 @@ Re-derived against `07-ui-screens.md` v0.3 in full (superseding v0.1's list, whi
 
 ## 6. Inputs we still need from the design side
 
-1. `burti-id-brandbook-1909.pdf` (the portal's tokens cite it as their source) and the design-system handover doc(s) given to herbe.portal and herbe.calendar — we've now read both *implementations* from source, but not the docs behind them.
-2. Access to the claude.ai/design project (`fa6160ab-a783-4cce-b0b1-fb2b88c0b84c`) or an export of it — e.g. "Send to Claude Code" from the Design side, or export the files and commit them to the `herbe-design-system` repo. Still the single open item as of 2026-07-06 (`06-roadmap.md`).
-3. Brand assets and any existing field-app explorations, if they exist.
+1. `burti-id-brandbook-1909.pdf` (the portal's tokens and `herbe-design-system/tokens.css` cite it as their source) — the derived token values are in the repo, the brandbook itself is not.
+2. ~~Access to the claude.ai/design project or an export of it~~ **done as of 2026-07-07**: the export landed in the `herbe-design-system` repo — `tokens.css`, `shared.css`, `preview/` cards (principles, 8 patterns, foundations), `handovers/` incl. `PORTAL.md`, `CALENDAR.md` and `SERVICE.md` (the actionable, prioritised version of this brief). The v0.3 asks for "the handover doc(s) given to herbe.portal and herbe.calendar" are satisfied by those files.
+3. Any existing field-app explorations, if they exist (brand assets — logos, app icons, hero imagery — are already in the repo under `assets/`).
