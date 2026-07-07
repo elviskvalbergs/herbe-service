@@ -128,6 +128,6 @@ Verified via halocron 2026-07-07. The register behind `ActVc.ActState` — the w
 |---|---|---|
 | `Code` | M4Code 5 | the state code (`ActVc.ActState` references it) |
 | `Comment` | M4Str 100 | display name |
-| `PipelineColNr` | M4Set 46 | the Kanban column this state maps to (the calendar's `lib/pipeline` reads it) |
+| `PipelineColNr` | M4Set 46 | Kanban column mapping — **set from the calendar/Kanban side, not by herbe.service** |
 
-herbe.service maps each worksheet/order status → an `ActState` code (per-connection A4 setting) and can **seed these records over the API** (a one-click setup tool POSTs `Code` + `Comment` + `PipelineColNr`), so no manual ERP setup is required to stand up the manager Kanban.
+herbe.service maps each worksheet/order status → an `ActState` code (per-connection A4 setting) and can **seed these records over the API** (a one-click setup tool POSTs `Code` + `Comment`), so no manual ERP setup is required to stand up the states. The Kanban column layout itself is configured calendar-side (`lib/pipeline`), not by us.
