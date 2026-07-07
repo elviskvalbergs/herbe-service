@@ -243,11 +243,14 @@ a missing field. The ERP's own creates allocate the number via
 the serial guard (cf. `FindNewProperIVSerNr`) refuses a store when a supplied
 `SerNr` already exists ("record already exists") but allocates the next number
 when it is blank. So the create must POST with **no `SerNr`** and let
-`NextSerNr` assign it; sending `0`/a reused value/the API default is what
-caused the no-op. Confirming write test (still to run on an allowlisted host):
-POST an `SVOVc` with no `SerNr`, and confirm an `SVOVc` number series is
-defined for the period and available to the REST API user (`NextSerNr` returns
-`-1` otherwise, which also aborts the create). Recorded in `04-erp-sync.md`.
+`NextSerNr` assign it. Recorded in `04-erp-sync.md`.
+
+**Live retest 2026-07-07 (owner ran it) — payload fully validated; failure is number-series, not payload.** A clean `POST /api/1/SVOVc` with **no `SerNr`** (`CustCode=100024`, `TransDate=2025-08-19`, one row: `ArtCode=024`, `Quant=1`, `SerialNr=1111`, `ItemType=2`) returned:
+- `<message description='Already registered'>` and `url='/api/1/SVOVc/'` (**empty `SerNr`**) — still not persisted, and **no `SerNr` was supplied**, so the collision is `NextSerNr` handing out an already-used (or blank) number, i.e. the `SVOVc` number series for the period is misconfigured/behind the data — **not** a payload issue.
+- **Everything else worked.** From just the codes, the ERP **derived** the customer block (`Addr0`/`Addr1`/`CustContact`/`PayDeal`/`Objects`/`LangCode`/`CustVATCode`/`Phone`/`CustCat`) and the row (`Price=468.18`/`SalesAcc=6110`/`Spec`/`VATCode`) — i.e. `PasteCUInSVO`/`PasteItemInSVO` **run on a plain REST create** (see the scoping note this adds to Step 6 / the REST-tier limitation). The adapter can POST minimal and let the ERP fill identity + pricing.
+- **`ItemType` integer write CONFIRMED**: `set_row_field.0.ItemType=2` read back as `<ItemType>Warranty</ItemType>`. The push writes the integer `1`–`4`; done.
+
+**Remaining (numbering only):** repair/confirm the `SVOVc` number series so `NextSerNr` yields a free number, or have the adapter supply the `SerNr`. Decisive follow-up (retry with an explicit unused `SerNr=230999`) pending; that distinguishes "series misconfigured" from "API doesn't auto-assign, client must supply the number."
 
 ## Step 11 — `ActVc` types on this install
 
