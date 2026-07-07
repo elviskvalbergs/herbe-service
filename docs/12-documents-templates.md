@@ -59,7 +59,7 @@ Template library per document type: upload DOCX, **field-catalog browser** with 
 
 ## Ownership & roadmap
 
-All app-owned; nothing crosses the ERP API except the finished document as an attachment/link. (ERP-generated documents — invoices — are the ERP's own; where WebExcellentAPI is present the app can *fetch* those PDFs for display, which is the existing capability flag, not this engine.)
+All app-owned; nothing crosses the ERP API except the finished document as an attachment/link. (ERP-generated documents — invoices — are the ERP's own; where WebExcellentAPI is present the app can *fetch* those PDFs for display, which is the existing capability flag, not this engine.) The WebExcellentAPI-dependent steps here — attaching the document to the `ActVc` vessel, fetching ERP PDFs — follow the per-connection **version gate** (`04-erp-sync.md` API tiers): available from the configured minimum ERP/Books version, hidden below it; the emailed-PDF + on-site canvas-signature fallback is unaffected.
 
 - **Phase 1**: built-in worksheet report PDF (tenant-themed, no templates yet). ~~+ order confirmation PDF~~ — dropped 2026-07-07 (owner; `06-roadmap.md` is authoritative: Phase 1 ships the worksheet report only; order confirmation arrives as a Phase-2 DOCX template type).
 - **Phase 2**: DOCX template engine — placeholders, loops, conditionals, images; computed fields & display rules (shared with built-in documents); template library + test render; selection rules; document number series; automatic generation on approval. Rendering-pipeline ADR (converter choice).
