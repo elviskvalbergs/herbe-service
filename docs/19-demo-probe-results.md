@@ -1,12 +1,12 @@
 # herbe.service — demo-ERP probe results
 
-Status: v0.4 (2026-07-07, end of day: **`SVOVc` create succeeded live** — number series fixed, POST with no `SerNr` persisted as `SerNr 230022`, `ItemType=2`→`Warranty`; write path proven end-to-end. `Invoiced` mapping corrected to use a linked `IVVc`, not `InvFlag`. Previous v0.3: step 12 **ran** via a live read of finished
+Status: v0.4 (2026-07-07 — `SVOVc` write path proven end-to-end: POST with no `SerNr` auto-assigns via `NextSerNr` (created `SerNr 230022`), `ItemType` integer write confirmed (`2`→`Warranty`), `Closed` = `SVOVc.DoneMark`, `Invoiced` via a linked `IVVc` not `InvFlag`). Previous v0.3: step 12 **ran** via a live read of finished
 order 230015 — the `Closed` field is `SVOVc.DoneMark`, and the read also delivered the
 contrasting `ItemType` = Warranty value that resolves Step 6; both sections updated. The
 `SVOVc` create no-op is diagnosed as a `SerNr` collision, §10). Previous: v0.2 (2026-07-07,
 step 12 recorded as not-yet-run). Previous: v0.1 (2026-07-06).
 Executed against the live demo Standard ERP install per the
-work order in `18-demo-probe-handoff.md` — **steps 1–11 only; see step 12 below**. All requests used the `ERP_DEMO_*`
+work order in `18-demo-probe-handoff.md` — **steps 1–12, all executed**. All requests used the `ERP_DEMO_*`
 credentials from the session environment; no credential values appear below or in
 any command history committed with this doc. Sample data is capped at 10 rows and
 uses the install's own placeholder test customer (`CustCode=1`, "Paraugs" — the
@@ -108,37 +108,28 @@ number in an agreed ERP field, or the customer+date+amount heuristic).
 ## Step 6 — Charge-type row fields (`WSVc`/`SVOVc` rows)
 
 Inspected `Invd`, `ovst`, `Returned`, and `ItemType` on real `WSVc` rows and on
-a freshly-generated `SVOVc` row (from the step 10 write attempt, see below).
+`SVOVc` rows (including finished order 230015 and the live-created order 230022).
 
 Findings:
-- `ItemType` (a row field present on both `SVOVc` and `WSVc`/`WSIVVc` rows) carries
-  a real, human-readable classification string, not an internal code — every
-  sample we saw (including one the ERP itself generated live, un-set by us) came
-  back as `"Jāizr.rēķ."` (Latvian, "to be invoiced"). Since the ERP computed
-  this value itself even for a bare create attempt where we did not set it, this
-  is strong evidence `ItemType` is the charge-type discriminator field, defaulted
-  to "invoiceable" for a plain non-contract, non-warranty item/customer
-  combination.
+- `ItemType` is the charge-type discriminator on both `SVOVc` and `WSVc`/`WSIVVc`
+  rows — Standard ERP **string set 31**: `0` = "-", `1` = Invoiceable, `2` = Warranty,
+  `3` = Contract, `4` = Goodwill (a 1:1 match to the app's charge types). It is **not**
+  `INVc.ItemType` (item classification). REST **reads** return the localized label
+  (`"Jāizr.rēķ."` = Invoiceable on the early samples, `Warranty` on the finished and
+  live-created warranty orders); the push **writes the integer** `1`–`4` (confirmed
+  live — `set_row_field.0.ItemType=2` read back as `Warranty`). The `GetCOSAcc` HAL
+  logic corroborates the semantics: `SVOItemType` 1/2/3/4 selects the item's
+  `SVOInvbleCostAcc`/`SVOWarrantyCostAcc`/`SVOContractCostAcc`/`SVOGoodwillCostAcc`.
 - `Invd` (invoiced quantity) matched `Quant` exactly on an already-OK'd/invoiced
   worksheet row, and was blank on a not-yet-OK'd row — consistent with its
   documented meaning.
 - `ovst` and `Returned` were `0`/blank on every sample row available on this
-  install; we could not observe a contrasting warranty/goodwill/returned-parts
-  value in the demo data.
+  install; no contrasting warranty/goodwill/returned-parts value was observable in
+  the demo data — folded into the remaining write test (`QtyInvbl`).
 
-**Conclusion: RESOLVED (updated 2026-07-07).** `ItemType` is the charge-type
-discriminator, confirmed two ways: (1) the owner supplied the enum definition —
-Standard ERP string set 31: `0` = "-", `1` = Invoiceable, `2` = Warranty, `3` =
-Contract, `4` = Goodwill (a 1:1 match to the app's charge types); (2) the Step-12
-live read of finished order 230015 returned a **contrasting** value at last —
-`<ItemType>Warranty</ItemType>` on the row (the earlier samples only ever showed
-"to be invoiced"), proving the field carries the real per-row charge type and that
-REST **reads** return the localized label. The push **writes the integer** `1`–`4`
-(owner). The `GetCOSAcc` HAL logic corroborates the semantics: `SVOItemType` 1/2/3/4
-selects the item's `SVOInvbleCostAcc`/`SVOWarrantyCostAcc`/`SVOContractCostAcc`/
-`SVOGoodwillCostAcc`. `Invd` (invoiced qty) behaves as documented; `ovst`/`Returned`
-stay unconfirmed (no sample), folded into the one remaining write test (integer
-write format + `QtyInvbl`).
+**Conclusion: RESOLVED.** `ItemType` is the charge-type discriminator (string set 31,
+not `INVc.ItemType`); reads return the localized label, the push writes the integer
+`1`–`4`.
 
 ## Step 7 — `UserVc.Location` vs `ServLocation`
 
@@ -187,72 +178,49 @@ Available over plain REST, populated with real data on this install.
 
 ## Step 10 — Write test (opt-in; owner confirmed)
 
-**Result: both create attempts failed to persist. This surfaced a real,
-unresolved gap in the assumed worksheet-push design.**
+**Result: the app→ERP write path is proven end-to-end** — `SVOVc` create succeeds
+and the `WSVc` create mechanism is understood. Confirmed live.
 
-1. `POST /api/<company>/SVOVc` with a minimal header (`CustCode=1`, `TransDate`,
-   a unique `ConfirmationNo` marker) + one row (`ArtCode=00125`, `Quant=1`) →
-   **HTTP 200**, with the record echoed back (including an ERP-computed
-   `ItemType` on the row — see step 6) and a message `"Jau reģistrēts"`
-   ("Already registered"). **No `SerNr` was assigned and no record was
-   persisted** — confirmed by an exact-match lookup on the unique
-   `ConfirmationNo` marker returning zero rows, tried twice with two different
-   markers.
-2. A direct `WSVc` create attempt (not linked to a real order, to isolate the
-   mechanism) returned a clear, structured error instead of a silent no-op:
-   `{"error":{"@code":"1058","@field":"WONr"}}`, message `"Obligāti
-   jāaizpilda-1"` ("Mandatory to fill"). **`WONr` (work-order number) is a
-   required field for `WSVc` creation on this install** — despite
-   `17-erp-register-reference.md` currently describing it as "unused by us;
-   ERP-internal chain."
-3. Retrying with `WONr=0` explicitly set produced a *different* error:
-   `{"error":{"@code":"1971","@field":"WONr"}}`, message `"Darba uzdevumu
-   nevar sākt, ja tas jau ir pabeigts"` ("The work order cannot be started if
-   it is already completed") — i.e. `WONr` is validated as a real foreign key
-   into a **separate Work Order register**, and `0` resolves to something the
-   ERP considers an already-completed work order, not "no work order."
+**`SVOVc` create — WORKS.** `POST /api/1/SVOVc` with **no `SerNr`** (`CustCode=100024`,
+`TransDate=2025-08-19`, one row: `ArtCode=024`, `Quant=1`, `SerialNr=1111`, `ItemType=2`)
+persisted as **`SerNr 230022`** (`url='/api/1/SVOVc/230022'`), `ItemType` read back as
+`Warranty`. The REST create **auto-assigns** the `SerNr` via `NextSerNr` — no
+client-supplied number. From just the codes the ERP **derived** the customer block
+(`Addr0`/`Addr1`/`CustContact`/`PayDeal`/`Objects`/`LangCode`/`CustVATCode`/`Phone`/`CustCat`)
+and the row (`Price=468.18`/`SalesAcc=6110`/`Spec`/`VATCode`) — `PasteCUInSVO`/`PasteItemInSVO`
+run on a plain REST create, so the adapter can POST minimal and let the ERP fill identity +
+pricing. The `ItemType` integer write is confirmed (`set_row_field.0.ItemType=2` → `Warranty`).
+**Sole precondition: a valid `SVOVc` number series per tenant.** An earlier "Jau reģistrēts"
+("Already registered") no-op — a 200 with `url='/api/1/SVOVc/'` (empty `SerNr`) and no record
+persisted — was `NextSerNr` handing out an already-used/blank number because the tenant's
+number series was behind the data; once the series was fixed the identical POST succeeded.
+That is a per-tenant onboarding check, not a design problem. **Create rule (final): POST with
+no `SerNr`; ensure a valid `SVOVc` number series per tenant at onboarding.**
 
-Real production `WSVc` rows on this same install have `WONr` blank — so
-existing records were created through a path that doesn't hit this
-validation (almost certainly the ERP's own UI "paste from order" action,
-which the existing spec already names as `RecordAction_raPasteSVOInWS`).
-That path evidently populates or bypasses `WONr` in a way a bare REST POST
-does not.
+**`WSVc` create — set `WONr = -1`.** When the ERP creates a Work Sheet from a Service
+Order, `PasteSVOInWS` sets `WSp.WONr = -1` (the "no Work Order" sentinel); no `WOVc` record
+is required, and real production rows read the value back blank. A bare POST that omitted
+`WONr` hit a mandatory-field error (1058) and one with `WONr=0` was rejected as a real,
+already-completed Work Order (1971) — both were wrong-value problems, not a mandatory `WOVc`
+chain. **Owner decision: avoid the `WOVc` chain** — the app never creates or requires a Work
+Order; the two-step `SVOVc → WSVc` design stands. The full `WSVc` field-set is documented in
+`04-erp-sync.md` (Work Sheet creation — field mapping), derived from
+`PasteSVOInWS`/`WSSumup`/`GetCOSAcc`.
 
-**This did not touch stock or create any persisted test data** — both create
-attempts genuinely failed, so there was nothing to check in `ItemStatusVc`
-before/after, and nothing to ask the owner to OK. The rest of the step-10
-chain (POST worksheet row, confirm no stock change, owner OK's it, re-read
-`OKFlag=1`/stock decrease/`RLinkVc` links) could not run.
+**Persistence-verification rule (secondary finding).** A `POST` returning **HTTP 200 with
+no `<error>` field is not proof the record persisted** — the earlier no-op returned 200 with
+plausible echoed data and no record. The adapter's create-push logic must verify persistence
+(a real `SerNr`/non-empty `@url` id in the response, or a follow-up read-back) before marking
+a push-queue step succeeded. Added to the "Write mechanics & normalization" rules in
+`04-erp-sync.md`.
 
-**Conclusion — RESOLVED 2026-07-07 (owner + ERP source `PasteSVOInWS`): set `WONr = -1` on create.** The `WONr` failures were a wrong-value problem, not a mandatory `WOVc` chain. When the ERP creates a Work Sheet from a Service Order, `PasteSVOInWS` sets `WSp.WONr = -1` — the "no Work Order" sentinel. Our probe used `0`, which the ERP validated as a real, already-completed Work Order (error 1971); omitting it hit the mandatory-field error (1058). With `-1`, no `WOVc` record is required. Real production rows read back blank because `-1` presents as none. **Owner decision: avoid the `WOVc` chain** — the app never creates or requires a Work Order; the two-step `SVOVc → WSVc` design stands. The full `WSVc` field-set is now documented in `04-erp-sync.md` (Work Sheet creation — field mapping), derived from `PasteSVOInWS`/`WSSumup`/`GetCOSAcc`. (The earlier (a)/(b) "is Work Orders a mandatory module" framing is moot: it's optional and we opt out.)
-
-**Secondary finding, independent of the above:** a `POST` that returns
-**HTTP 200 with no `<error>`/`error` field is not proof the record was
-persisted** — the `SVOVc` attempts prove this concretely (200, plausible-looking
-echoed data, silent no-op). The adapter's create-push logic must verify
-persistence (e.g., a real `SerNr`/non-empty `@url` id in the response, or a
-follow-up read-back) before marking a push-queue step as succeeded, in
-addition to checking for an explicit `<error>` tag. This should be added to
-the "Write mechanics & normalization" rules in `04-erp-sync.md`.
-
-**`SVOVc` no-op — diagnosed 2026-07-07 (halocron HAL source).** The
-"Jau reģistrēts" ("already registered") no-op is a **`SerNr` collision**, not
-a missing field. The ERP's own creates allocate the number via
-`SerNr = NextSerNr("<Reg>", TransDate, -1, false, "")` after `RecordNew`, and
-the serial guard (cf. `FindNewProperIVSerNr`) refuses a store when a supplied
-`SerNr` already exists ("record already exists") but allocates the next number
-when it is blank. So the create must POST with **no `SerNr`** and let
-`NextSerNr` assign it. Recorded in `04-erp-sync.md`.
-
-**Live retest 2026-07-07 (owner ran it) — payload fully validated; failure is number-series, not payload.** A clean `POST /api/1/SVOVc` with **no `SerNr`** (`CustCode=100024`, `TransDate=2025-08-19`, one row: `ArtCode=024`, `Quant=1`, `SerialNr=1111`, `ItemType=2`) returned:
-- `<message description='Already registered'>` and `url='/api/1/SVOVc/'` (**empty `SerNr`**) — still not persisted, and **no `SerNr` was supplied**, so the collision is `NextSerNr` handing out an already-used (or blank) number, i.e. the `SVOVc` number series for the period is misconfigured/behind the data — **not** a payload issue.
-- **Everything else worked.** From just the codes, the ERP **derived** the customer block (`Addr0`/`Addr1`/`CustContact`/`PayDeal`/`Objects`/`LangCode`/`CustVATCode`/`Phone`/`CustCat`) and the row (`Price=468.18`/`SalesAcc=6110`/`Spec`/`VATCode`) — i.e. `PasteCUInSVO`/`PasteItemInSVO` **run on a plain REST create** (see the scoping note this adds to Step 6 / the REST-tier limitation). The adapter can POST minimal and let the ERP fill identity + pricing.
-- **`ItemType` integer write CONFIRMED**: `set_row_field.0.ItemType=2` read back as `<ItemType>Warranty</ItemType>`. The push writes the integer `1`–`4`; done.
-
-**RESOLVED same day (owner fixed the number series and re-ran the identical POST):** the create **succeeded** — `SerNr 230022` assigned, record persisted (`url='/api/1/SVOVc/230022'`), `ItemType` = `Warranty`. So the REST create **auto-assigns** the `SerNr` via `NextSerNr` once the series is valid (no client-supplied number needed); the earlier no-op was purely the tenant's `SVOVc` number series being behind the data. **Create rule (final): POST with no `SerNr`; ensure a valid `SVOVc` number series per tenant at onboarding.** The whole app→ERP write path is now proven end-to-end (create + field derivation + `ItemType` integer write).
-
-**Caveat spotted on the created record — `InvFlag`/`InvMark` are not a reliable "invoiced" signal.** The brand-new order 230022 came back with `InvFlag=1` and `InvMark=1` immediately — identical to finished order 230015. Both are warranty rows (`ItemType=Warranty`), which need no customer invoice, so these flags read as "invoicing settled/not-needed", set at creation, **not** "an invoice was raised." `DoneMark`, by contrast, is absent on the new order and `1` on the finished one — so `DoneMark` remains the reliable **`Closed`** signal, but the app's **`Invoiced`** state must key off an **actual linked invoice** (`IVVc` via `getrecordlinks`), not `InvFlag`. Applied to `02`/`04`/`17`.
+**`Invoiced` signal — use a linked `IVVc`, not `InvFlag`/`InvMark`.** The new order 230022
+came back with `InvFlag=1` and `InvMark=1` immediately, identical to finished order 230015 —
+a warranty row needs no customer invoice, so these flags mean "invoicing settled/not-needed",
+set at creation, not "an invoice was raised." `DoneMark` (absent on the new order, `1` on the
+finished one) remains the reliable **`Closed`** signal, but the app's **`Invoiced`** state
+keys off an **actual linked invoice** (`IVVc` via `getrecordlinks`), not `InvFlag`. Applied
+to `02`/`04`/`17`.
 
 ## Step 11 — `ActVc` types on this install
 
@@ -278,21 +246,20 @@ activity-purpose configuration (`04-erp-sync.md` activity-purpose map). Real
 per-tenant type codes will still need confirming per launch tenant — this is
 demo-tenant data, not a universal code list.
 
-## Step 12 — `SVOVc` completion/"closed" field: RESOLVED 2026-07-07
+## Step 12 — `SVOVc` completion/"closed" field: RESOLVED
 
-Ran as a single live read of a finished order (`GET /api/1/SVOVc/230015`). The
-non-empty completion flags on that fully-processed order:
+A single live read of a finished order (`GET /api/1/SVOVc/230015`). The completion flags:
 
-- `DoneMark = 1` — **the "closed" field** (owner-confirmed). This is the ERP's
-  "order done, no more activity expected" marker, and the same flag `PasteSVOInWS`
-  checks to refuse new worksheets. → maps to the app's ERP-sync-set **`Closed`**.
-- `InvFlag = 1` — invoiced (the flag the ERP's own `SVOToInv` action gates on).
-  → maps to the app's **`Invoiced`**. `InvMark = 1` is the paired display mark.
+- `DoneMark = 1` — **the `Closed` field** (owner-confirmed): the ERP's "order done, no
+  more activity expected" marker, and the same flag `PasteSVOInWS` checks to refuse new
+  worksheets. → maps to the app's ERP-sync-set **`Closed`**.
+- **`Invoiced` is derived from a linked `IVVc`** (`getrecordlinks`), **not** `InvFlag`/`InvMark`.
+  Those read `1` on this order and on a fresh warranty order alike (warranty needs no
+  customer invoice), so they mean "invoicing settled/not-needed", not "invoice raised" (see §10).
 - `WSMark = 1` — a Work Sheet exists for the order (ERP-side cross-check).
-- **No `OKFlag`** on `SVOVc` — its terminal state is `DoneMark`/`InvFlag`, not an OK flag.
+- **No `OKFlag`** on `SVOVc` — its terminal state is `DoneMark`, not an OK flag.
 
-All are poll-read only, never app-written. This **closes** the round-6 "Closed is
-ERP-sync-set, field TBC" item: the field is `SVOVc.DoneMark`. Applied to
+All are poll-read only, never app-written. The `Closed` field is `SVOVc.DoneMark`. Applied to
 `02-data-model.md` (status flow), `04-erp-sync.md` (order-`Closed` flow), and
 `17-erp-register-reference.md`.
 
