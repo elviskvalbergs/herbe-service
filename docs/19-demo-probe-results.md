@@ -1,8 +1,10 @@
 # herbe.service — demo-ERP probe results
 
-Status: v0.2 (2026-07-07, correction: step 12 of the work order was **not run** and is
-now recorded as such below; the summary's open items are extended with the unexplained
-`SVOVc` create no-op and the un-run closed-field probe). Previous: v0.1 (2026-07-06).
+Status: v0.3 (2026-07-07, later same day: step 12 **ran** via a live read of finished
+order 230015 — the `Closed` field is `SVOVc.DoneMark`, and the read also delivered the
+contrasting `ItemType` = Warranty value that resolves Step 6; both sections updated. The
+`SVOVc` create no-op is diagnosed as a `SerNr` collision, §10). Previous: v0.2 (2026-07-07,
+step 12 recorded as not-yet-run). Previous: v0.1 (2026-07-06).
 Executed against the live demo Standard ERP install per the
 work order in `18-demo-probe-handoff.md` — **steps 1–11 only; see step 12 below**. All requests used the `ERP_DEMO_*`
 credentials from the session environment; no credential values appear below or in
@@ -124,15 +126,19 @@ Findings:
   install; we could not observe a contrasting warranty/goodwill/returned-parts
   value in the demo data.
 
-**Conclusion: partially resolved.** `ItemType` is the strongest charge-type
-candidate and appears ERP-computed rather than client-set — this needs
-confirmation against a warranty-covered service item (a `SVOSerVc` unit with
-active `WarrantyStatus`/`LaborCovered`/`PartCovered`) to see the contrasting
-value, which this demo tenant's available data didn't have. **Follow-up probe
-needed** once a warranty-covered test unit exists on the demo system, or ask
-halocron/Excellent directly for the `WSIVVc.ItemType` (`M4Int`) enum's full
-value list — `list_registers` returns type/size but not enum members, and
-`query_rag` didn't surface the enum body in this session's queries.
+**Conclusion: RESOLVED (updated 2026-07-07).** `ItemType` is the charge-type
+discriminator, confirmed two ways: (1) the owner supplied the enum definition —
+Standard ERP string set 31: `0` = "-", `1` = Invoiceable, `2` = Warranty, `3` =
+Contract, `4` = Goodwill (a 1:1 match to the app's charge types); (2) the Step-12
+live read of finished order 230015 returned a **contrasting** value at last —
+`<ItemType>Warranty</ItemType>` on the row (the earlier samples only ever showed
+"to be invoiced"), proving the field carries the real per-row charge type and that
+REST **reads** return the localized label. The push **writes the integer** `1`–`4`
+(owner). The `GetCOSAcc` HAL logic corroborates the semantics: `SVOItemType` 1/2/3/4
+selects the item's `SVOInvbleCostAcc`/`SVOWarrantyCostAcc`/`SVOContractCostAcc`/
+`SVOGoodwillCostAcc`. `Invd` (invoiced qty) behaves as documented; `ovst`/`Returned`
+stay unconfirmed (no sample), folded into the one remaining write test (integer
+write format + `QtyInvbl`).
 
 ## Step 7 — `UserVc.Location` vs `ServLocation`
 
@@ -267,17 +273,28 @@ activity-purpose configuration (`04-erp-sync.md` activity-purpose map). Real
 per-tenant type codes will still need confirming per launch tenant — this is
 demo-tenant data, not a universal code list.
 
-## Step 12 — `SVOVc` completion/"closed" field: NOT RUN
+## Step 12 — `SVOVc` completion/"closed" field: RESOLVED 2026-07-07
 
-Recorded 2026-07-07: step 12 of the work order (read a handful of finished/invoiced
-orders and identify which field(s) — `DoneMark`, `InvMark`, or one of the unmapped
-`SVOVc` fields — carry the "order is closed, no more activity expected" signal behind
-the app's ERP-sync-set `Closed` state) was **not executed** in this probe session and
-was omitted from the original write-up without a note. The closed-field question
-(`02-data-model.md` status flow / `04-erp-sync.md` order-`Closed` flow, round-6
-decision: ERP-sync-set, field TBC) therefore **remains open and carries forward** as a
-Phase 0 item — until resolved, the app treats `Invoiced` as its terminal state, per
-the existing rule in those docs.
+Ran as a single live read of a finished order (`GET /api/1/SVOVc/230015`). The
+non-empty completion flags on that fully-processed order:
+
+- `DoneMark = 1` — **the "closed" field** (owner-confirmed). This is the ERP's
+  "order done, no more activity expected" marker, and the same flag `PasteSVOInWS`
+  checks to refuse new worksheets. → maps to the app's ERP-sync-set **`Closed`**.
+- `InvFlag = 1` — invoiced (the flag the ERP's own `SVOToInv` action gates on).
+  → maps to the app's **`Invoiced`**. `InvMark = 1` is the paired display mark.
+- `WSMark = 1` — a Work Sheet exists for the order (ERP-side cross-check).
+- **No `OKFlag`** on `SVOVc` — its terminal state is `DoneMark`/`InvFlag`, not an OK flag.
+
+All are poll-read only, never app-written. This **closes** the round-6 "Closed is
+ERP-sync-set, field TBC" item: the field is `SVOVc.DoneMark`. Applied to
+`02-data-model.md` (status flow), `04-erp-sync.md` (order-`Closed` flow), and
+`17-erp-register-reference.md`.
+
+**Bonus (feeds Step 6):** the same order's row carried `<ItemType>Warranty</ItemType>`
+— the contrasting charge-type value Step 6 could not observe on this tenant before
+(it had only ever seen "to be invoiced"). This confirms live that `ItemType` is the
+charge-type discriminator and that REST reads return the localized label; see Step 6.
 
 ## Bonus: this demo system as a test-data sandbox
 
@@ -299,4 +316,4 @@ rows in anything committed, no credentials in code/commits).
 |---|---|
 | `04-erp-sync.md` | Back-link mechanism decided (WebExcellentAPI `getrecordlinks`, not `RLinkVc` REST parsing); WebExcellentAPI document-missing failure shape documented; create-push must verify persistence, not just absence of `<error>`; **`WONr` resolved 2026-07-07** (`= -1` on create, no `WOVc` chain — owner + `PasteSVOInWS`); full `WSVc` creation field-mapping added; **remaining open item**: the `SVOVc` create no-op (§10 — HTTP 200, `"Jau reģistrēts"`, nothing persisted; fix by replicating the ERP's own `SVOVc` creation field-set) |
 | `17-erp-register-reference.md` | `RLinkVc` record-id format description corrected (opaque binary, not `RegisterName:SerNr`); `WSVc.WONr` **resolved to `-1` on create** (no `WOVc` chain); `COVc` added as the confirmed service-contracts register |
-| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types all resolved; `WONr`/`WOVc` chain resolved (`= -1`, chain avoided); carrying forward: the `SVOVc` create no-op (§10), the `ItemType` write test (`QtyInvbl`), and the un-run step 12 (`SVOVc` closed-field probe) |
+| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types all resolved; `WONr`/`WOVc` chain resolved (`= -1`, chain avoided); **step 12 resolved** (`Closed` = `DoneMark`) and **`ItemType` confirmed live** (Warranty value); carrying forward only: the `SVOVc` create no-op confirming write test (§10, diagnosed as a `SerNr` collision) and the `ItemType` integer-write / `QtyInvbl` check |
