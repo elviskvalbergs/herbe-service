@@ -57,7 +57,7 @@ No `UUID`/`ServerSequence` → same sync rule as `SVOVc`. **Posting does not tou
 | Field | Type | Maps to |
 |---|---|---|
 | `SerNr` | M4Long | worksheet's `erpRef` |
-| `WONr` | M4Long | work-order no. — **live-probe finding (2026-07-06, `19-demo-probe-results.md` §10): required on REST create on the demo system** (`0` is rejected as "work order already completed" — it's validated as a foreign key into a separate Work Order register, not treated as "none"). Real production rows on the same install have it blank, so existing records were created through a path (ERP UI "paste from order") that doesn't hit this validation. Open question for the owner: per-tenant module setting, or a genuine mandatory Service Order → Work Order → Work Sheet chain that the push design doesn't currently handle |
+| `WONr` | M4Long | work-order no. — **RESOLVED 2026-07-07: set `-1` on create** (the "no Work Order" sentinel the ERP itself writes in `PasteSVOInWS` when creating a Work Sheet from a Service Order). The 2026-07-06 probe failures are explained: omitting it → mandatory-field error 1058; `WONr=0` → error 1971 ("work order already completed", because `0` resolves to a real, completed `WOVc` row). With `-1` no `WOVc` record is needed. Owner decision: **avoid the `WOVc` chain** — the app never creates or requires a Work Order. (Real production rows show it blank because the ERP UI paste writes `-1`, which reads back as blank/none.) |
 | `SVONr` | M4Long | **service order link** (we set it on POST) |
 | `TransDate` | M4Date | work date |
 | `EMCode`, `EMName` | code/str | **technician** (`UserVc` code via identity link) |

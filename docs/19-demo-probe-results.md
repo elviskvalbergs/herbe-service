@@ -219,23 +219,7 @@ before/after, and nothing to ask the owner to OK. The rest of the step-10
 chain (POST worksheet row, confirm no stock change, owner OK's it, re-read
 `OKFlag=1`/stock decrease/`RLinkVc` links) could not run.
 
-**Conclusion: open item for the owner, not a confirmation.** Two real
-possibilities, and we can't distinguish them from the demo system alone:
-
-- (a) This demo tenant has a "Work Orders" module/setting enabled that a real
-  launch tenant might not have — in which case this is a demo-specific
-  artifact, not a general finding.
-- (b) The Standard ERP service module genuinely requires **Service Order →
-  Work Order → Work Sheet** as a three-step chain when the Work Orders
-  feature is on, and `04-erp-sync.md`'s current two-step
-  `SVOVc → WSVc` push design would hard-fail on any tenant configured this
-  way.
-
-**Recommendation:** ask Excellent (or check via halocron/HAL source) whether
-"Work Orders required before Work Sheet" is a per-tenant module setting, and
-if so, whether the launch tenant(s) have it on. If any do, the push-queue
-design needs an additional `WOVc`-creation step between order and worksheet,
-which is not currently planned anywhere in `04-erp-sync.md`.
+**Conclusion — RESOLVED 2026-07-07 (owner + ERP source `PasteSVOInWS`): set `WONr = -1` on create.** The `WONr` failures were a wrong-value problem, not a mandatory `WOVc` chain. When the ERP creates a Work Sheet from a Service Order, `PasteSVOInWS` sets `WSp.WONr = -1` — the "no Work Order" sentinel. Our probe used `0`, which the ERP validated as a real, already-completed Work Order (error 1971); omitting it hit the mandatory-field error (1058). With `-1`, no `WOVc` record is required. Real production rows read back blank because `-1` presents as none. **Owner decision: avoid the `WOVc` chain** — the app never creates or requires a Work Order; the two-step `SVOVc → WSVc` design stands. The full `WSVc` field-set is now documented in `04-erp-sync.md` (Work Sheet creation — field mapping), derived from `PasteSVOInWS`/`WSSumup`/`GetCOSAcc`. (The earlier (a)/(b) "is Work Orders a mandatory module" framing is moot: it's optional and we opt out.)
 
 **Secondary finding, independent of the above:** a `POST` that returns
 **HTTP 200 with no `<error>`/`error` field is not proof the record was
@@ -300,6 +284,6 @@ rows in anything committed, no credentials in code/commits).
 
 | Doc | Change |
 |---|---|
-| `04-erp-sync.md` | Back-link mechanism decided (WebExcellentAPI `getrecordlinks`, not `RLinkVc` REST parsing); WebExcellentAPI document-missing failure shape documented; create-push must verify persistence, not just absence of `<error>`; **new open items**: Work Order (`WOVc`) chain question for the owner, and the **unexplained `SVOVc` REST-create silent no-op** (§10 — HTTP 200, `"Jau reģistrēts"`, nothing persisted, cause undiagnosed: no app→ERP `SVOVc` create has ever succeeded live) |
-| `17-erp-register-reference.md` | `RLinkVc` record-id format description corrected (opaque binary, not `RegisterName:SerNr`); `WSVc.WONr` corrected from "unused by us" to "required on create on at least one install — confirm per tenant"; `COVc` added as the confirmed service-contracts register |
-| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types are all resolved (fully or as "confirmed per-tenant, not universal"); carrying forward as open items: the charge-type field, the Work Order chain question, the unexplained `SVOVc` create no-op (§10), and the un-run step 12 (`SVOVc` closed-field probe, see above) |
+| `04-erp-sync.md` | Back-link mechanism decided (WebExcellentAPI `getrecordlinks`, not `RLinkVc` REST parsing); WebExcellentAPI document-missing failure shape documented; create-push must verify persistence, not just absence of `<error>`; **`WONr` resolved 2026-07-07** (`= -1` on create, no `WOVc` chain — owner + `PasteSVOInWS`); full `WSVc` creation field-mapping added; **remaining open item**: the `SVOVc` create no-op (§10 — HTTP 200, `"Jau reģistrēts"`, nothing persisted; fix by replicating the ERP's own `SVOVc` creation field-set) |
+| `17-erp-register-reference.md` | `RLinkVc` record-id format description corrected (opaque binary, not `RegisterName:SerNr`); `WSVc.WONr` **resolved to `-1` on create** (no `WOVc` chain); `COVc` added as the confirmed service-contracts register |
+| `06-roadmap.md` | Phase 0 "remaining for the demo-system probe" list shrinks: register codes, `RLinkVc` readability, `updates_after` assumption, `UserVc` convention, WebExcellentAPI presence, contracts register code, `ActVc` types all resolved; `WONr`/`WOVc` chain resolved (`= -1`, chain avoided); carrying forward: the `SVOVc` create no-op (§10), the `ItemType` write test (`QtyInvbl`), and the un-run step 12 (`SVOVc` closed-field probe) |
