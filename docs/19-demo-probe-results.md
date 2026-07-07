@@ -124,8 +124,8 @@ Findings:
   worksheet row, and was blank on a not-yet-OK'd row — consistent with its
   documented meaning.
 - `ovst` and `Returned` were `0`/blank on every sample row available on this
-  install; no contrasting warranty/goodwill/returned-parts value was observable in
-  the demo data — folded into the remaining write test (`QtyInvbl`).
+  install — unused by herbe.service's charge-type mechanism (`ItemType` is it), so
+  not pursued further.
 
 **Conclusion: RESOLVED.** `ItemType` is the charge-type discriminator (string set 31,
 not `INVc.ItemType`); reads return the localized label, the push writes the integer

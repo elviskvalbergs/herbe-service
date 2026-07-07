@@ -36,8 +36,9 @@ Status: v0.3 (2026-07-07 — reduced portal integration applied per owner decisi
 Tier 0 interop rides on both apps mapping the **same** activity types and states. Verified in calendar source: a Kanban drag PATCHes `/api/activities/[id]` with **`ActType`/`ActState`**, and board columns are `(register, register_filter)` pairs synced from ERP views — so the fields are known; what needs agreeing is the values. Asks:
 
 1. Agree the `ActType`/`ActState` value conventions for service bookings (per tenant, with a suite default), so our adapter writes/reads the same type/state values the Kanban moves produce.
-2. Agree a recommended activity type + symbol set for service bookings (per tenant, but with a suite default), so a herbe.service booking renders correctly in calendar views and its Kanban out of the box.
-3. Agree how a multi-person (crew) activity's stage change behaves in the Kanban — one card or per-person cards — so our N-bookings ↔ 1-activity mapping (`04-erp-sync.md`) round-trips.
+2. Agree the **shadow-activity status mapping in both directions**: worksheet-status→`ActState` and service-order-status→`ActState` (`08-suite-integration.md` §3). herbe.service mirrors each record's status onto its shadow activity's `ActState` on every transition; the manager's Kanban columns *are* those `ActState` values, so this mapping is what turns "worksheet needs OK" into a card in the right column. Both status families need their own agreed value set.
+3. Agree a recommended activity type + symbol set for service bookings (per tenant, but with a suite default), so a herbe.service booking renders correctly in calendar views and its Kanban out of the box.
+4. Agree how a multi-person (crew) activity's stage change behaves in the Kanban — one card or per-person cards — so our N-bookings ↔ 1-activity mapping (`04-erp-sync.md`) round-trips.
 
 ### CAL-2 — Echo-tagging for `ActVc` writers (Phase 0, config only)
 
@@ -64,19 +65,21 @@ Calendar already merges busy-times across ERP/Outlook/Google per person. Our sch
 
 ### CAL-6 — Service-activity recognition (Phase 2–3, small; `08` §3 C1)
 
-Per-account config mapping which activity types are "service" (the CAL-1 conventions); recognized activities get a service badge / colour class group, so technicians and dispatchers can tell service bookings from ordinary activities at a glance. Fallback: service activities render as ordinary activities — tier 0 still works, they're just visually indistinct.
+Per-account config mapping which activity types are "service" (the CAL-1 conventions); recognized activities — **including the worksheet/order status-shadow activities** (`08-suite-integration.md` §3) — get a service badge / colour class group, so technicians and dispatchers can tell service bookings and shadow cards from ordinary activities at a glance. This is what makes the manager's OK-discovery Kanban legible: the cards sitting in an `Approved` column read as service work needing action. Fallback: service activities render as ordinary activities — tier 0 still works, they're just visually indistinct.
 
 ### CAL-7 — Service context + deep link on the activity (Phase 2–3, small; `08` §3 C2)
 
-For recognized service activities, `ActivityDrawer`/`ActivityBlock` show order number, site and worksheet status — read from the agreed `ActVc` fields herbe.service already writes — plus an **"Open in herbe.service"** deep-link button. Fallback: the same context lives in the activity's text/note fields service writes anyway; users follow a pasted URL instead of a button.
+For recognized service activities, `ActivityDrawer`/`ActivityBlock` show order number, site and worksheet status — read from the agreed `ActVc` fields herbe.service already writes — plus an **"Open in herbe.service"** deep-link button. This is the OK-discovery pivot: a manager working the shadow-activity Kanban (columns = `ActState`) opens a card, sees the context, and clicks straight through to the linked record — natively in the ERP or via the login-routed deep link into herbe.service — to do the OK (`08-suite-integration.md` §3). Fallback: the same context lives in the activity's text/note fields service writes anyway; users follow a pasted URL instead of a button.
 
 ### CAL-8 — Guarded editing of service-locked activities (Phase 3, small; `08` §3 C3)
 
-Recognized service activities that are `OKFlag`-locked or whose linked worksheet is `In progress` or later become read-only in calendar; free re-planning stays while the booking is `planned/confirmed`. Fallback: calendar edits freely and herbe.service's tier-0 conflict rule bounces illegal inbound moves to the dispatcher's inbox — consistency is preserved, at the cost of a rejected-move loop for the calendar user.
+Recognized service activities that are `OKFlag`-locked or whose linked worksheet is `In progress` or later become read-only in calendar; free re-planning stays while the booking is `planned/confirmed`. This keeps the OK-discovery flow honest — a manager can drag a shadow card to browse the board, but can't accidentally re-plan a record that execution has already locked; the OK stays a deliberate ERP-side action on the opened record. Fallback: calendar edits freely and herbe.service's tier-0 conflict rule bounces illegal inbound moves to the dispatcher's inbox — consistency is preserved, at the cost of a rejected-move loop for the calendar user.
+
+**Kanban column config for OK-discovery:** the manager's board is configured either calendar-side — `register`/`register_filter` → `ActType`/`ActState` columns over the shadow activities — or as an ERP-side Kanban over the same activities. Either way the columns are the agreed `ActState` values from CAL-1, so a worksheet reaching `Approved` (or any configured state) simply appears in that column.
 
 ## herbe.portal
 
-The portal hosts the customer surface (exclusivity confirmed 2026-07-05); herbe.service ships no customer pages. The portal's service module is the portal team's **independent** product — it must stand on its own, with limited functionality, even without herbe.service; their v1 design note lives at `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`. Direct integration is reduced (owner 2026-07-07) to the worksheet-approval trigger (POR-4, reduced), the quotation-approval trigger (POR-6) and, tentatively, label/QR handling; everything else flows through the ERP (`08-suite-integration.md` §4). POR-1/POR-2 remain small touchpoints; POR-3 is superseded.
+The portal hosts the customer surface (exclusivity confirmed 2026-07-05); herbe.service ships no customer pages. The portal's service module is the portal team's **independent** product — it must stand on its own, with limited functionality, even without herbe.service; their v1 design note lives at `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`. The **only** direct service↔portal coupling in the near term is the confirmation/approval-trigger API calls — the worksheet-approval trigger (POR-4, reduced), the quotation-approval trigger (POR-6) and the signing-request trigger (POR-7) — plus, tentatively, label/QR handling. **The ERP is the connecting piece for all actual data: the portal reads service data from the ERP, never from herbe.service.** Portal reading data directly from herbe.service is a **future** step, taken once the module's shape settles (`08-suite-integration.md` §4). POR-1/POR-2 remain small touchpoints; POR-3 is superseded.
 
 ### POR-1 — Invoice ↔ service order cross-link (Phase 3, small)
 

@@ -1,6 +1,6 @@
 # herbe.service — ERP Register Reference (service module)
 
-Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed, and `QtyInvbl` flagged as a Phase-0 probe item. Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
+Status: v0.3 (2026-07-07). Cross-checked against the halocron register dictionary: `SVOVc` at 111 fields, `WSVc` header/row split annotated, row `ItemType` documented as the charge-type enum (string set 31, pushed as integer `1`–`4`), `WSVc` row fields marked HAL-source-verified vs unconfirmed. Previous: v0.2 (2026-07-06). Sources: owner-provided Standard ERP export structures (`SVOVc`, `WSVc`, printed 2026-07-06 from a live system), the halocron register dictionary (`list_registers`), and a live demo-system probe (`19-demo-probe-results.md`) that corrected two field-behavior assumptions (`RLinkVc` record-id format, `WSVc.WONr` requiredness) and added the `COVc` and `WSIVVc` sections below. This is the developer reference behind the mapping table in `04-erp-sync.md`; for registers not listed here (CUVc, INVc, IVVc, ActVc, …) the portal/calendar codebases and halocron are the reference.
 
 Types are HAL M4 types: `M4Str`/`M4UStr` string (UStr = uppercase), `M4Code` code string, `M4Long`/`M4Int` integers, `M4Val`/`M423Val`/`M4Qty`/`M4Rate` decimals, `M4Date`/`M4Time`, `M4Mark` checkbox bool, `M4Set` enum. Size = max length (0 for numeric/date).
 
@@ -85,7 +85,7 @@ No `UUID`/`ServerSequence` → same sync rule as `SVOVc`. **Posting does not tou
 | `Recepy` ✓ | M4Code 20 | recipe/BOM |
 | `SalesAcc` ✓, `CostAcc`, `VATCode` ✓, `Objects` ✓, `TaxTemplateCode` | codes | accounting |
 | `PosCode` | M4Code 20 | position code — unconfirmed |
-| `QtyInvbl` | — | unconfirmed — **now load-bearing for the charge-type plan**: the candidate lever for chargeability on push (e.g. `0` = don't invoice the row). Named **Phase-0 probe item** |
+| `QtyInvbl` | — | unconfirmed row field; **not used by herbe.service's charge-type mechanism** — `ItemType` is the charge-type field. May matter only in ERP-side corner cases |
 | `MotherNr` ✓, FIFO fields | — | ERP-internal |
 
 ## `SVOSerVc` — serviced items / serial registry (61 fields)
