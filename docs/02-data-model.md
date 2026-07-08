@@ -17,7 +17,7 @@ Booking *──1 ServiceOrder, *──0..1 Worksheet, *──1 User   (planning;
                                           technician, crew bookings share a crewGroupId)
 Item 1──* StockLevel *──1 StockLocation  (incl. van stock)
 ServiceItem 1──* HistoryEvent            (derived service history)
-ServiceOrder 1──* CustomerFeedback       (portal-submitted, Phase 2)
+Worksheet 1──* CustomerFeedback          (portal-submitted, Phase 2; rolls up to order)
 User 1──* IdentityLink                   (Standard ERP / Excellent Books UserVc person
                                           code, optionally Entra ID / eID)
 ```
@@ -127,7 +127,7 @@ Denormalized, append-only view per ServiceItem node and per Customer: every comp
 **Production rules** (the projector is a first-class Phase 1 component, not an afterthought): events are emitted (a) on worksheet status transitions server-side, (b) on ERP-poll ingest of historical/foreign records (pre-app history import, work done directly in ERP), and (c) on service item status changes. Every event carries a deterministic key (source record id + event type + revision) so re-running the projector is idempotent; a full rebuild per company is an admin action (`07-ui-screens.md` A8). Events ship to devices through the normal `changeSeq` delta feed.
 
 ### CustomerFeedback (Phase 2)
-Satisfaction feedback per order: `order × portal user`, rating (1-tap scale) + optional comment, written only through `POST /api/ext/v1/orders/{id}/feedback` (idempotent — resubmission updates). Rendered read-only in the portal once given; feeds Phase 2 reporting (satisfaction per technician/customer/period). No in-service customer UI (owner decision 2026-07-05 — the portal is the only customer surface).
+Satisfaction feedback per **worksheet** (`worksheet × portal user`) — the worksheet is what the customer approves and signs, so feedback is gathered at that moment. Rating (1-tap scale) + optional comment. Two write paths, both idempotent (resubmission updates): an optional `feedback` block on the worksheet-signoff call `POST /api/ext/v1/worksheets/{id}/confirm` (rated with the signature), and a standalone `POST /api/ext/v1/worksheets/{id}/feedback` for a later survey-link submission. Rolls up to order/customer/period for Phase 2 reporting (a worksheet knows its order; crew jobs with several worksheets aggregate). Rendered read-only in the portal once given; no in-service customer UI (the portal is the only customer surface).
 
 ### User, Role, IdentityLink
 See `05-users-auth.md`. Users are app-local; IdentityLink rows connect a user to a Standard ERP / Excellent Books person (`UserVc.Code` — the link target; `EmplVc` exists but is **not** our link target, `04-erp-sync.md` register table) and/or (optionally, net-new for the suite) a Microsoft Entra ID subject or eID.
