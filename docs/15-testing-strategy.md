@@ -26,7 +26,7 @@ Three pieces of test infrastructure are Phase 0 deliverables, built before the f
 |---|---|
 | `02` order-status derivation table | table-driven: every rule + rollback-on-new-worksheet + recompute-on-transition |
 | `02` worksheet status flow + signature revision rule | state machine: legal/illegal transitions; signed-revision immutability; re-sign only on customer-visible change |
-| `02` crew model | members follow crew bookings; one worksheet per technician under a shared `crewGroupId` (queue/list grouping); each technician owns their own worksheet's transitions; lead worksheet alone carries the signature (`signatureRef` on the rest); team-lead approval only where the tenant flag allows (`05`); per-worksheet time/distance ownership |
+| `02` crew model | members follow crew bookings; one worksheet per technician under a shared `crewGroupId` (queue/list grouping); each technician owns their own worksheet's transitions; each technician captures their own `WorksheetConfirmation` when `require_worksheet_confirmation` is on (no shared lead signature); order-level `OrderSignoff` is the whole-job acceptance; team-lead approval only where the tenant flag allows (`05`); per-worksheet time/distance ownership |
 | `02` record merges | alias re-point, tombstone-redirect delta, outbox-op rewrite, projector re-attach |
 | `02` field policies | required-blocks-transition per role × work type; server-side enforcement equals client |
 | `02` HistoryEvent projector | idempotent re-run (deterministic keys), rebuild equals incremental, group-event projection/rollup |
