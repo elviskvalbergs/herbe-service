@@ -1,6 +1,6 @@
 # herbe.service — UI: Screens, Roles, Workflows
 
-Status: v0.6 (2026-07-08). Fixes the screen inventory, navigation, and flow contracts so design and development can start; wireframes per screen remain a Phase 0/1 design task. One worksheet per technician (no `addedBy`); crew-job grouping is Phase 1 (F4 and O3 agree); A4 carries the seven-purpose activity map and the WebExcellentAPI service/contracts version gate; A2/A3 ship a Phase 0-minimal cut; service manager and dispatcher are one role (`05-users-auth.md`); manual "Generate document…" entry points on F4/O2 (`12-documents-templates.md`). Booking-less jobs in F1/F2/F7, prepared-ahead worksheets + manual confirm in O2/O3, charge types + re-sign and media gate + correction entry in O4, O11 unlinked-activity list.
+Status: v0.6 (2026-07-08). Fixes the screen inventory, navigation, and flow contracts so design and development can start; wireframes per screen remain a Phase 0/1 design task. One worksheet per technician (no `addedBy`); crew-job grouping is Phase 1 (F4 and O3 agree); A4 carries the six-purpose activity map and the WebExcellentAPI service/contracts version gate; A2/A3 ship a Phase 0-minimal cut; service manager and dispatcher are one role (`05-users-auth.md`); manual "Generate document…" entry points on F4/O2 (`12-documents-templates.md`). Booking-less jobs in F1/F2/F7, prepared-ahead worksheets + manual confirm in O2/O3, charge types + re-sign and media gate + correction entry in O4, O11 unlinked-activity list.
 
 ## Two shells, one app
 

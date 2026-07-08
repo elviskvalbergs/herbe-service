@@ -1,5 +1,7 @@
 # herbe.service — Spec Review, Round 3: Fork Reconciliation, Integration Blind Spots, Plan Readiness
 
+> **Historical record — superseded.** Current spec truth lives in docs 02–08, 11–14, 17. Statements below may be out of date; do not implement from this doc.
+
 Status: v1.0 (2026-07-05). Scope: the merged spec (docs 01–15 as of `62d63ac`), reviewed for (a) blind spots in how the specified parts work **together**, and (b) whether every feature sits cleanly in a phase so an implementation plan can be written. Verified against the sibling repos again this round (calendar mirror `b57fcbd`, portal mirror v1.0.24 + service-modules spec v1.1).
 
 **Verdict up front: the spec is implementation-plan-ready for Phase 0 and Phase 1 after this round's fixes** (§1.1 crew contradiction closed by the owner's direct statement on the canonical branch; §1.4 branch hygiene remains a process ask). Round 3 found no new blocker-class design gaps — the seams found this time are short, patchable rules (all patched in this branch, §4) plus a set of operational-lifecycle topics the spec has never mentioned (§2.9) that don't block Phase 0/1 but must be decided before a paying tenant depends on the product.
@@ -75,7 +77,7 @@ Inbound `ActVc` sync incl. the unlinked-booking rule is Phase 1 (`06`), but the 
 
 ### 2.5 Inbound crew activity in Phase 1: who is the lead — FIXED
 
-Phase 1 syncs multi-person activities but has no crew UX; a multi-person activity creates N bookings and one worksheet — the lead-selection rule existed only for app-created bookings. Added (`02` crew section): for inbound crew activities the lead defaults to the activity's **main person** (`MainPerson` — the field herbe.calendar already maps); if that person has no linked user, the first linked member becomes lead and sync health warns.
+Phase 1 syncs multi-person activities but has no crew UX; a multi-person activity creates N bookings and one worksheet — the lead-selection rule existed only for app-created bookings. Added (`02` crew section): for inbound crew activities the lead defaults to the activity's **main person** (`MainPersons` (plural, confirmed in sibling code) — the field herbe.calendar already maps); if that person has no linked user, the first linked member becomes lead and sync health warns.
 
 ### 2.6 Portal-facing entities were in the API contract but not in the data model — FIXED
 

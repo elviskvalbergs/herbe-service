@@ -26,7 +26,7 @@ Everything above the contract is adapter-independent and written once: the sync 
 
 The pieces **already exist** in herbe.portal and herbe.calendar:
 
-- **`ErpAdapter` interface + `AdapterCapabilities`** (`herbe-portal/lib/erp/types.ts`) — a neutral contract; everything outside `lib/erp/` imports only this module (Horizon/Jumis/Moneo slots already stubbed in the registry).
+- **`ErpAdapter` interface + `AdapterCapabilities`** (`herbe-portal/lib/erp/types.ts`) — a neutral contract; everything outside `lib/erp/` imports only this module (Horizon / Directo / Business Central slots already stubbed in the registry).
 - **Registry + factory** (`lib/erp/registry.ts`) — adapter chosen per company config; credentials AEAD-encrypted per company (`lib/erp/credentials.ts`, envelope format, master key).
 - **Standard Books REST client** — `${base_url}/api/${companyCode}/${register}` with `filter[Field]=value`, offset paging, 401→HSESSION-reset-retry, control-char-sanitizing JSON parse, charset sniffing + raw-`http` fallback for malformed responses (both teams hit this independently — budget for it).
 - **WebExcellentAPI client** — `WebExcellentAPI.hal?action=…`; handles the servlet's real behavior: HTTP/1.1 only (403s on HTTP/2 — undici `allowH2:false`), Basic auth only (rejects OAuth Bearer), HSESSION cookie capture/reuse, base64-in-XML document decoding.
@@ -119,7 +119,7 @@ What the `SVOVc`/`WSVc` structures and the HAL source establish beyond the codes
 ## Sync flows
 
 ### Inbound (ERP → app), continuous polling per register
-Master data: customers, items, prices, stock levels, employees, known serial numbers, open service orders created in ERP. Poll cadence is set by herbe.service's product needs, per-register per-connection configurable (a load-sensitive ERP can be tuned down): fast registers (service orders, stock, activities) every **1–5 min**; slow (items, customers) every 15–60 min; full reconciliation nightly and on sequence reset. On connections without `updates_after` support the fast cadence degrades to windowed full scans (date-range `range=` reads, calendar's `fullSyncRange` pattern: rounded month windows, ~90 d back / 30 d forward). (For reference, herbe.calendar polls at 15 min business hours — that only affects tier-0 cross-app latency, not what we run.)
+Master data: customers, items, prices, stock levels, employees, known serial numbers, open service orders created in ERP. Poll cadence is set by herbe.service's product needs, per-register per-connection configurable (a load-sensitive ERP can be tuned down): fast registers (service orders, stock, activities) every **1–5 min**; slow (items, customers) every 15–60 min; full reconciliation nightly and on sequence reset. On connections without `updates_after` support the fast cadence degrades to windowed full scans (date-range `range=` reads, calendar's `fullSyncRange` pattern: rounded month windows, ~90 d back / 30 d forward). (For reference, herbe.calendar polls at ~15–60 min — that only affects tier-0 cross-app latency, not what we run.)
 
 ### Outbound (app → ERP), event-driven through the push queue
 

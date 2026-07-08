@@ -1,5 +1,7 @@
 # herbe.service — Spec Review (2026-07-04)
 
+> **Historical record — superseded.** Current spec truth lives in docs 02–08, 11–14, 17. Statements below may be out of date; do not implement from this doc.
+
 > **2026-07-05 note:** this document is a historical record of review round 1. Two of its resolutions were later superseded by the spec-line merge (`10-spec-review-gaps.md`): **C10** (second technician = own worksheet) is replaced by the team-job model — one worksheet per job with lead + members, multi-person `ActVc` as the primary mode (`02-data-model.md`, `04-erp-sync.md`); B3's UI answers are updated accordingly in `07-ui-screens.md`. The tenancy decision recorded below (B4) was resolved 2026-07-05 as a hybrid: multi-tenant core + dedicated deployments for whitelabel (`03-architecture.md`).
 >
 > **2026-07-06 note (round 6):** **C10 is back.** `WSVc` register verification (`17-erp-register-reference.md`) confirmed the ERP Work Sheet header carries a single `EMCode` (technician) — the 2026-07-05 "one worksheet per job, lead + members" merge has no clean 1:1 ERP push target, so it's reverted: one worksheet per technician again, crew jobs sharing a `crewGroupId` across worksheets instead of sharing one worksheet's membership. The multi-person `ActVc` scheduling decision is unaffected — it's a separate layer (one shared calendar entry, N worksheets underneath). See `16-spec-review-round-3.md` §7.
@@ -81,7 +83,7 @@ Scope: full consistency + completeness review of spec v0.1 (docs 01–06) agains
 ## Decision log (2026-07-04, product owner)
 
 1. **Tenancy**: portal model (deployment + DB per customer) — on **Supabase Postgres** instead of Neon. Consequence accepted: provisioning CLI adapted to the Supabase Management API; DB hosting diverges from siblings. Auth remains Auth.js, not Supabase Auth.
-2. **Reuse**: extract `@herbe/erp-core` + `@herbe/email-templates`; copy-first the rest.
+2. **Reuse**: extract `@herbe/erp-core` only; email-templates are copy-first, not extracted (corrected — see `08-suite-integration.md` §6); copy-first the rest.
 3. **Adapter order**: moot — owner clarified Standard ERP and Excellent Books are literally the same product: **one adapter**, portal-style multi-company connections (N per install, each its own customers/items/orders, users switch companies, no cross-company sharing). Launch tenants from the Excellent customer base.
 4. **Design system**: mirror the repo when computer access allows; portal tokens as interim reference.
 5. **Portal service modules**: confirmed — design spec delivered at `herbe-portal/docs/superpowers/specs/2026-07-04-service-modules-design.md`.
