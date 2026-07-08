@@ -38,7 +38,7 @@ Three pieces of test infrastructure are Phase 0 deliverables, built before the f
 | `04` ActVc mapping | N crew bookings ↔ 1 activity collapse/split; echo suppression (own write ignored, stale inbound never rolls back); intake-type auto-convert; unlinked-activity → inbox; purpose map routing; UTC↔ERP-local tz conversion |
 | `04` quote flow | QTVc push group, status read-back → events; never auto-cancel |
 | `04` write mechanics | form-encoding, row chunking/reassembly, `parsePersons`, control-char sanitize, charset fallback (against the fake ERP) |
-| `08` `/api/ext/v1` | token scoping (company + customerCodes intersection), `after=` deltas, idempotent requests, confirm/feedback writes, 401/403 shapes |
+| `08` `/api/ext/v1` | token scoping (company + customerCodes intersection), `after=` deltas, idempotent requests, order-level signoff (resendable confirm: `confirmed`/`rejected` re-opens the order), combined order-report generation, feedback writes, 401/403 shapes |
 | `11` coverage/rollups | `n of m` + exceptions arithmetic, coverage %, lot explosion history carry-over; spreadsheet import dry-run diff |
 | `12` document engine | merge context snapshots, loops over covered units incl. exceptions, computed-field sandbox (deterministic, capped, failing function fails render cleanly), selection rules first-match, number series immutability, re-render = new version |
 | `05` auth/sessions | absolute-cap JWT, `session_version` revocation, PIN rate-limit + wipe counter, enrolment one-time links |

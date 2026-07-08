@@ -24,7 +24,7 @@ Design constraints that override everything, including tenant branding (`03-arch
 | **Charge-type badge** | `invoiceable / warranty / contract / goodwill` — a four-value categorical badge on worksheet rows, order defaults, and printed reports ("warranty — no charge"). New since v0.1 (`02-data-model.md` "Charge type"). |
 | **Work-entry-mode indicator** | Small iconography distinguishing booking-first / prepared-ahead / walk-up jobs on the job card (`02-data-model.md` "Work-entry modes") — a booking-less worksheet needs to silently read as normal, not broken. |
 | **Signature revision-state badge** | `signed / superseded-by-correction / re-sign-requested / proceed-on-existing (audited)` — no vocabulary exists yet (`02-data-model.md` "Signature lock vs. rejection/correction"). |
-| **Print/PDF tokens** | Header/footer, table, and severity styling for generated documents (`12-documents-templates.md`): the built-in worksheet report renders from theme tokens with no DOCX template. Verified 2026-07-07: no `@media print` styling exists anywhere in the design-system repo. |
+| **Print/PDF tokens** | Header/footer, table, and severity styling for generated documents (`12-documents-templates.md`): the built-in order-level service report renders from theme tokens with no DOCX template. Verified 2026-07-07: no `@media print` styling exists anywhere in the design-system repo. |
 
 **Already covered by the design system (dropped from the ask list, v0.4)** — three v0.3 asks turned out to be satisfied by the imported repo; herbe.service consumes these rather than commissioning them:
 
