@@ -11,7 +11,7 @@ The **built-in default documents remain**: Phase 1's worksheet service report PD
 ## Template anatomy
 
 - **Placeholders**: `{customer.name}`, `{order.number}`, `{item.path}`, `{item.serial}`, `{model.attributes.refrigerantType}` — dot-paths into the merge context.
-- **Loops**: repeat table rows or sections over collections — worksheet rows, time entries per member, checklist results with measured values + pass/fail, **covered units of a lot/coverage row** (the fire-detector annex: one table row per detector incl. exceptions), child nodes of a subtree.
+- **Loops**: repeat table rows or sections over collections — worksheet rows, time entries per worksheet, checklist results with measured values + pass/fail, **covered units of a lot/coverage row** (the fire-detector annex: one table row per detector incl. exceptions), child nodes of a subtree.
 - **Conditionals**: show/hide blocks (`{#if warranty.active}`…), e.g. warranty clause, out-of-contract pricing block.
 - **Images**: tenant logo (theme token, auto-available), photos (filtered: before/after tags, per covered unit), signature image, QR code of the document number for verification.
 - **Formatting**: dates/numbers/units localized per tenant language (`06-roadmap.md` i18n); currency role-gated the same way prices are in-app.

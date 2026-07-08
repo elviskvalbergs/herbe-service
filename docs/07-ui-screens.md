@@ -13,7 +13,7 @@ Both shells are one Next.js app; the landing shell is chosen by role, and users 
 
 **Company switcher**: a deployment can hold several ERP company connections, each a separate data scope (`02-data-model.md`). Office shell: company selector in the sidebar header (portal's `/c/[companyId]` scoping pattern); every list/search is scoped to the active company. Field shell: technicians with access to one company never see a switcher; multi-company users switch under **More**. The "download my work" briefcase covers all companies the user has bookings in.
 
-Suite look & feel: design-system tokens (`--herbe-*`), portal non-negotiables apply verbatim — square indicators/dots, `--herbe-bone` input fill lifting to `--herbe-paper` on focus, forest-green primary CTA, red only for brand + destructive, no circular avatars. Wordmark: inline-SVG logo component (`HerbePortalLogo` approach), never `<img>` on the design-system SVGs.
+Suite look & feel: design-system tokens (`--herbe-*`), portal non-negotiables apply verbatim on office surfaces — square indicators/dots, `--herbe-bone` input fill lifting to `--herbe-paper` on focus, forest-green primary CTA, red only for brand + destructive, no circular avatars. On **field** surfaces the same rules hold **except where the sunlight/high-contrast scheme must override a brand colour** (e.g. the forest-green CTA): accessibility wins, per `14-design-handoff.md` §1. Wordmark: inline-SVG logo component (the `HerbePortalLogo` approach), with a **`herbe.service` variant** (own dot colour — a design-side decision, `14-design-handoff.md` §6), never `<img>` on the design-system SVGs.
 
 ## Screen inventory — field shell (technician; team lead adds a team toggle)
 
