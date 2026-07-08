@@ -1,6 +1,6 @@
 # herbe.service — Testing Strategy (TDD)
 
-Status: v1.3 (2026-07-07) — roadmap phase renumber: old Phase 1 and Phase 2 merged into one Phase 1; old Phase 3→2, Phase 4→3. Document-engine/PDF, coverage/rollups and `/api/ext` contract suites folded into the Phase 1 hook (§7); quote-flow and suite round-trips now Phase 2+; owner-action and device phases shifted accordingly. Previous: v1.2 (2026-07-07) — per-preview database ADR resolved: Supabase branching (§5.5). Previous: v1.1 (2026-07-07) — consistency pass: crew suites rewritten for the one-worksheet-per-technician model (round 6), scoped-replication suite added (`03-architecture.md` v0.4 design), phase hooks corrected (ActVc mapping, write mechanics and auth suites claimed by their real phases), provisioning-ADR reference aligned with the roadmap's Phase 0 list. Previous: v1.0 (2026-07-05, product owner directive: TDD everywhere; everything automatable is automated; the rest listed explicitly for the owner to arrange — §6).
+Status: v1.3 (2026-07-07). TDD everywhere — everything automatable is automated, the rest listed explicitly for the owner to arrange (§6). Per-preview database uses Supabase branching (§5.5). Crew suites follow the one-worksheet-per-technician model, and a scoped-replication suite covers the `03-architecture.md` v0.4 design. Document-engine/PDF, coverage/rollups and `/api/ext` contract suites sit in the Phase 1 hook (§7); quote-flow and suite round-trips are Phase 2+.
 
 ## 1. Policy
 

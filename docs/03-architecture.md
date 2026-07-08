@@ -1,6 +1,6 @@
 # herbe.service — Technical Architecture
 
-Status: v0.6 (2026-07-07) — roadmap phase renumber: old Phase 1 and Phase 2 merged into one Phase 1; old Phase 3→2, Phase 4→3 (native-wrapper decision now Phase 1/2, recurring-order generation now Phase 2). Previous: v0.5 (2026-07-07) — consistency fixes from the cross-doc review: crew conflict rule rewritten for the one-worksheet-per-technician model (round 6), periodic identity re-match added to the job inventory, pino attribution corrected to portal-only. Previous: v0.4 (2026-07-06) — scoped replication design added (per-user scope membership + scope-exit purges, owner-approved classical solution). Previous: v0.3 (2026-07-05) — spec-line merge: platform blueprint (theming, whitelabel, settings model) folded in from the audit line; fleet-ops, cron-scheduling and device-security gaps from review round 2 resolved. Stack verified against both sibling codebases. Tenancy resolved 2026-07-05: multi-tenant core + dedicated deployments as a whitelabel option (below).
+Status: v0.6 (2026-07-07). Multi-tenant core with dedicated deployments as a whitelabel option; platform blueprint covers theming, whitelabel and the settings model. Scoped replication design (per-user scope membership + scope-exit purges); crew conflict rule follows the one-worksheet-per-technician model; periodic identity re-match in the job inventory; pino attribution is portal-only. Stack verified against both sibling codebases.
 
 ## Shape
 

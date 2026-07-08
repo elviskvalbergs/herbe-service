@@ -1,6 +1,6 @@
 # herbe.service — Competitive Feature Analysis
 
-Status: v0.4 (2026-07-08). Change: roadmap phases collapsed (2026-07-07) — old Phase 1 and Phase 2 merged into one Phase 1, old Phase 3 → Phase 2, old Phase 4 → Phase 3; all phase references renumbered accordingly. Previous: v0.3 (2026-07-07). Change: design decision 3 corrected — tenant substatuses marked deferred (Phase-3 candidate), not adopted; they appeared nowhere in the data model/roadmap/UI docs. Previous: v0.2 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators; v0.2 re-verified pricing and key claims directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes) — corrections marked inline, details and source lists in [docs/research/](research/).
+Status: v0.4 (2026-07-08). Competitive analysis built from web research of vendor sites, official docs and review aggregators, with pricing and key claims verified directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes); details and source lists in [docs/research/](research/). Design decision 3: tenant substatuses are deferred (Phase-3 candidate), not adopted.
 
 Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Field Service, IFS FSM / IFS Cloud Service Management, AllDevice, Odoo Field Service, Acumatica Field Service.
 
