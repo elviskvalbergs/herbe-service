@@ -1,6 +1,6 @@
 # herbe.service — Design-System Handoff: What's Missing to Build This App
 
-Status: v0.4 (2026-07-07, consistency review against the now-populated `herbe-design-system` repo: §Starting point and §6 re-derived — the design-system import has landed (`tokens.css`, `shared.css`, pattern cards, per-app handovers); §1 asks already satisfied by `tokens.css` dropped, with pointers; device enrolment moved to P0 and the §4 Phase-0 list aligned with the roadmap's walking skeleton; A4 activity-purpose map lists the seven purposes in `04-erp-sync.md`; state counts fixed; CustomerFeedback rendering removed from this app's screen count; crew-job grouping confirmed P1 by the owner). Previous: v0.3 (2026-07-06, round-7 correction: worksheet is one-per-technician, not shared lead+members — removes the per-row `addedBy` crew-attribution ask, adds crew-job grouping). Previous: v0.2 (2026-07-06). Previous: v0.1 (2026-07-03). Audience: whoever does the herbe design-system work — the `herbe-design-system` repo is the working surface, and `herbe-design-system/handovers/SERVICE.md` is the designer-facing entry point derived from this brief. This is the brief: what the current design system does **not** cover and herbe.service cannot ship without.
+Status: v0.5 (2026-07-08). Roadmap phases collapsed (2026-07-07): old Phase 1 and Phase 2 merged into one Phase 1, old Phase 3 → Phase 2, old Phase 4 → Phase 3 — every phase/priority reference renumbered (old P2 → P1, P3 → P2, P4 → P3) and the §4 Phase-2 block folded into Phase 1. Previous: v0.4 (2026-07-07, consistency review against the now-populated `herbe-design-system` repo: §Starting point and §6 re-derived — the design-system import has landed (`tokens.css`, `shared.css`, pattern cards, per-app handovers); §1 asks already satisfied by `tokens.css` dropped, with pointers; device enrolment moved to P0 and the §4 Phase-0 list aligned with the roadmap's walking skeleton; A4 activity-purpose map lists the seven purposes in `04-erp-sync.md`; state counts fixed; CustomerFeedback rendering removed from this app's screen count; crew-job grouping confirmed P1 by the owner). Previous: v0.3 (2026-07-06, round-7 correction: worksheet is one-per-technician, not shared lead+members — removes the per-row `addedBy` crew-attribution ask, adds crew-job grouping). Previous: v0.2 (2026-07-06). Previous: v0.1 (2026-07-03). Audience: whoever does the herbe design-system work — the `herbe-design-system` repo is the working surface, and `herbe-design-system/handovers/SERVICE.md` is the designer-facing entry point derived from this brief. This is the brief: what the current design system does **not** cover and herbe.service cannot ship without.
 
 **Why v0.2:** v0.1 was written 2026-07-03, before three spec-review rounds (`09`, `10`, `16-spec-review-round-3.md`, plus the round-4 owner decisions folded into `02-data-model.md` v0.7 and `07-ui-screens.md` v0.3). Those rounds materially reshaped the highest-complexity screens (order/worksheet approval, sync administration) and added a whole admin surface (document templates) with no design-system precedent. v0.2 re-derives every section from the current `02-data-model.md` and `07-ui-screens.md` rather than patching v0.1 line by line — treat this as the current source of truth and v0.1 as superseded.
 
@@ -50,20 +50,20 @@ Priority: **P0** = walking skeleton (Phase 0), **P1** = MVP (Phase 1), **P2** = 
 - **P0 — Job card + my-jobs list**: booking/worksheet card with status, time window, customer, site, one-tap call/navigate, work-entry-mode indicator (a booking-less card has no time slot and must still read as intentional, not broken); the single most-used component in the product.
 - **P1 — Day/week technician calendar** (own bookings; renders Bookings, `02-data-model.md`).
 - **P1 — Worksheet execution screen family**: big-target quantity stepper, part row with stock-location badge (a worksheet has exactly one technician — round 6 correction, `02-data-model.md` — so no per-row authorship chip is needed), per-row **charge-type selector** (4 values, field-policy gated), per-row **service-item attribution picker** (when a worksheet spans multiple nodes), start/stop **timer control** (work/travel/waiting, with a **return-travel variant that stays live after the worksheet is `Done`** — a timer that must remain tappable in an otherwise "closed" document, no existing pattern for this), pause-with-reason picker, status-transition button with blocking-requirements list (field policies: "missing: km, remedy code").
-- **P1 — Crew-job grouping** (P1 confirmed by owner 2026-07-07): on a multi-technician job, each technician has their own worksheet sharing a `crewGroupId` — approval queues and job cards need a "grouped by job" treatment (N worksheets, one visual cluster) rather than a single shared document with per-row attribution. The richer crew UX (dispatch-board crew group chip, detach-member) stays P2 with the board itself.
+- **P1 — Crew-job grouping** (P1 confirmed by owner 2026-07-07): on a multi-technician job, each technician has their own worksheet sharing a `crewGroupId` — approval queues and job cards need a "grouped by job" treatment (N worksheets, one visual cluster) rather than a single shared document with per-row attribution. The richer crew UX (dispatch-board crew group chip, detach-member) ships in Phase 1 with the board itself.
 - **P1 — Checklist runner**: the five field types (bool, number with min/max + pass/fail rendering, text, photo-required, selection), section progress, required-on-complete errors (`02-data-model.md` ChecklistTemplate).
 - **P1 — Signature capture**: full-screen canvas, name field, legal text slot, content-lock confirmation, plus a **re-entry state** for "signature requested again" after a correction (see revision-chain pattern, §3).
 - **P1 — Camera/media flow**: capture with before/after tagging, thumbnail strip, upload-state per photo (offline-queued).
 - **P1 — Distance entry**: two mutually-exclusive sub-inputs collapsing to one derived value — direct km, or odometer before/after with computed result — plus billable toggle (`02-data-model.md` DistanceEntry).
 - **P1 — Ad-hoc job start**: a primary CTA from the customer/site card that creates order + worksheet in one action with no booking (`02-data-model.md` "walk-up" work-entry mode) — new since v0.1.
-- **P2 — Scan overlay**: barcode/QR viewfinder with success/failure states (parts + service item labels).
-- **P2 — Alternatives suggestion row**: out-of-stock part → in-stock substitutes ranked van → warehouse → preference (`11-service-items-and-parts.md`).
+- **P1 — Scan overlay**: barcode/QR viewfinder with success/failure states (parts + service item labels).
+- **P1 — Alternatives suggestion row**: out-of-stock part → in-stock substitutes ranked van → warehouse → preference (`11-service-items-and-parts.md`).
 
-### Item hierarchy (Phase 2, `11-service-items-and-parts.md`)
+### Item hierarchy (Phase 1, `11-service-items-and-parts.md`)
 
-- **P2 — Tree browser** with rollup badges + **flat filtered list** sharing one filter state; path breadcrumb ("Store 14 / Fire safety / …").
-- **P2 — Coverage picker**: "all / n of m / exceptions" entry on group rows, **plus a paired display mode** for the same coverage record read back on a manager report — entry (technician, gloves) and display (manager, report) are different UX problems on the same data; no FSM product has a good one, this needs real design work on both sides.
-- **P2 — Bulk-operations bar**: filter → multi-select → action (move, assign contract, print labels, create group order); **spreadsheet import dry-run diff view** — worth designing as a reusable pattern, since item-hierarchy bulk-entry and future contract/PM data entry both need it, not a one-off.
+- **P1 — Tree browser** with rollup badges + **flat filtered list** sharing one filter state; path breadcrumb ("Store 14 / Fire safety / …").
+- **P1 — Coverage picker**: "all / n of m / exceptions" entry on group rows, **plus a paired display mode** for the same coverage record read back on a manager report — entry (technician, gloves) and display (manager, report) are different UX problems on the same data; no FSM product has a good one, this needs real design work on both sides.
+- **P1 — Bulk-operations bar**: filter → multi-select → action (move, assign contract, print labels, create group order); **spreadsheet import dry-run diff view** — worth designing as a reusable pattern, since item-hierarchy bulk-entry and future contract/PM data entry both need it, not a one-off.
 
 ### Order & worksheet approval (the single largest gap — one line in v0.1, several distinct components)
 
@@ -81,8 +81,8 @@ This is now the most complex screen family in the product (`07-ui-screens.md` O2
 
 ### Dispatch & back office
 
-- **P2 — Dispatch board**: time × technician grid, drag-and-drop booking chips, **crew group chip** (renders a multi-technician job as one unit on the day grid, moves as one, has a detach-member interaction for splitting off one person — e.g. the apprentice leaves at lunch), unassigned pool (including unlinked inbound activities, see below), map view with job pins + coarse technician positions.
-- **P1 — Unlinked-activity triage row**: a three-way action row (attach to order / create order / dismiss) for inbound ERP/calendar activities that don't map to an order — the Phase 1 home is the sync-health screen (O11), the Phase 2 destination is the dispatch unassigned pool (O5); same component, two locations.
+- **P1 — Dispatch board**: time × technician grid, drag-and-drop booking chips, **crew group chip** (renders a multi-technician job as one unit on the day grid, moves as one, has a detach-member interaction for splitting off one person — e.g. the apprentice leaves at lunch), unassigned pool (including unlinked inbound activities, see below), map view with job pins + coarse technician positions.
+- **P1 — Unlinked-activity triage row**: a three-way action row (attach to order / create order / dismiss) for inbound ERP/calendar activities that don't map to an order — it lives on both the sync-health screen (O11) and the dispatch unassigned pool (O5); same component, two locations.
 - **P1 — Register merge flow**: what a back-office user sees when merging a field-created provisional record into an existing one (`07-ui-screens.md` O7, `02-data-model.md` "Record merges") — needs a clear before/after and a note that history re-attaches.
 
 ### Sync health & administration (was one under-scoped bullet in v0.1 — actually four distinct components)
@@ -95,9 +95,9 @@ This is now the most complex screen family in the product (`07-ui-screens.md` O2
 ### Admin surfaces with no design-system precedent (absent from v0.1 entirely)
 
 - **P1 — Users & roles (A2) additions**: device-enrolment QR/link generator, ERP identity-link mapping table with a match-by-email helper, and a **seat counter + upgrade prompt** (licensed vs. active users, activation beyond the licensed count blocked) — a SaaS-commerce UI pattern with zero precedent in either sibling app.
-- **P1 — ERP connection (A4) additions**: capability-probe result display, **activity-purpose map** (a seven-row per-purpose type/symbol mapping table, `04-erp-sync.md`: `booking` / `worksheetShadow` (ships Phase 1, minimal) / `orderShadow` / `intake` / `workSegment` (P2 config) / `documentVessel` / `historyImport`), invoice back-link field, poll cadence and maintenance-window settings; P2: transformations editor (declarative maps + JS hooks), settings import/export, `/api/ext` token minting/revocation table.
-- **P2 — Checklist template builder (O9)**: sections, field types, required rules, bounds, versioning, assignment by item/work type — structurally a form-builder; nothing like it exists in portal or calendar. Distinct from, and more complex than, the checklist *runner* (P1, technician-facing) already listed above.
-- **P2 — Document-template library (A9, `12-documents-templates.md`)**: upload, field-catalog browser, test-render + validation report, selection-rule editor, number series, computed-field definitions. No precedent anywhere in the suite; closest reference point is portal's A5 email-template editor (per-key defaults + overrides, variables panel), worth citing as a starting shape even though the domain (DOCX templates, not HTML email) differs.
+- **P1 — ERP connection (A4) additions**: capability-probe result display, **activity-purpose map** (a seven-row per-purpose type/symbol mapping table, `04-erp-sync.md`: `booking` / `worksheetShadow` (ships Phase 1, minimal) / `orderShadow` / `intake` / `workSegment` (Phase 1 config) / `documentVessel` / `historyImport`), invoice back-link field, poll cadence and maintenance-window settings, plus transformations editor (declarative maps + JS hooks), settings import/export, `/api/ext` token minting/revocation table.
+- **P1 — Checklist template builder (O9)**: sections, field types, required rules, bounds, versioning, assignment by item/work type — structurally a form-builder; nothing like it exists in portal or calendar. Distinct from, and more complex than, the checklist *runner* (P1, technician-facing) already listed above.
+- **P1 — Document-template library (A9, `12-documents-templates.md`)**: upload, field-catalog browser, test-render + validation report, selection-rule editor, number series, computed-field definitions. No precedent anywhere in the suite; closest reference point is portal's A5 email-template editor (per-key defaults + overrides, variables panel), worth citing as a starting shape even though the domain (DOCX templates, not HTML email) differs.
 
 ### Auth & device (Phase 0–1, `05-users-auth.md`)
 
@@ -116,7 +116,7 @@ This is now the most complex screen family in the product (`07-ui-screens.md` O2
 8. **Revision/correction-chain pattern** (new). Signed-revision-immutability, correction worksheets, and the billing-adjustment layer all need one visual language for "this record has history you're not looking at right now, click to see it." Currently three separate asks that should converge on one pattern card.
 9. **Diff-display pattern** (new). Both the re-sign decision and worksheet-review's diff-from-plan emphasis need shared diff rendering — old value struck/greyed, new value highlighted, field-level not row-level.
 
-## 4. Screen inventory needing design (Phase 0–1 order first, then P2/P3)
+## 4. Screen inventory needing design (Phase 0–1 order first, then Phase 2)
 
 Re-derived against `07-ui-screens.md` v0.5 in full (superseding v0.1's list, which predated round 4 and several screens below).
 
@@ -140,8 +140,6 @@ Re-derived against `07-ui-screens.md` v0.5 in full (superseding v0.1's list, whi
 15. Sync health & administration — status cards, DLQ browser, conflict queue, per-record inspector, unlinked-activity triage (O11)
 16. Tenant settings, Users & roles incl. seat counter, ERP connection incl. activity-purpose map (A1, A2, A4)
 17. Email/notification templates, Modules, Audit log, Migrations/ops (A5–A8)
-
-**Phase 2**
 18. Van stock, Scanner (F8, F9)
 19. Dispatch board incl. crew group chip, Map view (O5, O6)
 20. Stock overview (O8)
@@ -149,7 +147,7 @@ Re-derived against `07-ui-screens.md` v0.5 in full (superseding v0.1's list, whi
 22. Item tree browser + coverage picker + bulk-operations bar (`11-service-items-and-parts.md`)
 23. Document-template library (A9)
 
-**Phase 3**
+**Phase 2**
 24. Reports (O10)
 25. ETA/`enRoute` UI on Booking, field-side (`08-suite-integration.md`; CustomerFeedback rendering is portal-side and not part of this app's screen inventory)
 

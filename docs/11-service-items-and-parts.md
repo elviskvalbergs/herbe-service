@@ -1,6 +1,6 @@
 # herbe.service — Service Item Hierarchy & Spare Parts Compatibility
 
-Status: draft v0.2 (2026-07-07, ERP-boundary rule stated once: the tree structure never syncs — a group path crosses the API only as free text on pushed worksheet rows). Previous: v0.1 (2026-07-03). Solves two scale problems: customers with very many service items (a retail chain: stores × HVAC systems × machines; a building: fire sprinklers, pumps, detectors, extinguishers per object) and catalogs with very many spare parts (which part fits which machine, what substitutes what). Prior art deliberately reused: SAP PM functional locations, IFS installed base, D365 customer asset hierarchy, AllDevice's device tree.
+Status: draft v0.3 (2026-07-07) — roadmap phase renumber: old Phase 1 and Phase 2 merged into one Phase 1 (lot nodes, coverage, structure templates, import/export, bulk ops, QR labels and parts-compatibility now all Phase 1); old Phase 3→2 (rollups, contract view, lot explosion), Phase 4→3 (usage suggestions, meter-based PM). Previous: v0.2 (2026-07-07, ERP-boundary rule stated once: the tree structure never syncs — a group path crosses the API only as free text on pushed worksheet rows). Previous: v0.1 (2026-07-03). Solves two scale problems: customers with very many service items (a retail chain: stores × HVAC systems × machines; a building: fire sprinklers, pumps, detectors, extinguishers per object) and catalogs with very many spare parts (which part fits which machine, what substitutes what). Prior art deliberately reused: SAP PM functional locations, IFS installed base, D365 customer asset hierarchy, AllDevice's device tree.
 
 ## Part 1 — The service item hierarchy
 
@@ -38,7 +38,7 @@ The requirement "we serviced *all the fire detectors in this object*" is a first
 
 ### Entering and maintaining thousands of items
 
-Manual tree-building doesn't survive contact with a 200-store chain. Three mechanisms, all Phase 2:
+Manual tree-building doesn't survive contact with a 200-store chain. Three mechanisms, all Phase 1:
 
 1. **Structure templates.** A reusable subtree ("standard store": HVAC(2× AHU) + Fire safety(zones, detector lots, extinguishers)) stamped onto a site, then edited. Templates reference models, checklist templates and default PM rules — a new store is minutes, not hours.
 2. **Spreadsheet import** (the realistic mass path): CSV/Excel with path columns (`Site / L1 / L2 / name`), kind, quantity, model, serial, position code. Dry-run preview with diff (creates/updates/moves), then commit. Export in the same shape → edit → re-import is also the **bulk-edit** escape hatch.
@@ -52,7 +52,7 @@ Manual tree-building doesn't survive contact with a 200-store chain. Three mecha
 
 ### Reporting rollups
 
-Any subtree rolls up: open orders, last/next service per PM rule, **coverage %** ("42/46 extinguishers inspected in the last 12 months" — computed from coverage records vs lot quantities/unit counts), failure rate by model, cost per node (ERP-priced, role-gated). The contract view (`06-roadmap.md` Phase 3) uses the same rollup: covered nodes vs actually-serviced.
+Any subtree rolls up: open orders, last/next service per PM rule, **coverage %** ("42/46 extinguishers inspected in the last 12 months" — computed from coverage records vs lot quantities/unit counts), failure rate by model, cost per node (ERP-priced, role-gated). The contract view (`06-roadmap.md` Phase 2) uses the same rollup: covered nodes vs actually-serviced.
 
 ## Part 2 — Spare parts: compatibility and alternatives
 
@@ -76,7 +76,7 @@ Picking an out-of-stock part offers its in-stock alternatives in one tap. All of
 
 ### Learning from usage
 
-Every approved worksheet row is a (model, part) observation. A nightly job proposes compatibility rows for repeated unlisted pairs ("D-AHU-400 + filter F-2231 used 12×, not in the matrix — add?") to an admin review queue. The matrix converges toward reality without anyone maintaining it by hand. (Phase 4.)
+Every approved worksheet row is a (model, part) observation. A nightly job proposes compatibility rows for repeated unlisted pairs ("D-AHU-400 + filter F-2231 used 12×, not in the matrix — add?") to an admin review queue. The matrix converges toward reality without anyone maintaining it by hand. (Phase 3.)
 
 ### Maintaining the matrix
 
@@ -98,7 +98,6 @@ Adapter note: none of this changes the `04-erp-sync.md` contract — serialized 
 
 ## Roadmap placement (updates `06-roadmap.md`)
 
-- **Phase 1**: tree with `system`/`unit` nodes (parent link, path search), model registry minimal (make/model/category), unit cards + history. Flat is a degenerate tree — no migration later.
-- **Phase 2**: `lot` nodes + coverage rows, structure templates, spreadsheet import/export + dry-run, bulk operations, QR labels per unit *and per lot/system node* (a zone plaque is scannable too), PartCompatibility + alternatives + fits-first technician lookup.
-- **Phase 3**: rollup reporting + contract coverage view; lot explosion; checklist sampling rules.
-- **Phase 4**: compatibility suggestions from usage; meter-based PM per node (already planned) rides the same tree.
+- **Phase 1**: tree with `system`/`unit` nodes (parent link, path search), model registry minimal (make/model/category), unit cards + history; `lot` nodes + coverage rows, structure templates, spreadsheet import/export + dry-run, bulk operations, QR labels per unit *and per lot/system node* (a zone plaque is scannable too), PartCompatibility + alternatives + fits-first technician lookup. Flat is a degenerate tree — no migration later.
+- **Phase 2**: rollup reporting + contract coverage view; lot explosion; checklist sampling rules.
+- **Phase 3**: compatibility suggestions from usage; meter-based PM per node (already planned) rides the same tree.

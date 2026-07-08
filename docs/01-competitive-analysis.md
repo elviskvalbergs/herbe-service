@@ -1,6 +1,6 @@
 # herbe.service — Competitive Feature Analysis
 
-Status: v0.3 (2026-07-07). Change: design decision 3 corrected — tenant substatuses marked deferred (Phase-4 candidate), not adopted; they appeared nowhere in the data model/roadmap/UI docs. Previous: v0.2 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators; v0.2 re-verified pricing and key claims directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes) — corrections marked inline, details and source lists in [docs/research/](research/).
+Status: v0.4 (2026-07-08). Change: roadmap phases collapsed (2026-07-07) — old Phase 1 and Phase 2 merged into one Phase 1, old Phase 3 → Phase 2, old Phase 4 → Phase 3; all phase references renumbered accordingly. Previous: v0.3 (2026-07-07). Change: design decision 3 corrected — tenant substatuses marked deferred (Phase-3 candidate), not adopted; they appeared nowhere in the data model/roadmap/UI docs. Previous: v0.2 (2026-07-03). Method: web research of vendor sites, official docs and review aggregators; v0.2 re-verified pricing and key claims directly against live vendor pages and official docs (Microsoft Learn, salesforce.com, odoo.com release notes) — corrections marked inline, details and source lists in [docs/research/](research/).
 
 Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Field Service, IFS FSM / IFS Cloud Service Management, AllDevice, Odoo Field Service, Acumatica Field Service.
 
@@ -26,30 +26,30 @@ Products analyzed: Frontu, Microsoft Dynamics 365 Field Service, Salesforce Fiel
 |---|---|---|---|---|---|---|---|---|
 | Offline-first mobile | ✔ (Android) | ✔ | ✔ | ✔ | partial | cache-based (19.3) | ✖ (ISV only) | **✔ core requirement** |
 | Order vs assignment separation | partial | ✔ | ✔✔ | ✔✔ | ✖ | ✖ | ✔ | ✔ (ServiceOrder/Worksheet/Booking) |
-| Dispatch board + map | ✔ | ✔✔ | ✔✔ | ✔✔ | ✖ | ✔ | ✔ | ✔ Phase 2 |
-| Route/schedule optimization | ✖ | add-in | ✔✔ | ✔✔ | ✖ | ✖ | legacy connector | Phase 4 |
-| Van/tech stock | add-on | ✔✔ | ✔ | ✔✔ | ✔ | ✔ | ✔ | ✔ Phase 2 (ERP-backed) |
-| Checklists/inspections | ✔ | ✔✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ Phase 1 basic → 2 builder |
+| Dispatch board + map | ✔ | ✔✔ | ✔✔ | ✔✔ | ✖ | ✔ | ✔ | ✔ Phase 1 |
+| Route/schedule optimization | ✖ | add-in | ✔✔ | ✔✔ | ✖ | ✖ | legacy connector | Phase 3 |
+| Van/tech stock | add-on | ✔✔ | ✔ | ✔✔ | ✔ | ✔ | ✔ | ✔ Phase 1 (ERP-backed) |
+| Checklists/inspections | ✔ | ✔✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ Phase 1 (basic + builder) |
 | Signature + service report PDF | ✔ | ✔ | ✔✔ | ✔ | ✖ | ✔ | ✔ | ✔ Phase 1 |
-| QR/NFC on assets | ✔✔ | ✔ | ✔ | ✔ | ✔✔ | ✖ | ✖ | ✔ Phase 2 |
+| QR/NFC on assets | ✔✔ | ✔ | ✔ | ✔ | ✔✔ | ✖ | ✖ | ✔ Phase 1 |
 | Asset/serial service history | ✔ | ✔ | ✔ | ✔✔ | ✔✔ | ✖ | ✔ | ✔ Phase 1, incl. ERP-era history |
-| Contracts + recurring PM | ✔ | ✔✔ | ✔✔✔ | ✔✔ | ✔✔ | workaround | ✔✔ | Phase 3 (calendar) → 4 (meter) |
-| Customer portal + tracking | ✔ (no invoices/assets) | ✔✔ (self-sched. in preview) | ✔✔✔ ($25 add-on) | ✔ | ✖ | ✔ (no assets) | ✔ | Phase 3 via herbe.portal |
+| Contracts + recurring PM | ✔ | ✔✔ | ✔✔✔ | ✔✔ | ✔✔ | workaround | ✔✔ | Phase 2 (calendar) → 3 (meter) |
+| Customer portal + tracking | ✔ (no invoices/assets) | ✔✔ (self-sched. in preview) | ✔✔✔ ($25 add-on) | ✔ | ✖ | ✔ (no assets) | ✔ | Phase 2 via herbe.portal |
 | Invoicing | via ERP | built-in | built-in | built-in | ✖ | built-in | built-in ✔✔ | **always in ERP** |
 | Two-way sync to foreign ERP | connectors | BC-native | ✖ | ✔✔ | ✖ | ✖ | n/a | **✔✔ core differentiator** |
-| AI assist | ✖ | ✔✔ | ✔✔ | ✔✔ | ✖ | ✖ | ✔ | Phase 4 |
+| AI assist | ✖ | ✔✔ | ✔✔ | ✔✔ | ✖ | ✖ | ✔ | Phase 3 |
 
 ## Design decisions taken from this analysis
 
 1. **Adopt the three-document spine** (Salesforce/D365 pattern): ServiceOrder (what), Worksheet (done facts), Booking (when/who). Products that conflate them (Odoo, AllDevice) can't re-plan without corrupting work records.
-2. **Incident-type-style templates later, checklist templates first.** D365 Incident Types (bundled tasks+parts+skills per fault type) are powerful but heavy; start with checklist templates per item/work type (Phase 1–2), grow toward work templates (Phase 3).
-3. **Configurable status machine, fixed core states** (Salesforce lesson): keep our canonical states and pause reasons (both in the spec, `02-data-model.md`) — not free-form workflows. Tenant substatuses are **deferred, not adopted** (corrected 2026-07-07): a Phase-4 candidate alongside the workflow-configuration/automation-hooks era (`06-roadmap.md`), currently specced nowhere.
+2. **Incident-type-style templates later, checklist templates first.** D365 Incident Types (bundled tasks+parts+skills per fault type) are powerful but heavy; start with checklist templates per item/work type (Phase 1), grow toward work templates (Phase 2).
+3. **Configurable status machine, fixed core states** (Salesforce lesson): keep our canonical states and pause reasons (both in the spec, `02-data-model.md`) — not free-form workflows. Tenant substatuses are **deferred, not adopted** (corrected 2026-07-07): a Phase-3 candidate alongside the workflow-configuration/automation-hooks era (`06-roadmap.md`), currently specced nowhere.
 4. **Technician self-assignment pool** (Frontu) — cheap to build, loved by small teams that don't have a dispatcher.
 5. **QR labels on service items** (Frontu + AllDevice): scan → item card, history, start work. Doubles as arrival confirmation. High value/effort ratio.
 6. **Offline "briefcase" priming** (Salesforce): explicit "download my work" scope, not lazy caching.
 7. **Approval step before invoicing** (Frontu, and our own flow): worksheet Approved is the sync trigger to ERP — matches Acumatica/Odoo's finding that field docs and billing docs must stay separate documents.
 8. **Billing cycles stay out**: Acumatica's per-customer billing grouping is exactly the kind of logic that belongs in the ERP, not in us. We only guarantee clean, itemized worksheet data.
-9. **PM in three tiers** (Salesforce taxonomy): calendar-based (Phase 3) → criteria/usage-meter (Phase 4, with AllDevice-style predictive drift) → IoT (out of scope until real demand).
-10. **Uber-style tracking + self-scheduling** are the current customer-experience bar (SFS Appointment Assistant, D365 portal) — but both charge for it ($25/user add-on at Salesforce) and D365's portal has stalled in preview while vendor investment shifts to dispatcher-side AI agents. Phase 3 delivers the 80%: status notifications, "technician on the way" with ETA, confirm/reschedule links — without live map tracking initially.
+9. **PM in three tiers** (Salesforce taxonomy): calendar-based (Phase 2) → criteria/usage-meter (Phase 3, with AllDevice-style predictive drift) → IoT (out of scope until real demand).
+10. **Uber-style tracking + self-scheduling** are the current customer-experience bar (SFS Appointment Assistant, D365 portal) — but both charge for it ($25/user add-on at Salesforce) and D365's portal has stalled in preview while vendor investment shifts to dispatcher-side AI agents. Phase 2 delivers the 80%: status notifications, "technician on the way" with ETA, confirm/reschedule links — without live map tracking initially.
 11. **Where we win**: the only technician-first, offline-first app with *native, two-way, register-level* Standard ERP / Excellent Books sync. Odoo's offline is a cache bolt-on (19.3). Frontu does list a HansaWorld connector — but as a paid integration layer on top of a €39–64/seat + €999/yr platform, not a data model designed around the ERP's registers, and with no suite calendar/portal around it. Enterprise suites cost 2–10× more per user and assume their own ERP.
 12. **Customer experience: suite-composed, not a new monolith portal** (see `08-suite-integration.md`): herbe.portal grows the service modules (equipment + history, requests, order tracking, ETA view, report signoff, feedback — herbe.service ships no customer-facing pages of its own, decided 2026-07-05) on herbe.service’s API; herbe.portal already covers invoices, card/bank-link payments, contextual messaging and Mobile-ID/Smart-ID signing; herbe.calendar's Smart Booking already does availability-checked, no-login self-scheduling into an ERP activity. A full customer window (assets + booking + invoices + documents + qualified e-signature) exists today only in enterprise suites — Frontu's portal has no invoices and no asset register with history, Odoo's has no native asset registry — so at SMB pricing this is a category differentiator, and Baltic-native Smart-ID/Mobile-ID signing is one no global vendor matches.
