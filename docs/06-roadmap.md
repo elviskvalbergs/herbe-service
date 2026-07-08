@@ -118,7 +118,7 @@ Prioritize by pilot data, not upfront:
 Everything else from earlier rounds is decided and folded into the docs (Q1–Q5 answered 2026-07-05 — `10-spec-review-gaps.md` §3; round-3 tracker `16-spec-review-round-3.md`; round-5 record `20-spec-review-round-5.md`). Live list:
 
 1. **Pricing/packaging final call** (inputs: verified competitor prices in `01-competitive-analysis.md`; per-user pricing decided, seat licensing in Phase 1; whitelabel/multi-company as packaging axes)
-2. **Operations & lifecycle package** (accept as scope; backup/restore + `/api/ext` rate limiting land with Phase 1 hardening, where the API now ships): DR/rollback story, tenant offboarding & data export, shared→dedicated migration mechanics, retention enforcement (`16` §2.9)
+2. **Operations & lifecycle package** — **future work**, not needed for Phase 0/1: DR/rollback story, tenant offboarding & data export, shared→dedicated migration mechanics, retention enforcement (`16` §2.9). (Backup/restore + `/api/ext` rate limiting ride along with Phase 1 hardening where the API ships; the rest is built out later.)
 3. **Phase 1 re-estimate at Phase 0 exit** — especially now that Phase 1 absorbed the old Phase 2 scope
 4. **Register codes / field maps** to confirm against the launch tenant (Phase 0 list above; incl. calendar's `AccessGroup`-field TODO on `ActVc`; per-tenant onboarding values: main-service-location fallback, `SVOVc` number series, service-level `SVCVc` definitions)
 5. Sibling-team responses to the `13-suite-change-requests.md` asks (CAL-*/POR-*/SUITE-1)
