@@ -92,7 +92,7 @@ Scope: full consistency + completeness review of spec v0.1 (docs 01–06) agains
 ## What changed in the spec (v0.1 → v0.2)
 
 - `02-data-model.md` — C1–C4, C7, C10, E8 fixes.
-- `03-architecture.md` — B1 stack correction (Neon/Drizzle/Auth.js/Vercel Blob, no Supabase), tenancy ADR, native-wrapper strategy, backend conventions from siblings.
+- `03-architecture.md` — B1 stack correction (Drizzle/Auth.js/Vercel Blob; **DB is Supabase Postgres per B4**, not Neon — the "no Supabase" wording here was the round-1 sibling-stack premise, corrected by the B4 tenancy ADR the same day), tenancy ADR, native-wrapper strategy, backend conventions from siblings.
 - `04-erp-sync.md` — E1–E7 fixes: adapter-reuse section, capability-driven sync, cache/freshness model, write mechanics, invoice back-link, history import, Sites row.
 - `05-users-auth.md` — Auth.js rewrite, provider strategy, identity-link references (`person_codes`/`identity_links`), session/device mechanics, SSO reality check.
 - `06-roadmap.md` — Phase 0 rewritten (repo review done, reuse/tenancy decisions in), Phase 1 scope fixes (C5, C6, C8, notifications), Phase 3 portal redirection, updated open items.

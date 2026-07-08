@@ -67,7 +67,7 @@ Photos/signatures upload as **separate resumable blobs** referenced by outbox op
 
 ### 2.3 Order cancellation cascade — FIXED
 
-`Cancelled` is a manual order transition, but no rule said what happens to its live children. Added (`02` derivation rules): cancelling an order requires no worksheet beyond `Accepted` (else block with the list — cancel the work first, same pattern as field policies); open bookings auto-cancel (which triggers 2.2 on the ERP side); worksheets in `Draft/Assigned/Accepted` auto-cancel with a technician inbox notice. `Closed` additionally requires all worksheets terminal.
+`Cancelled` is a manual order transition, but no rule said what happens to its live children. Added (`02` derivation rules): cancelling an order requires no worksheet beyond `Accepted` (else block with the list — cancel the work first, same pattern as field policies); open bookings auto-cancel (which triggers 2.2 on the ERP side); worksheets in `Draft/Assigned/Accepted` auto-cancel with a technician inbox notice. `Closed` additionally requires all worksheets terminal. *(Superseded by decision #13 — no app-side completion guard; `Closed` is ERP-sync-set from `SVOVc.DoneMark`, `04-erp-sync.md`.)*
 
 ### 2.4 Unlinked inbound activities arrive in Phase 1, their screen was Phase 2 — FIXED
 
@@ -175,6 +175,8 @@ Remaining for the demo probe (also in `06` Phase 0): charge-type row fields on `
 ---
 
 ## 7. Round 7 — owner corrections, 2026-07-06 (acting on the round-6 register evidence)
+
+*(Numbering note: there is no separate "Round 6" section heading. The round-6 pass was the register-evidence work folded into §6 above and applied here in §7; `09`/`10` refer to the crew-model revert as "round 6", which is recorded in this section.)*
 
 Two corrections raised directly against the just-verified `WSVc`/`SVOVc` field structures (`17-erp-register-reference.md`), both owner-confirmed same day:
 

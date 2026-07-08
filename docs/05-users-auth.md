@@ -7,8 +7,10 @@ Status: v0.7 (2026-07-07). Role-shaped login (magic link for office, PIN + biome
 Auth runs on **Auth.js v5** — both siblings do (calendar: pg adapter + DB sessions, magic link only; portal: Drizzle adapter + JWT sessions with a `session_version` revocation counter, password+TOTP, magic link, Google, Smart-ID, Dokobit, eParaksts). Each suite app runs its own independent auth instance; there is no shared auth tenant. The app's own `users` table (tenant, role, profile, status) is what the rest of the schema references. External identities attach as links, not as identity itself: removing a link never deletes the user or their history.
 
 ```
-User (app table) ── IdentityLink[] ── { provider: standard-erp | excellent-books | entra-id | eid | ...,
+User (app table) ── IdentityLink[] ── { provider: erp | entra-id | eid | ...,
                                         externalId, linkedAt, linkedBy }
+  // provider `erp` is the single ERP person link (UserVc code) — one product, one adapter;
+  // Standard Books / Excellent Books are the same product, never separate providers.
 ```
 
 ## Login methods are role-shaped
