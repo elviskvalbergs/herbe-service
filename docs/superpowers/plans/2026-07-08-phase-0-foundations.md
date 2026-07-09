@@ -225,21 +225,70 @@ git commit -m "chore: scaffold Next.js 16 app with Drizzle, Vitest, pnpm workspa
 
 - [ ] **Step 1: Set the coverage thresholds in `vitest.config.ts`**
 
+The floors from Global Constraints (≥80% overall, ≥90% on the core-logic dirs) must measure **authored application logic**, not generated scaffolding, config files, declarative Drizzle schema, or the pre-existing docs tooling. Without an explicit `coverage.include`, Vitest's v8 provider counts every file in the repo at 0% and the gate fails unconditionally before any real code exists (discovered during implementation 2026-07-09). Scope it:
+
 ```typescript
 // vitest.config.ts (extend the test.coverage block from Task 1)
 coverage: {
   provider: 'v8',
   reporter: ['text', 'lcov'],
+  // Measure authored logic only. Generated Next.js boilerplate (root layout,
+  // the create-next-app demo page — replaced by real UI in Task 16), config
+  // files, declarative Drizzle schema (exercised by Testcontainers integration
+  // tests from Task 4, not unit tests), and the pre-existing docs script are
+  // not unit-test targets and would otherwise sink the floor to ~0%.
+  include: ['app/**/*.{ts,tsx}', 'lib/**/*.ts', 'packages/**/*.ts'],
+  exclude: [
+    '**/*.config.*',
+    '**/*.d.ts',
+    'app/layout.tsx',
+    'app/page.tsx',
+    'drizzle/**',
+    'scripts/**',
+    '**/.next/**',
+    'coverage/**',
+  ],
   thresholds: {
     lines: 80,
     branches: 80,
     functions: 80,
     statements: 80,
+    // Core-logic dirs held to 90%. These globs match zero files until Tasks
+    // 5/10/11 create them; keep an entry here ONLY if Vitest tolerates a
+    // zero-match threshold glob without erroring — if it errors on the empty
+    // match, remove the not-yet-existing entries and the task that creates
+    // each dir re-adds its own 90% entry.
     'lib/erp/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
     'packages/erp-core/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
     'lib/sync/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
   },
 },
+```
+
+The one measured file with no test after Task 1 is `lib/db.ts`. Add a real behavioral test for it (it has two branches worth verifying) so the floor passes on genuine coverage, not by exclusion:
+
+```typescript
+// __tests__/lib/db.test.ts
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+describe('lib/db', () => {
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+  })
+
+  it('throws when DATABASE_URL is unset', async () => {
+    vi.stubEnv('DATABASE_URL', '')
+    await expect(import('@/lib/db')).rejects.toThrow('DATABASE_URL must be set')
+  })
+
+  it('constructs the sql client and drizzle db when DATABASE_URL is set', async () => {
+    vi.stubEnv('DATABASE_URL', 'postgres://user:pass@localhost:5432/testdb')
+    const mod = await import('@/lib/db')
+    expect(mod.sql).toBeDefined()
+    expect(mod.db).toBeDefined()
+  })
+})
 ```
 
 - [ ] **Step 2: Write the workflow**
