@@ -12,6 +12,26 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
+      include: ['app/**/*.{ts,tsx}', 'lib/**/*.ts', 'packages/**/*.ts'],
+      exclude: [
+        '**/*.config.*',
+        '**/*.d.ts',
+        'app/layout.tsx',
+        'app/page.tsx',
+        'drizzle/**',
+        'scripts/**',
+        '**/.next/**',
+        'coverage/**',
+      ],
+      thresholds: {
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
+        'lib/erp/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+        'packages/erp-core/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+        'lib/sync/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+      },
     },
   },
 })
