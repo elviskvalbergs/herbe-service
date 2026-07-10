@@ -11,6 +11,9 @@ importers:
       '@herbe/erp-core':
         specifier: workspace:*
         version: link:packages/erp-core
+      '@herbe/fake-erp':
+        specifier: workspace:*
+        version: link:packages/fake-erp
       drizzle-orm:
         specifier: ^0.44.7
         version: 0.44.7(postgres@3.4.9)
@@ -74,6 +77,15 @@ importers:
         version: 3.2.7(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
 
   packages/erp-core: {}
+
+  packages/fake-erp:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^2.0.8
+        version: 2.0.8(hono@4.12.28)
+      hono:
+        specifier: ^4.6.0
+        version: 4.12.28
 
 packages:
 
@@ -688,6 +700,12 @@ packages:
 
   '@formatjs/intl-localematcher@0.8.11':
     resolution: {integrity: sha512-MzBbR9ifqgtzHwUl2PGEDtRVZGXF9nXPtrMyN6/iKbQaim1Ob7fnPJQMllVkHm3RK74o5VqnLrZIE9egWJhf5g==}
+
+  '@hono/node-server@2.0.8':
+    resolution: {integrity: sha512-GuCWzLxwg218fy1JaHculFsdcuY12hxit83V+algozTPnwhNjLrRL/Alg9OYjLZLoUZ1rw/S4CdTMsnkSKCmFA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      hono: ^4
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2368,6 +2386,10 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
+  hono@4.12.28:
+    resolution: {integrity: sha512-YwUvVpSF7m1yOblFPrU3Hbo8XhPheBoiyfGuII6z19LnOr6JpDnyyp7LFNrfV56wS8tpvtBFGRISHN02pDdLOA==}
+    engines: {node: '>=16.9.0'}
+
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
 
@@ -3814,6 +3836,10 @@ snapshots:
   '@formatjs/intl-localematcher@0.8.11':
     dependencies:
       '@formatjs/fast-memoize': 3.1.6
+
+  '@hono/node-server@2.0.8(hono@4.12.28)':
+    dependencies:
+      hono: 4.12.28
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -5433,6 +5459,8 @@ snapshots:
   hermes-parser@0.25.1:
     dependencies:
       hermes-estree: 0.25.1
+
+  hono@4.12.28: {}
 
   html-escaper@2.0.2: {}
 
