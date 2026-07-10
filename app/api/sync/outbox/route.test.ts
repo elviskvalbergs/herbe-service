@@ -5,14 +5,23 @@
 // `@/app/api/sync/outbox/route` transitively imports `@/lib/db`, which reads
 // DATABASE_URL at module-load time, so DATABASE_URL must point at the
 // harness DB *before* the route is first dynamically imported.
+//
+// `auth` from '@/lib/auth' is mocked at the module seam (Task 14 carry-over
+// #3): Auth.js v5's server-side `auth()` calls `next/headers`' `headers()`,
+// which requires the Next.js request-scoped AsyncLocalStorage that only
+// exists inside a real Next.js server request, not a bare Vitest call to
+// `POST(request)` — same reasoning as __tests__/api/test/login.test.ts.
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { registerAdapter } from '@herbe/erp-core'
+
+const authMock = vi.fn()
+vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
 
 let testDb: TestDatabase
 let sql: ReturnType<typeof postgres>
@@ -82,6 +91,29 @@ async function makeCompany(adapterType: string, slug: string) {
 const payload = { custCode: 'CUST001', transDate: '2026-07-08', rows: [{ artCode: 'PART-1', quant: 1 }] }
 
 describe('POST /api/sync/outbox', () => {
+  beforeEach(() => {
+    // Authenticated by default; the 401 test below overrides this per-call.
+    authMock.mockReset().mockResolvedValue({ user: { id: 'test-user-id' }, expires: '2099-01-01T00:00:00.000Z' })
+  })
+
+  it('rejects an unauthenticated request with 401 before doing any work (Task 14 carry-over #3)', async () => {
+    authMock.mockResolvedValue(null)
+    const tenantId = await makeCompany('ok_push_adapter', 'unauth-tenant')
+    const opId = '22222222-0000-0000-0000-000000000099'
+    const callsBefore = okPushCalls
+
+    const body = { id: opId, tenantId, entity: 'serviceOrder', op: 'create', payload }
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+
+    expect(res.status).toBe(401)
+    // No row written and no ERP push attempted — the guard runs before any work.
+    expect(okPushCalls).toBe(callsBefore)
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows.length).toBe(0)
+  })
+
   it('accepts an op once, applies it with the real erpRef, and is a no-op idempotent replay on the same client UUID', async () => {
     const tenantId = await makeCompany('ok_push_adapter', 'ok-tenant')
     const opId = '22222222-0000-0000-0000-000000000001'

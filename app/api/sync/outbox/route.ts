@@ -14,9 +14,15 @@ import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
 import { getAdapter } from '@herbe/erp-core'
 import { pushServiceOrderCreate } from '@/lib/erp/standard-books/push-service-order'
+import { auth } from '@/lib/auth'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(request: Request) {
+  const session = await auth()
+  if (!session?.user) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+
   const body = await request.json()
 
   const [existing] = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, body.id))

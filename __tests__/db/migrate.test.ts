@@ -374,3 +374,57 @@ describe('0004 outbox migration: raw SQL is independently re-runnable, not just 
     expect(inserted.status).toBe('pending')
   })
 })
+
+describe('0005 auth migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // Same convention as the 0002/0003/0004 tests above (Task 11 review). users
+  // and magic_link_tokens both have a FK to tenants, so 0001 must be applied
+  // first.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    await runMigrations(testDb.url) // applies 0001-0005 through the normal path first
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0005_auth.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(path.resolve('scripts/migrations/0005_auth.sql'), 'utf8')
+    const statements = splitSqlStatements(content)
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [usersTable] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'
+    `
+    expect(usersTable?.table_name).toBe('users')
+
+    const [tokensTable] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'magic_link_tokens'
+    `
+    expect(tokensTable?.table_name).toBe('magic_link_tokens')
+
+    // The re-executed tables must still function correctly, not just still exist.
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t4', 'Migration T4') RETURNING id`
+    const [insertedUser] = await sql`
+      INSERT INTO users (tenant_id, email) VALUES (${tenant.id}, 'mig-user@herbe-service.test') RETURNING role
+    `
+    expect(insertedUser.role).toBe('technician')
+
+    const [insertedToken] = await sql`
+      INSERT INTO magic_link_tokens (token_hash, tenant_id, email, expires_at)
+      VALUES ('mig-token-hash', ${tenant.id}, 'mig-user@herbe-service.test', now() + interval '15 minutes')
+      RETURNING consumed_at
+    `
+    expect(insertedToken.consumed_at).toBeNull()
+  })
+})

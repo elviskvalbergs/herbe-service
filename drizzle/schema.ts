@@ -83,3 +83,28 @@ export const items = pgTable(
   },
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_items_change_seq').on(t.changeSeq)],
 )
+
+// Task 14: the app's own identity table (docs/05-users-auth.md). External
+// logins (Entra ID, Baltic eID, ...) attach as separate identity links in a
+// later phase; this table is the identity itself, not a link.
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    email: text('email').notNull(),
+    role: text('role').notNull().default('technician'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.tenantId, t.email)],
+)
+
+// tokenHash is the SHA-256 hash of the raw token handed to the user — the raw
+// token itself is never persisted (lib/auth/magic-link-provider.ts).
+export const magicLinkTokens = pgTable('magic_link_tokens', {
+  tokenHash: text('token_hash').primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  email: text('email').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+})
