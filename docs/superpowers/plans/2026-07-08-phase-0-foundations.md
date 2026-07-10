@@ -27,6 +27,95 @@
 
 ---
 
+## Test Database Harness (decided 2026-07-09 — supersedes Testcontainers in every DB task)
+
+Docker is unavailable in the dev environment, so **Testcontainers is NOT used anywhere**. Every DB-backed test instead gets an isolated, freshly-migrated database on a real Postgres server via a shared helper. This works identically locally (a throwaway Homebrew Postgres 17 cluster on port 55432) and in CI (a `postgres` service). Wherever a task below shows `new PostgreSqlContainer('postgres:16-alpine').start()` and `container.getConnectionUri()`, use this helper instead.
+
+**Helper — `lib/test-support/db.ts`** (built in Task 4, imported by every later DB task):
+
+```typescript
+import postgres from 'postgres'
+import { randomUUID } from 'node:crypto'
+
+export interface TestDatabase {
+  url: string
+  cleanup: () => Promise<void>
+}
+
+/**
+ * Creates a uniquely-named, empty database on the server pointed at by
+ * TEST_DATABASE_URL and returns its connection URL + a cleanup that drops it.
+ * Caller runs migrations against `url` and must close its own connections
+ * before calling cleanup(). No Docker: the server is a real local/CI Postgres.
+ */
+export async function createTestDatabase(): Promise<TestDatabase> {
+  const base = process.env.TEST_DATABASE_URL
+  if (!base) {
+    throw new Error(
+      'TEST_DATABASE_URL is not set. Start the local test Postgres and set it in .env.test, ' +
+        'e.g. postgres://postgres@localhost:55432/postgres (see docs/testing/README.md).',
+    )
+  }
+  const name = `herbe_test_${randomUUID().replace(/-/g, '')}`
+  const admin = postgres(base, { max: 1 })
+  try {
+    await admin.unsafe(`CREATE DATABASE "${name}"`)
+  } finally {
+    await admin.end({ timeout: 5 })
+  }
+
+  const url = base.replace(/\/[^/]+(\?.*)?$/, `/${name}$1`)
+  return {
+    url,
+    cleanup: async () => {
+      const a = postgres(base, { max: 1 })
+      try {
+        await a.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`)
+      } finally {
+        await a.end({ timeout: 5 })
+      }
+    },
+  }
+}
+```
+
+**Standard per-suite pattern** (replaces the Testcontainers `beforeAll`/`afterAll` boilerplate in every DB task):
+
+```typescript
+import { afterAll, beforeAll } from 'vitest'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import * as schema from '@/drizzle/schema'
+import { runMigrations } from '@/scripts/migrate'
+import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
+
+let testDb: TestDatabase
+let sql: ReturnType<typeof postgres>
+let db: ReturnType<typeof drizzle>
+
+beforeAll(async () => {
+  testDb = await createTestDatabase()
+  await runMigrations(testDb.url)
+  sql = postgres(testDb.url)
+  db = drizzle(sql, { schema })
+})
+
+afterAll(async () => {
+  await sql?.end({ timeout: 5 })   // close our own connections BEFORE dropping
+  await testDb?.cleanup()
+})
+```
+
+**Env loading:** a Vitest setup file `vitest.setup.ts` (`import { config } from 'dotenv'; config({ path: '.env.test' })`) wired via `test.setupFiles` in `vitest.config.ts` loads `TEST_DATABASE_URL` from the gitignored `.env.test`. Add `dotenv` as a devDependency. `.env.test` holds `TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres` locally (already created; gitignored).
+
+**`lib/test-support/**` is excluded from coverage** (it is test infrastructure, not shipped logic) — add `'lib/test-support/**'` to `coverage.exclude` in `vitest.config.ts`.
+
+**CI:** the `ci` workflow (Task 2) gains a `services: postgres:17` container and sets `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres` for the test step (wired in Task 4; validated on the first authenticated PR run alongside the deferred `gh` items). No Testcontainers, no Docker-in-Docker.
+
+**`@testcontainers/postgresql` is never installed.** Any task text below that says "Install Testcontainers" or imports `@testcontainers/postgresql` is superseded by this section.
+
+---
+
 ## Non-Code Prerequisites & Decisions (tracked, not implementation tasks)
 
 These block or shape specific tasks below but are not something an engineer can TDD their way through. Track as a checklist; each links to the task(s) it gates.
@@ -488,40 +577,43 @@ git commit -m "feat: i18n scaffolding for the suite's 7 locales (next-intl)"
 - Create: `scripts/migrations/0001_tenancy_core.sql`
 - Create: `scripts/migrate.mjs` (build-time runner, portal's `migrate-prod.mjs` pattern adapted from `@neondatabase/serverless` to `postgres`)
 - Create: `app/api/admin/run-migrations/route.ts`
-- Test: `__tests__/db/tenancy.test.ts` (Testcontainers Postgres)
+- Create: `lib/test-support/db.ts` (the `createTestDatabase()` helper — see "Test Database Harness" section)
+- Create: `vitest.setup.ts` (loads `.env.test`); Modify: `vitest.config.ts` (`test.setupFiles`, add `lib/test-support/**` to `coverage.exclude`)
+- Modify: `.github/workflows/ci.yml` (add `postgres:17` service + `TEST_DATABASE_URL` for the test step)
+- Test: `__tests__/db/tenancy.test.ts` (real Postgres via the harness helper — NOT Testcontainers)
 
 **Interfaces:**
-- Produces: Drizzle tables `tenants`, `erpCompanies`, `erpSyncState`; migration runner invoked as `node scripts/migrate.mjs`, idempotent (tolerates `42710`/`42P07`/`42P06`/`42701`/`42P16`/`42704` "already exists" errors on re-run, portal's `TOLERATED` set).
+- Produces: Drizzle tables `tenants`, `erpCompanies`, `erpSyncState`; migration runner invoked as `node scripts/migrate.mjs`, idempotent (tolerates `42710`/`42P07`/`42P06`/`42701`/`42P16`/`42704` "already exists" errors on re-run, portal's `TOLERATED` set); `createTestDatabase()` from `lib/test-support/db.ts` for all later DB tasks.
 
-- [ ] **Step 1: Install Testcontainers for real-Postgres tests**
+- [ ] **Step 1: Build the test-database harness (see "Test Database Harness" section for the full helper + setup-file + config code)**
 
-```bash
-pnpm add -D @testcontainers/postgresql
-```
+Create `lib/test-support/db.ts` (the `createTestDatabase()` helper — verbatim from the harness section), `vitest.setup.ts` (loads `.env.test` via `dotenv`), add `dotenv` as a devDependency, wire `test.setupFiles: ['./vitest.setup.ts']` and add `'lib/test-support/**'` to `coverage.exclude` in `vitest.config.ts`. `@testcontainers/postgresql` is NOT installed. `.env.test` already exists locally (gitignored) with `TEST_DATABASE_URL=postgres://postgres@localhost:55432/postgres`. Confirm `TEST_DATABASE_URL` resolves in a trivial test before proceeding.
 
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 2: Write the failing test (uses the harness helper, per the standard per-suite pattern in the harness section)**
 
 ```typescript
 // __tests__/db/tenancy.test.ts
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
+import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 
-let container: StartedPostgreSqlContainer
+let testDb: TestDatabase
+let sql: ReturnType<typeof postgres>
 let db: ReturnType<typeof drizzle>
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('postgres:16-alpine').start()
-  const sql = postgres(container.getConnectionUri())
+  testDb = await createTestDatabase()
+  await runMigrations(testDb.url)
+  sql = postgres(testDb.url)
   db = drizzle(sql, { schema })
-  await runMigrations(container.getConnectionUri())
-}, 60_000)
+})
 
 afterAll(async () => {
-  await container.stop()
+  await sql?.end({ timeout: 5 })
+  await testDb?.cleanup()
 })
 
 describe('tenancy schema', () => {
