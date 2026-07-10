@@ -17,6 +17,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     // Vitest externalizes node_modules by default and loads them via Node's
     // native resolver, which ignores the `resolve.conditions` above. Inlining
     // next-intl routes it through Vite's resolver instead, so the
@@ -33,6 +34,7 @@ export default defineConfig({
         'app/page.tsx',
         'drizzle/**',
         'scripts/**',
+        'lib/test-support/**',
         '**/.next/**',
         'coverage/**',
       ],
