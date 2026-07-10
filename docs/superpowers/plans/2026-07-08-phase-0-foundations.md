@@ -891,7 +891,10 @@ Expected: FAIL — `./registry` not found
 export interface AdapterCapabilities {
   supportsIncrementalSync: boolean
   supportsDeletesFeed: boolean
-  supportsWebExcellentApi: boolean
+  // Neutral name — the generic engine gates rendered-document/attachment fetch on this.
+  // HansaWorld backs it via WebExcellentAPI presence, but that vendor detail stays in the
+  // Standard Books adapter (Task 10), never in the neutral contract name (2026-07-09 review fix).
+  supportsDocumentFetch: boolean
   supportsInvoiceStatusReadback: boolean
   supportsActivityMirror: boolean
 }
@@ -1696,7 +1699,7 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     capabilities: () => ({
       supportsIncrementalSync: true,
       supportsDeletesFeed: false, // confirmed unreliable — never advertise this as true
-      supportsWebExcellentApi: false, // probed and set per-connection in Task 21b
+      supportsDocumentFetch: false, // HansaWorld: WebExcellentAPI presence, probed per-connection in Task 21b
       supportsInvoiceStatusReadback: false,
       supportsActivityMirror: false,
     }),
@@ -2297,7 +2300,7 @@ beforeAll(async () => {
     capabilities: () => ({
       supportsIncrementalSync: false,
       supportsDeletesFeed: false,
-      supportsWebExcellentApi: false,
+      supportsDocumentFetch: false,
       supportsInvoiceStatusReadback: false,
       supportsActivityMirror: false,
     }),
