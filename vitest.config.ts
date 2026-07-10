@@ -6,9 +6,22 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, '.') },
+    // lib/i18n/request.ts runs in the RSC layer in production, where Next.js's
+    // bundler resolves next-intl's "react-server" export condition. Vitest's
+    // Node/SSR resolution otherwise falls through to the client build, which
+    // throws ("getRequestConfig is not supported in Client Components").
+    conditions: ['react-server'],
+  },
+  ssr: {
+    resolve: { conditions: ['react-server'] },
   },
   test: {
     environment: 'node',
+    // Vitest externalizes node_modules by default and loads them via Node's
+    // native resolver, which ignores the `resolve.conditions` above. Inlining
+    // next-intl routes it through Vite's resolver instead, so the
+    // "react-server" condition actually takes effect.
+    server: { deps: { inline: ['next-intl'] } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
@@ -22,10 +35,6 @@ export default defineConfig({
         'scripts/**',
         '**/.next/**',
         'coverage/**',
-        // next-intl getRequestConfig wiring — thin framework glue exercised via
-        // integration (locale resolution lives in the tested lib/i18n/config.ts),
-        // not meaningfully unit-testable on its own.
-        'lib/i18n/request.ts',
       ],
       thresholds: {
         lines: 80,
