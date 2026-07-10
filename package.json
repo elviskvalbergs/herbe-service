@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@herbe/erp-core": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "next": "16.2.10",
     "next-intl": "^4.13.1",
