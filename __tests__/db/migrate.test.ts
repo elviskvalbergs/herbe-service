@@ -289,3 +289,45 @@ describe('0002 domain migration: raw SQL is independently re-runnable, not just 
     expect(BigInt(inserted.change_seq)).toBeGreaterThan(BigInt(0))
   })
 })
+
+describe('0003 cron_locks migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // Same convention as the 0002 test above (Task 11 review): re-execute the
+  // migration file's own statements directly against a fresh harness DB,
+  // twice in a row, bypassing herbe_migrations.applied entirely. cron_locks
+  // has no FK dependencies, so this doesn't need 0001/0002 applied first.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0003_cron_locks.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(path.resolve('scripts/migrations/0003_cron_locks.sql'), 'utf8')
+    const statements = splitSqlStatements(content)
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [table] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cron_locks'
+    `
+    expect(table?.table_name).toBe('cron_locks')
+
+    // The re-executed table must still function correctly, not just still exist.
+    const [inserted] = await sql`
+      INSERT INTO cron_locks (key, locked_at, expires_at) VALUES ('mig-check', now(), now() + interval '1 minute')
+      RETURNING key
+    `
+    expect(inserted.key).toBe('mig-check')
+  })
+})
