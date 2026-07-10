@@ -22,6 +22,10 @@ export default defineConfig({
         'scripts/**',
         '**/.next/**',
         'coverage/**',
+        // next-intl getRequestConfig wiring — thin framework glue exercised via
+        // integration (locale resolution lives in the tested lib/i18n/config.ts),
+        // not meaningfully unit-testable on its own.
+        'lib/i18n/request.ts',
       ],
       thresholds: {
         lines: 80,
