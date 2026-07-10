@@ -743,41 +743,116 @@ const TOLERATED = new Set([
   '42704', // undefined_object
 ])
 
+// Split a .sql file into individual statements, splitting on top-level ';' only
+// — never inside '...'/"..." strings, -- line or /* */ block comments, or
+// $tag$...$tag$ dollar-quoted bodies (plpgsql function bodies contain ';').
+// Exported for unit testing.
+export function splitSqlStatements(input) {
+  const statements = []
+  let cur = ''
+  let i = 0
+  const n = input.length
+  while (i < n) {
+    const ch = input[i]
+    if (ch === '-' && input[i + 1] === '-') {
+      const nl = input.indexOf('\n', i)
+      const end = nl === -1 ? n : nl
+      cur += input.slice(i, end)
+      i = end
+      continue
+    }
+    if (ch === '/' && input[i + 1] === '*') {
+      const close = input.indexOf('*/', i + 2)
+      const end = close === -1 ? n : close + 2
+      cur += input.slice(i, end)
+      i = end
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      const q = ch
+      cur += ch
+      i++
+      while (i < n) {
+        cur += input[i]
+        if (input[i] === q) {
+          if (input[i + 1] === q) { cur += input[i + 1]; i += 2; continue } // escaped quote
+          i++
+          break
+        }
+        i++
+      }
+      continue
+    }
+    if (ch === '$') {
+      const m = input.slice(i).match(/^\$([A-Za-z_][A-Za-z0-9_]*)?\$/)
+      if (m) {
+        const tag = m[0]
+        const close = input.indexOf(tag, i + tag.length)
+        const end = close === -1 ? n : close + tag.length
+        cur += input.slice(i, end)
+        i = end
+        continue
+      }
+    }
+    if (ch === ';') {
+      if (cur.trim()) statements.push(cur.trim())
+      cur = ''
+      i++
+      continue
+    }
+    cur += ch
+    i++
+  }
+  if (cur.trim()) statements.push(cur.trim())
+  return statements
+}
+
 export async function runMigrations(connectionString) {
   const url = connectionString ?? process.env.DATABASE_URL
   if (!url) throw new Error('DATABASE_URL must be set')
 
   const sql = postgres(url, { prepare: false })
-  await sql`CREATE SCHEMA IF NOT EXISTS herbe_migrations`
-  await sql`CREATE TABLE IF NOT EXISTS herbe_migrations.applied (
-    id SERIAL PRIMARY KEY,
-    filename TEXT NOT NULL UNIQUE,
-    hash TEXT NOT NULL,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  )`
+  try {
+    await sql`CREATE SCHEMA IF NOT EXISTS herbe_migrations`
+    await sql`CREATE TABLE IF NOT EXISTS herbe_migrations.applied (
+      id SERIAL PRIMARY KEY,
+      filename TEXT NOT NULL UNIQUE,
+      hash TEXT NOT NULL,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`
 
-  const dir = path.resolve('./scripts/migrations')
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+    const dir = path.resolve('./scripts/migrations')
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
 
-  for (const filename of files) {
-    const content = fs.readFileSync(path.join(dir, filename), 'utf8')
-    const hash = crypto.createHash('sha256').update(content).digest('hex')
+    for (const filename of files) {
+      const content = fs.readFileSync(path.join(dir, filename), 'utf8')
+      const hash = crypto.createHash('sha256').update(content).digest('hex')
 
-    const [existing] = await sql`SELECT hash FROM herbe_migrations.applied WHERE filename = ${filename}`
-    if (existing) continue
+      const [existing] = await sql`SELECT hash FROM herbe_migrations.applied WHERE filename = ${filename}`
+      if (existing) continue
 
-    try {
-      await sql.unsafe(content)
-    } catch (err) {
-      if (!TOLERATED.has(err.code)) throw err
-      console.warn(`[migrate] tolerated ${err.code} in ${filename}: ${err.message}`)
+      // Execute each statement in its OWN implicit transaction. A single
+      // sql.unsafe(wholeFile) call sends the file as one simple-query message,
+      // which Postgres wraps in ONE implicit transaction — so a mid-file
+      // tolerated "already exists" error would roll back the sibling DDL that
+      // ran before AND after it, while we still marked the file applied
+      // (silent DDL loss; found in Task 4 review 2026-07-09). Per-statement
+      // execution keeps a tolerated error local to its own statement.
+      for (const stmt of splitSqlStatements(content)) {
+        try {
+          await sql.unsafe(stmt)
+        } catch (err) {
+          if (!TOLERATED.has(err.code)) throw err
+          console.warn(`[migrate] tolerated ${err.code} in ${filename}: ${err.message}`)
+        }
+      }
+
+      await sql`INSERT INTO herbe_migrations.applied (filename, hash) VALUES (${filename}, ${hash})`
+      console.log(`[migrate] applied ${filename}`)
     }
-
-    await sql`INSERT INTO herbe_migrations.applied (filename, hash) VALUES (${filename}, ${hash})`
-    console.log(`[migrate] applied ${filename}`)
+  } finally {
+    await sql.end({ timeout: 5 })
   }
-
-  await sql.end()
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -785,15 +860,35 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 ```
 
+**Regression test (`__tests__/db/migrate.test.ts`) — encodes the Task-4-review bug so it can't recur:**
+- Unit-test `splitSqlStatements`: a dollar-quoted plpgsql body with embedded `;` stays ONE statement; `;` inside a string literal and inside a `--` comment do not split.
+- Integration (harness DB): apply a file with `[CREATE TABLE reg_a; CREATE TABLE reg_b; CREATE TABLE reg_c]` where `reg_b` already exists (forces a tolerated `42P07`), then assert **both `reg_a` and `reg_c` exist** afterward (siblings not lost) and the file is recorded in `herbe_migrations.applied`.
+- Integration: a plpgsql migration (`CREATE SEQUENCE` + `CREATE FUNCTION ... $$ ... $$ LANGUAGE plpgsql` + `CREATE TRIGGER`) applies fully in one file; a second `runMigrations()` run is a clean no-op.
+
 - [ ] **Step 7: Add the admin re-run route (portal pattern)**
 
 ```typescript
 // app/api/admin/run-migrations/route.ts
+import { timingSafeEqual } from 'node:crypto'
 import { runMigrations } from '@/scripts/migrate'
 
+// Constant-time bearer check — this route triggers schema migrations, so the
+// secret compare must not leak length/prefix via timing (Task 4 review fix).
+// Task 12 introduces a shared `bearerMatches` helper; adopt it there.
+function authorized(request: Request): boolean {
+  const secret = process.env.ADMIN_MIGRATIONS_SECRET
+  if (!secret) return false
+  const header = request.headers.get('authorization')
+  if (!header) return false
+  const expected = `Bearer ${secret}`
+  const a = Buffer.from(header)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export async function POST(request: Request) {
-  const auth = request.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.ADMIN_MIGRATIONS_SECRET}`) {
+  if (!authorized(request)) {
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -805,6 +900,8 @@ export async function POST(request: Request) {
   }
 }
 ```
+
+**Route test (`__tests__/api/admin/run-migrations.test.ts`):** unauthorized (missing/wrong bearer) → 401 without invoking `runMigrations`; authorized (correct bearer) → invokes `runMigrations` and returns `{status:'ok'}`. Mock `@/scripts/migrate`'s `runMigrations` so the route test doesn't need a live DB.
 
 - [ ] **Step 8: Run test, confirm it passes**
 
