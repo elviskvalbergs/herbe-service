@@ -1,7 +1,7 @@
 // lib/sync/ingest/key-sweep.test.ts
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
@@ -69,6 +69,9 @@ describe('keySweepReconcile (integration, real harness DB)', () => {
   })
 
   it('soft-deletes rows whose erpRef is no longer live and leaves the rest alone', async () => {
+    const before = await db.select().from(schema.customers).where(eq(schema.customers.erpCompanyId, erpCompanyId))
+    const goesBefore = before.find((r) => r.erpRef === 'CUST011')
+
     const adapter: RefListingAdapter = { listLiveRefs: vi.fn().mockResolvedValue(['CUST010']) }
 
     const result = await keySweepReconcile(db, adapter, erpCompanyId, 'CUVc')
@@ -80,36 +83,62 @@ describe('keySweepReconcile (integration, real harness DB)', () => {
     const goes = rows.find((r) => r.erpRef === 'CUST011')
     expect(stays?.deletedAt).toBeNull()
     expect(goes?.deletedAt).toBeInstanceOf(Date)
+    // The tombstone UPDATE must fire bump_change_seq() the same as any other
+    // write — devices polling `change_seq > X` rely on this to see deletions.
+    expect(goes?.changeSeq).toBeGreaterThan(goesBefore!.changeSeq)
   })
 
-  it('does not tombstone another company\'s row that happens to share the same erpRef', async () => {
-    const [otherTenant] = await db.insert(schema.tenants).values({ slug: 'sweep-t2', name: 'Sweep T2' }).returning()
-    const [otherCompany] = await db
+  it('does not tombstone another company\'s row that happens to share the same erpRef (isolated fixture)', async () => {
+    // Fresh companies + a fresh erpRef untouched by any other test in this
+    // file, so keySweepReconcile's `storedRows` query (deletedAt IS NULL)
+    // genuinely has BOTH companies' live rows to consider — unlike a shared
+    // erpRef that a prior test already tombstoned, where the row is filtered
+    // out of storedRows before the tombstone UPDATE is ever invoked, and the
+    // "isolation" assertion would pass trivially regardless of the update's
+    // WHERE clause.
+    const [tenantA] = await db.insert(schema.tenants).values({ slug: 'sweep-ta', name: 'Sweep TA' }).returning()
+    const [companyA] = await db
       .insert(schema.erpCompanies)
-      .values({
-        tenantId: otherTenant.id,
-        displayName: 'Sweep C2',
-        adapterType: 'standard_books',
-        adapterConfigJson: {},
-      })
+      .values({ tenantId: tenantA.id, displayName: 'Sweep CA', adapterType: 'standard_books', adapterConfigJson: {} })
+      .returning()
+    const [tenantB] = await db.insert(schema.tenants).values({ slug: 'sweep-tb', name: 'Sweep TB' }).returning()
+    const [companyB] = await db
+      .insert(schema.erpCompanies)
+      .values({ tenantId: tenantB.id, displayName: 'Sweep CB', adapterType: 'standard_books', adapterConfigJson: {} })
       .returning()
 
-    // Same erpRef as the already-tombstoned CUST011 from the first test, but
-    // in a different erp_company_id — must not get swept by that company's run.
-    await ingestCustomers(db, otherCompany.id, {
-      upserts: [{ Code: 'CUST011', Name: 'Different company, same code' }],
+    // Same erpRef in two different companies, both live (deletedAt null).
+    await ingestCustomers(db, companyA.id, {
+      upserts: [{ Code: 'SHARED001', Name: 'Company A copy' }],
+      deletedRefs: [],
+      cursor: '1',
+    })
+    await ingestCustomers(db, companyB.id, {
+      upserts: [{ Code: 'SHARED001', Name: 'Company B copy' }],
       deletedRefs: [],
       cursor: '1',
     })
 
-    const adapter: RefListingAdapter = { listLiveRefs: vi.fn().mockResolvedValue(['CUST010']) }
-    await keySweepReconcile(db, adapter, erpCompanyId, 'CUVc')
+    // Company A's live set from the ERP does not include SHARED001 -> it must
+    // be tombstoned for company A only.
+    const adapter: RefListingAdapter = { listLiveRefs: vi.fn().mockResolvedValue([]) }
+    const result = await keySweepReconcile(db, adapter, companyA.id, 'CUVc')
+    expect(result.tombstoned).toEqual(['SHARED001'])
 
-    const [otherRow] = await db
+    const [rowA] = await db
       .select()
       .from(schema.customers)
-      .where(eq(schema.customers.erpCompanyId, otherCompany.id))
-    expect(otherRow.deletedAt).toBeNull()
+      .where(and(eq(schema.customers.erpCompanyId, companyA.id), eq(schema.customers.erpRef, 'SHARED001')))
+    const [rowB] = await db
+      .select()
+      .from(schema.customers)
+      .where(and(eq(schema.customers.erpCompanyId, companyB.id), eq(schema.customers.erpRef, 'SHARED001')))
+
+    expect(rowA.deletedAt).toBeInstanceOf(Date)
+    // Company B's row with the same erpRef must remain untouched — this is
+    // the assertion that fails if `eq(table.erpCompanyId, erpCompanyId)` is
+    // ever removed from the tombstone UPDATE's WHERE clause.
+    expect(rowB.deletedAt).toBeNull()
   })
 
   it('sweeps the items table (not customers) when register is INVc', async () => {

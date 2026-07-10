@@ -227,3 +227,65 @@ describe('runMigrations: real 0002 domain migration (sequence + plpgsql trigger)
     expect(BigInt(updated.change_seq)).toBeGreaterThan(BigInt(inserted.change_seq))
   })
 })
+
+describe('0002 domain migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // The "no-op on a second run" tests above only prove that
+  // herbe_migrations.applied's filename tracking skips a file it has already
+  // recorded — they never re-execute 0002's own SQL, so a regression in its
+  // IF NOT EXISTS / CREATE OR REPLACE / DROP TRIGGER IF EXISTS idempotency
+  // patterns would go undetected. This test bypasses the filename-skip
+  // entirely: it reads the real migration file and feeds its statements
+  // (split the same way the runner does) straight to Postgres, twice in a
+  // row, so the SQL text itself — not the runner's tracking table — is what's
+  // proven idempotent.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    // Apply 0001 + 0002 through the normal path first so 0002's FK targets
+    // (tenants, erp_companies) exist.
+    await runMigrations(testDb.url)
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0002_domain_customers_items.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(
+      path.resolve('scripts/migrations/0002_domain_customers_items.sql'),
+      'utf8',
+    )
+    const statements = splitSqlStatements(content)
+
+    // Two full re-execution passes of the file's own statements, going
+    // straight to `sql.unsafe` — never through runMigrations, so the
+    // filename-tracking table is never consulted.
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [table] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'customers'
+    `
+    expect(table?.table_name).toBe('customers')
+
+    // The trigger created by the third (re-)execution of the file must still
+    // fire correctly, not just still exist.
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t2', 'Migration T2') RETURNING id`
+    const [company] = await sql`
+      INSERT INTO erp_companies (tenant_id, display_name, adapter_type, adapter_config_json)
+      VALUES (${tenant.id}, 'C2', 'standard_books', '{}') RETURNING id
+    `
+    const [inserted] = await sql`
+      INSERT INTO customers (tenant_id, erp_company_id, erp_ref, name, change_seq)
+      VALUES (${tenant.id}, ${company.id}, 'MIG002', 'Re-exec Trigger Test', 0) RETURNING change_seq
+    `
+    expect(BigInt(inserted.change_seq)).toBeGreaterThan(BigInt(0))
+  })
+})
