@@ -164,3 +164,66 @@ FOR EACH ROW EXECUTE FUNCTION reg_trig_fn();
     await expect(runMigrations(testDb.url, migrationsDir)).resolves.toBeUndefined()
   })
 })
+
+describe('runMigrations: real 0002 domain migration (sequence + plpgsql trigger) applies clean; re-run is a no-op', () => {
+  // Task 11's proof that the splitter above handles a real, shipped migration
+  // file — not just a synthetic fixture — containing a CREATE SEQUENCE, a
+  // CREATE OR REPLACE FUNCTION ... $$ ... $$ LANGUAGE plpgsql body, and
+  // CREATE TRIGGER statements (scripts/migrations/0002_domain_customers_items.sql).
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('creates domain_change_seq, the bump_change_seq() function, and both triggers', async () => {
+    await runMigrations(testDb.url) // default migrationsDir: the real scripts/migrations
+    sql = postgres(testDb.url, { max: 1 })
+
+    const [seq] = await sql`SELECT sequencename FROM pg_sequences WHERE sequencename = 'domain_change_seq'`
+    expect(seq?.sequencename).toBe('domain_change_seq')
+
+    const [fn] = await sql`SELECT proname FROM pg_proc WHERE proname = 'bump_change_seq'`
+    expect(fn?.proname).toBe('bump_change_seq')
+
+    // DISTINCT: information_schema.triggers has one row per (trigger, firing
+    // event) — a single BEFORE INSERT OR UPDATE trigger lists twice.
+    const triggers = await sql`
+      SELECT DISTINCT trigger_name FROM information_schema.triggers
+      WHERE trigger_name IN ('trg_customers_change_seq', 'trg_items_change_seq')
+    `
+    expect(triggers.map((t) => t.trigger_name).sort()).toEqual([
+      'trg_customers_change_seq',
+      'trg_items_change_seq',
+    ])
+  })
+
+  it('is a clean no-op on a second run against the same database', async () => {
+    await expect(runMigrations(testDb.url)).resolves.toBeUndefined()
+  })
+
+  it('bump_change_seq() assigns a monotonically increasing change_seq on insert and update', async () => {
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t1', 'Migration T1') RETURNING id`
+    const [company] = await sql`
+      INSERT INTO erp_companies (tenant_id, display_name, adapter_type, adapter_config_json)
+      VALUES (${tenant.id}, 'C1', 'standard_books', '{}') RETURNING id
+    `
+
+    const [inserted] = await sql`
+      INSERT INTO customers (tenant_id, erp_company_id, erp_ref, name, change_seq)
+      VALUES (${tenant.id}, ${company.id}, 'MIG001', 'Trigger Test', 0) RETURNING change_seq
+    `
+    expect(BigInt(inserted.change_seq)).toBeGreaterThan(BigInt(0))
+
+    const [updated] = await sql`
+      UPDATE customers SET name = 'Trigger Test Updated' WHERE erp_ref = 'MIG001' RETURNING change_seq
+    `
+    expect(BigInt(updated.change_seq)).toBeGreaterThan(BigInt(inserted.change_seq))
+  })
+})

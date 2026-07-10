@@ -1,5 +1,5 @@
 // drizzle/schema.ts
-import { jsonb, pgTable, text, timestamp, uuid, boolean, integer, primaryKey } from 'drizzle-orm/pg-core'
+import { bigint, index, jsonb, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -32,4 +32,37 @@ export const erpSyncState = pgTable(
     errorMessage: text('error_message'),
   },
   (t) => [primaryKey({ columns: [t.erpCompanyId, t.register] })],
+)
+
+// changeSeq is bumped by the bump_change_seq() plpgsql trigger (0002 migration)
+// via a single shared `domain_change_seq` sequence, so a per-user delta feed
+// can query `WHERE tenant_id = ? AND change_seq > ?` across entity types.
+export const customers = pgTable(
+  'customers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id),
+    erpRef: text('erp_ref').notNull(),
+    name: text('name').notNull(),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_customers_change_seq').on(t.changeSeq)],
+)
+
+export const items = pgTable(
+  'items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id),
+    erpRef: text('erp_ref').notNull(),
+    name: text('name').notNull(),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_items_change_seq').on(t.changeSeq)],
 )
