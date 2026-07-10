@@ -15,7 +15,7 @@ describe('POST /api/test/login', () => {
   })
 
   it('returns 404 when isTestAuthEnabled() is false (guard: TEST_AUTH unset)', async () => {
-    vi.stubEnv('TEST_AUTH', '')
+    vi.stubEnv('TEST_AUTH', undefined)
 
     const res = await POST(makeRequest({ personaKey: 'tech' }))
 

@@ -37,4 +37,21 @@ describe('isTestAuthEnabled', () => {
     vi.stubEnv('NODE_ENV', 'test')
     expect(isTestAuthEnabled()).toBe(true)
   })
+
+  it('is true on Vercel Preview even though Vercel sets NODE_ENV=production there', () => {
+    // This is the real Vercel-preview scenario: Vercel sets NODE_ENV=production on
+    // Preview deploys too, so VERCEL_ENV must win over NODE_ENV. Regression test for
+    // the bug where a NODE_ENV=production check wrongly disabled test-login on Preview.
+    vi.stubEnv('TEST_AUTH', '1')
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    vi.stubEnv('NODE_ENV', 'production')
+    expect(isTestAuthEnabled()).toBe(true)
+  })
+
+  it('is true when TEST_AUTH=1, no VERCEL_ENV, and NODE_ENV=test (local/CI)', () => {
+    vi.stubEnv('TEST_AUTH', '1')
+    vi.stubEnv('VERCEL_ENV', undefined)
+    vi.stubEnv('NODE_ENV', 'test')
+    expect(isTestAuthEnabled()).toBe(true)
+  })
 })
