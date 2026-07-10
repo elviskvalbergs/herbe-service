@@ -52,6 +52,23 @@ export const customers = pgTable(
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_customers_change_seq').on(t.changeSeq)],
 )
 
+// The Phase-0 outbound round-trip (04-erp-sync.md outbox). id is the
+// CLIENT-generated UUID, not server-assigned — it's the idempotency key a
+// device replays a queued op under, so a retried POST never double-pushes.
+export const outboxOps = pgTable('outbox_ops', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  entity: text('entity').notNull(),
+  op: text('op').notNull(),
+  payloadJson: jsonb('payload_json').notNull(),
+  baseVersion: integer('base_version').notNull().default(0),
+  status: text('status').notNull().default('pending'), // 'pending' | 'applied' | 'failed'
+  erpRef: text('erp_ref'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+})
+
 export const items = pgTable(
   'items',
   {

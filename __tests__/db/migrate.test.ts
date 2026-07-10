@@ -331,3 +331,46 @@ describe('0003 cron_locks migration: raw SQL is independently re-runnable, not j
     expect(inserted.key).toBe('mig-check')
   })
 })
+
+describe('0004 outbox migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // Same convention as the 0002/0003 tests above (Task 11 review). outbox_ops
+  // has a FK to tenants, so 0001 must be applied first.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    await runMigrations(testDb.url) // applies 0001-0004 through the normal path first
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0004_outbox.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(path.resolve('scripts/migrations/0004_outbox.sql'), 'utf8')
+    const statements = splitSqlStatements(content)
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [table] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'outbox_ops'
+    `
+    expect(table?.table_name).toBe('outbox_ops')
+
+    // The re-executed table must still function correctly, not just still exist.
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t3', 'Migration T3') RETURNING id`
+    const [inserted] = await sql`
+      INSERT INTO outbox_ops (id, tenant_id, entity, op, payload_json)
+      VALUES ('33333333-0000-0000-0000-000000000001', ${tenant.id}, 'serviceOrder', 'create', '{}')
+      RETURNING status
+    `
+    expect(inserted.status).toBe('pending')
+  })
+})

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { startFakeErpServer } from '@herbe/fake-erp'
 import { createStandardBooksAdapter } from './adapter'
 
@@ -57,14 +57,87 @@ describe('Standard Books adapter — capabilities and pushCreate stub', () => {
     })
   })
 
-  it('pushCreate throws until Task 13 implements the outbox push', async () => {
+  it('pushCreate stays unimplemented for registers other than SVOVc in Phase 0', async () => {
     const adapter = createStandardBooksAdapter({
       baseUrl: server.url,
       companyNumber: '1',
       auth: { kind: 'basic', username: 'test', password: 'test' },
     })
 
-    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow('Not implemented')
+    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow('pushCreate not implemented for CUVc in Phase 0')
+  })
+})
+
+describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('returns the erpRef from a real assigned SerNr', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ SerNr: '230022' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '230022' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:9999/api/1/SVOVc',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('falls back to @url when SerNr is absent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '/api/1/SVOVc/230022' }), { status: 200 })),
+    )
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '/api/1/SVOVc/230022' })
+  })
+
+  it('returns an empty erpRef (not an error) when the ERP echoes back a 200 with neither SerNr nor @url — the confirmed silent-no-op case', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '' }), { status: 200 })))
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
+  })
+
+  it('returns an empty erpRef when the response body fails to parse as JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ status: 200, json: () => Promise.reject(new Error('invalid json')) }),
+    )
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
   })
 })
 

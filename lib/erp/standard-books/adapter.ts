@@ -29,8 +29,27 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
       return { upserts: rows, deletedRefs: [], cursor }
     },
 
-    async pushCreate(): Promise<{ erpRef: string }> {
-      throw new Error('Not implemented — see Task 13 (Service Order outbox push)')
+    async pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }> {
+      if (register !== 'SVOVc') {
+        throw new Error(`pushCreate not implemented for ${register} in Phase 0`)
+      }
+
+      const authHeader = `Basic ${Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64')}`
+      const url = `${config.baseUrl}/api/${config.companyNumber}/SVOVc`
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const body = await res.json().catch(() => null)
+      // Per the demo-probe caveat (docs/19-demo-probe-results.md §10): a 200
+      // with an echoed, unassigned payload is NOT a success signal — only a
+      // non-empty SerNr/@url proves the record persisted.
+      const erpRef = body?.SerNr ?? body?.['@url'] ?? ''
+
+      return { erpRef: String(erpRef) }
     },
 
     async probeIncrementalSupport(register: string): Promise<boolean> {

@@ -1,0 +1,135 @@
+// app/api/sync/outbox/route.test.ts
+//
+// Uses the local-Postgres test harness (lib/test-support/db.ts), not
+// Testcontainers — same convention as app/api/cron/sync-tick/route.test.ts.
+// `@/app/api/sync/outbox/route` transitively imports `@/lib/db`, which reads
+// DATABASE_URL at module-load time, so DATABASE_URL must point at the
+// harness DB *before* the route is first dynamically imported.
+import { eq } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import * as schema from '@/drizzle/schema'
+import { runMigrations } from '@/scripts/migrate'
+import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
+import { registerAdapter } from '@herbe/erp-core'
+
+let testDb: TestDatabase
+let sql: ReturnType<typeof postgres>
+let db: ReturnType<typeof drizzle<typeof schema>>
+
+let okPushCalls = 0
+
+beforeAll(async () => {
+  testDb = await createTestDatabase()
+  await runMigrations(testDb.url)
+  process.env.DATABASE_URL = testDb.url
+
+  sql = postgres(testDb.url)
+  db = drizzle(sql, { schema })
+
+  // Returns a real assigned erpRef — the happy path.
+  registerAdapter('ok_push_adapter', () => ({
+    capabilities: () => ({
+      supportsIncrementalSync: false,
+      supportsDeletesFeed: false,
+      supportsDocumentFetch: false,
+      supportsInvoiceStatusReadback: false,
+      supportsActivityMirror: false,
+    }),
+    pullChanges: async () => {
+      throw new Error('pullChanges must not be called by the outbox route')
+    },
+    pushCreate: async () => {
+      okPushCalls += 1
+      return { erpRef: 'SVO-000123' }
+    },
+    probeIncrementalSupport: async () => false,
+  }))
+
+  // Confirmed real-ERP finding (docs/19-demo-probe-results.md §10): a 200
+  // with an echoed, unassigned payload and no erpRef assigned.
+  registerAdapter('silent_noop_adapter', () => ({
+    capabilities: () => ({
+      supportsIncrementalSync: false,
+      supportsDeletesFeed: false,
+      supportsDocumentFetch: false,
+      supportsInvoiceStatusReadback: false,
+      supportsActivityMirror: false,
+    }),
+    pullChanges: async () => {
+      throw new Error('pullChanges must not be called by the outbox route')
+    },
+    pushCreate: async () => ({ erpRef: '' }),
+    probeIncrementalSupport: async () => false,
+  }))
+}, 60_000)
+
+afterAll(async () => {
+  await sql?.end({ timeout: 5 })
+  await testDb?.cleanup()
+})
+
+async function makeCompany(adapterType: string, slug: string) {
+  const [tenant] = await db.insert(schema.tenants).values({ slug, name: slug }).returning()
+  await db
+    .insert(schema.erpCompanies)
+    .values({ tenantId: tenant.id, displayName: slug, adapterType, adapterConfigJson: {} })
+    .returning()
+  return tenant.id
+}
+
+const payload = { custCode: 'CUST001', transDate: '2026-07-08', rows: [{ artCode: 'PART-1', quant: 1 }] }
+
+describe('POST /api/sync/outbox', () => {
+  it('accepts an op once, applies it with the real erpRef, and is a no-op idempotent replay on the same client UUID', async () => {
+    const tenantId = await makeCompany('ok_push_adapter', 'ok-tenant')
+    const opId = '22222222-0000-0000-0000-000000000001'
+    const callsBefore = okPushCalls
+
+    const body = { id: opId, tenantId, entity: 'serviceOrder', op: 'create', payload }
+
+    const { POST } = await import('./route')
+
+    const first = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+    const firstBody = await first.json()
+    expect(first.status).toBe(200)
+    expect(firstBody).toEqual({ status: 'applied', erpRef: 'SVO-000123' })
+    expect(okPushCalls).toBe(callsBefore + 1)
+
+    const second = await POST(
+      new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }),
+    )
+    const secondBody = await second.json()
+    expect(second.status).toBe(200)
+    expect(secondBody).toEqual({ status: 'already_applied', erpRef: 'SVO-000123' })
+    // The replay must not re-push to the ERP.
+    expect(okPushCalls).toBe(callsBefore + 1)
+
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows.length).toBe(1)
+    expect(rows[0].status).toBe('applied')
+    expect(rows[0].erpRef).toBe('SVO-000123')
+  })
+
+  it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
+    const tenantId = await makeCompany('silent_noop_adapter', 'noop-tenant')
+    const opId = '22222222-0000-0000-0000-000000000002'
+
+    const body = { id: opId, tenantId, entity: 'serviceOrder', op: 'create', payload }
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+    const resBody = await res.json()
+
+    expect(res.status).toBe(502)
+    expect(resBody.status).toBe('failed')
+
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows.length).toBe(1)
+    expect(rows[0].status).toBe('failed')
+    expect(rows[0].erpRef).toBeNull()
+    expect(rows[0].appliedAt).toBeNull()
+    expect(rows[0].errorMessage).toContain('ErpTransientError')
+  })
+})
