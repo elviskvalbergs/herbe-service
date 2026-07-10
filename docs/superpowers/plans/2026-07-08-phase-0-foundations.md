@@ -18,7 +18,7 @@
 - **Supabase = Postgres + Storage only** (`03-architecture.md`, verbatim): **no Supabase Auth, no Edge Functions, no Realtime dependency.** Auth is Auth.js v5 exclusively.
 - **Vercel cron limits**: 1-minute floor, one schedule per route. All sync cadences fan out from a single `/api/cron/sync-tick` dispatcher, never per-register cron entries.
 - **Cron auth/locking**: `Bearer ${CRON_SECRET}` (constant-time compare) + **table-based lock**, never Postgres advisory locks — Supabase's pooler doesn't reliably hold them across pooled connections (same reason herbe.calendar moved off them on Neon).
-- **`TEST_AUTH=1`** lives in Preview and staging env vars only, never Production. Double-guarded (env flag + non-production check) and excluded from production builds.
+- **`TEST_AUTH=1`** lives in Preview and staging env vars only, never Production. Guarded by `isTestAuthEnabled()`: `TEST_AUTH==='1'` AND not-production, with **`VERCEL_ENV` authoritative when present** (Vercel sets `NODE_ENV=production` on Preview too, so a bare `NODE_ENV` check would wrongly disable test-login in Preview — where Task 19's Playwright suite needs it; `NODE_ENV` is the fallback only when `VERCEL_ENV` is absent). Fail-closed in every production case.
 - **i18n**: 7 locales `lv, en, et, lt, fi, sv, no`; default `lv`.
 - **Device sessions**: 24h rolling / 30-day absolute cap enforced manually against JWT `iat` (Auth.js has no native absolute-expiry knob), plus a `session_version` counter for revocation.
 - **`updates_after` is per-company and only works on base registers carrying `UUID` + `ServerSequence`** (confirmed: `CUVc`). **`deletes_after` is confirmed unreliable everywhere** (HTTP 204 empty body even on `CUVc`) — never build correctness on it.
@@ -1439,7 +1439,7 @@ git commit -m "feat: deterministic seed engine (baseline scenario + fixed person
 - Test: `lib/auth/test-provider.test.ts`
 
 **Interfaces:**
-- Produces: `isTestAuthEnabled(): boolean` (double guard: `process.env.TEST_AUTH === '1'` AND `process.env.VERCEL_ENV !== 'production'` AND `process.env.NODE_ENV !== 'production'`); `POST /api/test/login` body `{ personaKey: keyof typeof PERSONAS }` → mints a session, `403` if `isTestAuthEnabled()` is false.
+- Produces: `isTestAuthEnabled(): boolean` (`TEST_AUTH === '1'` AND not-production, where **`VERCEL_ENV` is authoritative when present** — `VERCEL_ENV !== 'production'` — falling back to `NODE_ENV !== 'production'` only when `VERCEL_ENV` is absent; this is because Vercel sets `NODE_ENV=production` on Preview too, and test-login MUST work on Preview for Task 19); `POST /api/test/login` body `{ personaKey: keyof typeof PERSONAS }` → mints a session, 404 if `isTestAuthEnabled()` is false.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1470,16 +1470,26 @@ describe('isTestAuthEnabled', () => {
     expect(isTestAuthEnabled()).toBe(false)
   })
 
-  it('is false when NODE_ENV=production even without VERCEL_ENV', () => {
+  it('is false when NODE_ENV=production and VERCEL_ENV is absent (self-hosted prod)', () => {
     process.env.TEST_AUTH = '1'
     delete process.env.VERCEL_ENV
     process.env.NODE_ENV = 'production'
     expect(isTestAuthEnabled()).toBe(false)
   })
 
-  it('is true on preview with TEST_AUTH=1', () => {
+  it('is TRUE on a real Vercel preview: VERCEL_ENV=preview even though NODE_ENV=production', () => {
+    // Vercel sets NODE_ENV=production on preview deploys too; VERCEL_ENV is the
+    // authoritative signal. Task 19 runs Playwright with test-login against the
+    // preview URL, so this MUST activate there.
     process.env.TEST_AUTH = '1'
     process.env.VERCEL_ENV = 'preview'
+    process.env.NODE_ENV = 'production'
+    expect(isTestAuthEnabled()).toBe(true)
+  })
+
+  it('is true locally: TEST_AUTH=1, no VERCEL_ENV, non-production NODE_ENV', () => {
+    process.env.TEST_AUTH = '1'
+    delete process.env.VERCEL_ENV
     process.env.NODE_ENV = 'test'
     expect(isTestAuthEnabled()).toBe(true)
   })
@@ -1497,11 +1507,18 @@ Expected: FAIL — module not found
 // lib/auth/test-provider.ts
 export function isTestAuthEnabled(): boolean {
   if (process.env.TEST_AUTH !== '1') return false
-  if (process.env.VERCEL_ENV === 'production') return false
-  if (process.env.NODE_ENV === 'production') return false
-  return true
+  // On Vercel, VERCEL_ENV ('production' | 'preview' | 'development') is authoritative.
+  // Vercel sets NODE_ENV=production on PREVIEW deploys too, so a NODE_ENV check would
+  // wrongly disable test-login in Preview — where Task 19's Playwright suite needs it.
+  // Only consult NODE_ENV when VERCEL_ENV is absent (local / CI / self-hosted).
+  if (process.env.VERCEL_ENV) {
+    return process.env.VERCEL_ENV !== 'production'
+  }
+  return process.env.NODE_ENV !== 'production'
 }
 ```
+
+Fail-closed in every production case (Vercel prod → `VERCEL_ENV==='production'`; self-hosted prod → no `VERCEL_ENV` + `NODE_ENV==='production'`), while activating on Vercel Preview.
 
 - [ ] **Step 4: Run test, confirm it passes**
 
