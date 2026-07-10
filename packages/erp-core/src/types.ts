@@ -1,7 +1,8 @@
 export interface AdapterCapabilities {
   supportsIncrementalSync: boolean
   supportsDeletesFeed: boolean
-  supportsWebExcellentApi: boolean
+  // generic engine gates rendered-document/attachment fetch on this (vendor mechanism stays in the adapter)
+  supportsDocumentFetch: boolean
   supportsInvoiceStatusReadback: boolean
   supportsActivityMirror: boolean
 }
