@@ -126,6 +126,26 @@ describe('POST /api/auth/device/unlock', () => {
     expect(updated.lockedUntil!.getTime()).toBeGreaterThan(Date.now())
   })
 
+  it('locks the device under 20 concurrent wrong PINs (atomic increment survives the race)', async () => {
+    // Fires 20 concurrent requests rather than a handful sequentially: a
+    // read-then-write increment lets every concurrent request read the same
+    // stale failedAttempts before any write commits, so the counter can be
+    // kept under MAX_ATTEMPTS indefinitely and lockout never triggers — the
+    // exact race this test exists to catch (Task 15 review 2026-07-09,
+    // mirrors the 20-caller magic-link concurrency test in
+    // lib/auth/magic-link-provider.test.ts, where 2 didn't reliably overlap
+    // but 20 does).
+    const device = await makeDevice()
+
+    const { POST } = await import('./route')
+    await Promise.all(Array.from({ length: 20 }, () => POST(makeRequest({ deviceId: device.id, pin: 'wrong' }))))
+
+    const [updated] = await db.select().from(schema.pairedDevices).where(eq(schema.pairedDevices.id, device.id))
+    expect(updated.failedAttempts).toBeGreaterThanOrEqual(5)
+    expect(updated.lockedUntil).not.toBeNull()
+    expect(updated.lockedUntil!.getTime()).toBeGreaterThan(Date.now())
+  })
+
   it('returns 423 for the CORRECT PIN while locked — lockout takes precedence', async () => {
     const device = await makeDevice()
 
