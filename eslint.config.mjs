@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // vitest --coverage output (gitignored, but present locally after a run).
     "coverage/**",
+    // next-pwa's generated service worker (gitignored, but present locally
+    // after a `pnpm build` — see next.config.ts).
+    "public/sw.js",
+    "public/workbox-*.js",
   ]),
 ]);
 

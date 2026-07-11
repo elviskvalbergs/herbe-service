@@ -18,6 +18,13 @@ packages/*/node_modules
 /.next/
 /out/
 
+# next-pwa generated service worker (regenerated on every build by
+# next.config.ts's withPWA — see the comment there re: --webpack)
+/public/sw.js
+/public/sw.js.map
+/public/workbox-*.js
+/public/workbox-*.js.map
+
 # production
 /build
 
