@@ -428,3 +428,62 @@ describe('0005 auth migration: raw SQL is independently re-runnable, not just th
     expect(insertedToken.consumed_at).toBeNull()
   })
 })
+
+describe('0006 device_pairing migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // Same convention as the 0002/0003/0004/0005 tests above (Task 11 review).
+  // device_enrollments and paired_devices both FK to tenants + users, so
+  // 0001 and 0005 must be applied first.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    await runMigrations(testDb.url) // applies 0001-0006 through the normal path first
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0006_device_pairing.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(path.resolve('scripts/migrations/0006_device_pairing.sql'), 'utf8')
+    const statements = splitSqlStatements(content)
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [enrollmentsTable] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'device_enrollments'
+    `
+    expect(enrollmentsTable?.table_name).toBe('device_enrollments')
+
+    const [devicesTable] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'paired_devices'
+    `
+    expect(devicesTable?.table_name).toBe('paired_devices')
+
+    // The re-executed tables must still function correctly, not just still exist.
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t5', 'Migration T5') RETURNING id`
+    const [user] = await sql`
+      INSERT INTO users (tenant_id, email) VALUES (${tenant.id}, 'mig-tech@herbe-service.test') RETURNING id
+    `
+    const [insertedDevice] = await sql`
+      INSERT INTO paired_devices (tenant_id, user_id, device_label, pin_hash)
+      VALUES (${tenant.id}, ${user.id}, 'Migration Test Phone', 'not-a-real-hash')
+      RETURNING failed_attempts
+    `
+    expect(Number(insertedDevice.failed_attempts)).toBe(0)
+
+    const [insertedEnrollment] = await sql`
+      INSERT INTO device_enrollments (token_hash, tenant_id, user_id, expires_at)
+      VALUES ('mig-enrollment-token-hash', ${tenant.id}, ${user.id}, now() + interval '7 days')
+      RETURNING consumed_at
+    `
+    expect(insertedEnrollment.consumed_at).toBeNull()
+  })
+})

@@ -108,3 +108,34 @@ export const magicLinkTokens = pgTable('magic_link_tokens', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
 })
+
+// Task 15: technician PIN-on-paired-device login (docs/05-users-auth.md). A
+// device is paired once via a one-time admin-issued enrolment token (same
+// single-use-token shape as magicLinkTokens above); daily field unlock then
+// re-verifies the PIN locally against pairedDevices (app/api/auth/device/unlock)
+// rather than forcing a fresh sign-in.
+export const deviceEnrollments = pgTable('device_enrollments', {
+  tokenHash: text('token_hash').primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+})
+
+// pinHash is argon2 — never plaintext. failedAttempts/lockedUntil implement
+// the rate-limit + lockout described in docs/05-users-auth.md ("PIN attempts
+// are rate-limited with wipe-on-N-failures"): Phase 0 implements this as a
+// time-boxed lockedUntil window (app/api/auth/device/unlock), not a
+// destructive wipe of the pairing itself.
+export const pairedDevices = pgTable('paired_devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  deviceLabel: text('device_label').notNull(),
+  pinHash: text('pin_hash').notNull(),
+  failedAttempts: bigint('failed_attempts', { mode: 'number' }).notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUnlockAt: timestamp('last_unlock_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+})
