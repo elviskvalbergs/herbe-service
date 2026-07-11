@@ -42,9 +42,16 @@ export async function authorizeMagicLink(
 ): Promise<{ id: string; email: string } | null> {
   const tokenHash = crypto.createHash('sha256').update(opts.token).digest('hex')
 
+  // Atomic single-use consume: one UPDATE that only matches an unconsumed,
+  // unexpired token and stamps consumedAt in the same statement, RETURNING the
+  // row. Two concurrent calls with the same token therefore race on the row
+  // lock — exactly one gets a returned row, the other gets zero rows → null.
+  // (A SELECT-then-UPDATE split has a window where both callers pass the SELECT
+  // before either UPDATE commits, letting a token be consumed twice — Task 14
+  // review 2026-07-09.)
   const [record] = await db
-    .select()
-    .from(schema.magicLinkTokens)
+    .update(schema.magicLinkTokens)
+    .set({ consumedAt: new Date() })
     .where(
       and(
         eq(schema.magicLinkTokens.tokenHash, tokenHash),
@@ -52,10 +59,9 @@ export async function authorizeMagicLink(
         gt(schema.magicLinkTokens.expiresAt, new Date()),
       ),
     )
+    .returning()
 
   if (!record) return null
-
-  await db.update(schema.magicLinkTokens).set({ consumedAt: new Date() }).where(eq(schema.magicLinkTokens.tokenHash, tokenHash))
 
   const [user] = await db
     .insert(schema.users)
