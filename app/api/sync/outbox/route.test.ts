@@ -206,6 +206,41 @@ describe('POST /api/sync/outbox', () => {
     expect(rows).toHaveLength(0)
   })
 
+  it('rejects with 409 when the op id belongs to a different tenant, without leaking that tenant\'s erpRef', async () => {
+    const tenantA = await makeCompany('ok_push_adapter', 'cross-tenant-a')
+    const tenantB = await makeCompany('ok_push_adapter', 'cross-tenant-b')
+    const opId = '22222222-0000-0000-0000-000000000020'
+    const callsBefore = okPushCalls
+
+    // Seed an outbox op owned by tenant B, applied with a real erpRef.
+    authMock.mockResolvedValue({ user: { id: 'tenant-b-user', tenantId: tenantB }, expires: '2099-01-01T00:00:00.000Z' })
+    const seedBody = { id: opId, entity: 'serviceOrder', op: 'create', payload }
+    const { POST } = await import('./route')
+    const seedRes = await POST(
+      new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(seedBody) }),
+    )
+    expect(seedRes.status).toBe(200)
+    expect(okPushCalls).toBe(callsBefore + 1)
+
+    // Tenant A's session reuses tenant B's op id — must not confirm existence
+    // or leak tenant B's erpRef ('SVO-000123').
+    authMock.mockResolvedValue({ user: { id: 'tenant-a-user', tenantId: tenantA }, expires: '2099-01-01T00:00:00.000Z' })
+    const reuseBody = { id: opId, entity: 'serviceOrder', op: 'create', payload }
+    const res = await POST(
+      new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(reuseBody) }),
+    )
+    const text = await res.text()
+
+    expect(res.status).toBe(409)
+    expect(text).not.toContain('SVO-000123')
+    expect(text).not.toContain('already_applied')
+    // No re-push and no second row was written under tenant A.
+    expect(okPushCalls).toBe(callsBefore + 1)
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].tenantId).toBe(tenantB)
+  })
+
   it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
     const tenantId = await makeCompany('silent_noop_adapter', 'noop-tenant')
     authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })

@@ -1,19 +1,13 @@
-import { timingSafeEqual } from 'node:crypto'
 import { runMigrations } from '@/scripts/migrate'
+import { bearerMatches } from '@/lib/api/cronAuth'
 
 // Constant-time bearer check — this route triggers schema migrations, so the
 // secret compare must not leak length/prefix via timing (Task 4 review fix).
-// Task 12 introduces a shared `bearerMatches` helper; adopt it there.
 function authorized(request: Request): boolean {
   const secret = process.env.ADMIN_MIGRATIONS_SECRET
   if (!secret) return false
   const header = request.headers.get('authorization')
-  if (!header) return false
-  const expected = `Bearer ${secret}`
-  const a = Buffer.from(header)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
+  return bearerMatches(header, secret)
 }
 
 export async function POST(request: Request) {

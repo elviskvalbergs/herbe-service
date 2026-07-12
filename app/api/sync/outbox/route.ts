@@ -34,6 +34,11 @@ export async function POST(request: Request) {
 
   const [existing] = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, body.id))
   if (existing) {
+    // The id PK is global, not scoped to tenant — a foreign op id must never
+    // confirm existence or leak another tenant's erpRef back to the caller.
+    if (existing.tenantId !== tenantId) {
+      return new Response('Conflict', { status: 409 })
+    }
     return Response.json({ status: 'already_applied', erpRef: existing.erpRef })
   }
 
