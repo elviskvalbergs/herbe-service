@@ -122,6 +122,27 @@ export const deviceEnrollments = pgTable('device_enrollments', {
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
 })
 
+// Task 22: scoped-replication membership table (03-architecture.md "Scoped
+// replication"). Proven here against a synthetic entityType ('note') — Phase
+// 0 has no assignment-scoped entities (orders/worksheets ship Phase 1); this
+// table is reused unchanged once they exist, per ADR 0005. membershipSeq is
+// bumped by the bump_membership_seq() trigger (0007 migration) from the SAME
+// domain_change_seq sequence Task 11's bump_change_seq() uses — one shared
+// monotonic space, not a second sequence.
+export const scopeMembership = pgTable(
+  'scope_membership',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    membershipSeq: bigint('membership_seq', { mode: 'bigint' }).notNull(),
+    inScopeSince: timestamp('in_scope_since', { withTimezone: true }).notNull().defaultNow(),
+    outScopeSeq: bigint('out_scope_seq', { mode: 'bigint' }),
+  },
+  (t) => [unique().on(t.userId, t.entityType, t.entityId), index('idx_scope_membership_seq').on(t.membershipSeq)],
+)
+
 // pinHash is argon2 — never plaintext. failedAttempts/lockedUntil implement
 // the rate-limit + lockout described in docs/05-users-auth.md ("PIN attempts
 // are rate-limited with wipe-on-N-failures"): Phase 0 implements this as a

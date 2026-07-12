@@ -80,4 +80,31 @@ describe('pullDelta', () => {
     expect(result.cursor).toBe('3')
     expect(await db.customers.count()).toBe(0)
   })
+
+  it('purges a locally-cached record when the server reports it left scope (Task 22 scope-exit round trip)', async () => {
+    await db.customers.put({ id: 'c1', erpRef: 'CUST001', name: 'Test Client', changeSeq: '1' })
+
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: [], exitedIds: ['c1'], cursor: '6' }),
+    }) as never
+
+    const result = await pullDelta(db, { sinceCursor: '5' })
+
+    expect(result.cursor).toBe('6')
+    expect(await db.customers.get('c1')).toBeUndefined()
+  })
+
+  it('does not touch other cached records when only one id exits scope', async () => {
+    await db.customers.put({ id: 'c1', erpRef: 'CUST001', name: 'Stays', changeSeq: '1' })
+    await db.customers.put({ id: 'c2', erpRef: 'CUST002', name: 'Leaves', changeSeq: '1' })
+
+    global.fetch = vi.fn().mockResolvedValue({
+      json: async () => ({ data: [], exitedIds: ['c2'], cursor: '7' }),
+    }) as never
+
+    await pullDelta(db, { sinceCursor: '6' })
+
+    expect((await db.customers.get('c1'))?.name).toBe('Stays')
+    expect(await db.customers.get('c2')).toBeUndefined()
+  })
 })

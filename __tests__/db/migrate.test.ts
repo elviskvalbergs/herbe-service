@@ -487,3 +487,56 @@ describe('0006 device_pairing migration: raw SQL is independently re-runnable, n
     expect(insertedEnrollment.consumed_at).toBeNull()
   })
 })
+
+describe('0007 scope_membership migration: raw SQL is independently re-runnable, not just the filename-tracked skip', () => {
+  // Same convention as the 0002-0006 tests above (Task 11 review). scope_membership
+  // FKs to users, and reuses the domain_change_seq sequence 0002 created (no
+  // second sequence) via its own bump_membership_seq() trigger, so 0001,
+  // 0002, and 0005 must be applied first.
+  let testDb: TestDatabase
+  let sql: ReturnType<typeof postgres>
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase()
+    await runMigrations(testDb.url) // applies 0001-0007 through the normal path first
+    sql = postgres(testDb.url, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await sql?.end({ timeout: 5 })
+    await testDb?.cleanup()
+  })
+
+  it('re-executes 0007_scope_membership.sql twice more, bypassing herbe_migrations.applied, with no thrown error', async () => {
+    const content = fs.readFileSync(path.resolve('scripts/migrations/0007_scope_membership.sql'), 'utf8')
+    const statements = splitSqlStatements(content)
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
+    }
+
+    const [table] = await sql`
+      SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'scope_membership'
+    `
+    expect(table?.table_name).toBe('scope_membership')
+
+    // No second sequence: scope_membership's trigger draws from the same
+    // domain_change_seq sequence 0002 created for changeSeq.
+    const sequences = await sql`SELECT sequencename FROM pg_sequences WHERE sequencename LIKE '%change_seq%'`
+    expect(sequences.map((s) => s.sequencename)).toEqual(['domain_change_seq'])
+
+    // The re-executed table must still function correctly, not just still exist.
+    const [tenant] = await sql`INSERT INTO tenants (slug, name) VALUES ('mig-t6', 'Migration T6') RETURNING id`
+    const [user] = await sql`
+      INSERT INTO users (tenant_id, email) VALUES (${tenant.id}, 'mig-tech2@herbe-service.test') RETURNING id
+    `
+    const [insertedMembership] = await sql`
+      INSERT INTO scope_membership (user_id, entity_type, entity_id, membership_seq)
+      VALUES (${user.id}, 'note', 'mig-note-1', 0)
+      RETURNING membership_seq
+    `
+    expect(BigInt(insertedMembership.membership_seq)).toBeGreaterThan(BigInt(0))
+  })
+})

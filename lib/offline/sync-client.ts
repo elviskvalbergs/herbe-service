@@ -1,8 +1,10 @@
 // lib/offline/sync-client.ts
 //
 // Pulls a tenant-scoped delta from GET /api/sync/customers and upserts it
-// into the local Dexie cache. Phase-0 is upsert-only — no scope-exit purge
-// handling (Task 22 adds that later).
+// into the local Dexie cache. Task 22: also applies scope-exit purges —
+// when the server response includes exitedIds (lib/sync/scope-membership.ts
+// pullScopedDelta), those ids are locally deleted, mirroring the server's
+// "record left your scope" signal as a client-side purge.
 //
 // Task 16b: tenantId is no longer sent by the client — the server derives it
 // from the authenticated session (a client-supplied tenantId was the IDOR
@@ -18,6 +20,10 @@ export async function pullDelta(
 
   if (body.data.length) {
     await db.customers.bulkPut(body.data)
+  }
+
+  if (body.exitedIds?.length) {
+    await db.customers.bulkDelete(body.exitedIds)
   }
 
   return { cursor: body.cursor }
