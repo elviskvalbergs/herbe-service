@@ -7,6 +7,7 @@
 // Proves the scoped-replication mechanism (03-architecture.md) against a
 // synthetic entityType ('note') — Phase 0 has no assignment-scoped entities
 // yet (orders/worksheets ship Phase 1); see ADR 0005.
+import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -79,5 +80,68 @@ describe('scoped replication — entry backfill and exit purge', () => {
     expect(nothingNew.upserts).toEqual([])
     expect(nothingNew.exitedIds).toEqual([])
     expect(nothingNew.cursor).toBe(caughtUp.cursor)
+  })
+
+  it('stamps outScopeSeq with a real, distinct nextval — not the same literal for every exit', async () => {
+    await enterScope(db, { userId, entityType: 'note', entityId: 'note-3' })
+    await enterScope(db, { userId, entityType: 'note', entityId: 'note-4' })
+
+    await exitScope(db, { userId, entityType: 'note', entityId: 'note-3' })
+    await exitScope(db, { userId, entityType: 'note', entityId: 'note-4' })
+
+    const [row3] = await db
+      .select()
+      .from(schema.scopeMembership)
+      .where(
+        and(
+          eq(schema.scopeMembership.userId, userId),
+          eq(schema.scopeMembership.entityType, 'note'),
+          eq(schema.scopeMembership.entityId, 'note-3'),
+        ),
+      )
+    const [row4] = await db
+      .select()
+      .from(schema.scopeMembership)
+      .where(
+        and(
+          eq(schema.scopeMembership.userId, userId),
+          eq(schema.scopeMembership.entityType, 'note'),
+          eq(schema.scopeMembership.entityId, 'note-4'),
+        ),
+      )
+
+    expect(row3.outScopeSeq).not.toBeNull()
+    expect(row4.outScopeSeq).not.toBeNull()
+    expect(row3.outScopeSeq).not.toBe(BigInt(0))
+    expect(row4.outScopeSeq).not.toBe(BigInt(0))
+    expect(row3.outScopeSeq).not.toBe(row4.outScopeSeq) // distinct, monotonic values — not both the old literal 0
+  })
+
+  it('re-entering scope after an exit clears outScopeSeq and backfills the entity again', async () => {
+    await enterScope(db, { userId, entityType: 'note', entityId: 'note-5' })
+    await exitScope(db, { userId, entityType: 'note', entityId: 'note-5' })
+
+    const beforeReentry = await pullScopedDelta(db, { userId, sinceMembershipSeq: '0' })
+
+    await enterScope(db, { userId, entityType: 'note', entityId: 'note-5' })
+
+    const [row] = await db
+      .select()
+      .from(schema.scopeMembership)
+      .where(
+        and(
+          eq(schema.scopeMembership.userId, userId),
+          eq(schema.scopeMembership.entityType, 'note'),
+          eq(schema.scopeMembership.entityId, 'note-5'),
+        ),
+      )
+
+    expect(row.outScopeSeq).toBeNull()
+    expect(row.membershipSeq).toBeGreaterThan(BigInt(beforeReentry.cursor))
+
+    const afterReentry = await pullScopedDelta(db, { userId, sinceMembershipSeq: beforeReentry.cursor })
+
+    expect(afterReentry.upserts).toContainEqual(expect.objectContaining({ entityType: 'note', entityId: 'note-5' }))
+    expect(afterReentry.exitedIds).not.toContain('note-5')
   })
 })

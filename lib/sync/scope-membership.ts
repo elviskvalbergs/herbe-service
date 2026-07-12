@@ -6,14 +6,16 @@
 // scoped entities (orders/worksheets/bookings), just passing a real
 // entityType.
 //
-// membershipSeq/outScopeSeq are stamped by the bump_membership_seq()
-// plpgsql trigger (0007 migration) from the SAME domain_change_seq sequence
-// Task 11's bump_change_seq() uses — one shared monotonic space, so a
-// device's delta cursor advances consistently across both changeSeq and
-// membershipSeq. The `0` passed in .values() below is a placeholder always
-// overwritten by that trigger before the row is written (same pattern as
-// lib/sync/ingest/customers.ts).
-import { and, eq, gt } from 'drizzle-orm'
+// membershipSeq is stamped by the bump_membership_seq() plpgsql trigger
+// (0007 migration) from the SAME domain_change_seq sequence Task 11's
+// bump_change_seq() uses — one shared monotonic space, so a device's delta
+// cursor advances consistently across both changeSeq and membershipSeq. The
+// `0` passed in .values() below is a placeholder always overwritten by that
+// trigger before the row is written (same pattern as lib/sync/ingest/customers.ts).
+// outScopeSeq, by contrast, is NOT touched by the trigger — it is stamped
+// directly in exitScope's UPDATE below via nextval('domain_change_seq'), the
+// same shared sequence, so it is a real monotonic exit-point marker.
+import { and, eq, gt, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 
@@ -39,7 +41,7 @@ export async function exitScope(
 ): Promise<void> {
   await db
     .update(schema.scopeMembership)
-    .set({ outScopeSeq: BigInt(0) }) // placeholder — overwritten by bump_membership_seq() as well
+    .set({ outScopeSeq: sql`nextval('domain_change_seq')` }) // real exit-point marker; membershipSeq is bumped separately by the trigger
     .where(
       and(
         eq(schema.scopeMembership.userId, opts.userId),
