@@ -18,6 +18,7 @@
     "@herbe/erp-core": "workspace:*",
     "@herbe/fake-erp": "workspace:*",
     "argon2": "^0.44.0",
+    "commander": "^15.0.0",
     "dexie": "^4.4.4",
     "drizzle-orm": "^0.44.7",
     "next": "16.2.10",
