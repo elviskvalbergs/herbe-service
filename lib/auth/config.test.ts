@@ -27,12 +27,26 @@ beforeAll(async () => {
 describe('jwtCallback', () => {
   it('sets userId, sessionVersion, and authTime on trigger "signIn"', () => {
     const nowSecs = Math.floor(Date.now() / 1000)
-    const token = jwtCallback({ token: {}, user: { id: 'user-1' }, trigger: 'signIn' })
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1' }, trigger: 'signIn' })
 
     expect(token?.userId).toBe('user-1')
     expect(token?.sessionVersion).toBe(1)
     expect(token?.authTime).toBeGreaterThanOrEqual(nowSecs - 1)
     expect(token?.authTime).toBeLessThanOrEqual(nowSecs + 1)
+  })
+
+  it('stamps tenantId onto the token on trigger "signIn" (Task 16b: the session-carried tenant claim)', () => {
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1' }, trigger: 'signIn' })
+
+    expect(token?.tenantId).toBe('tenant-1')
+  })
+
+  it('preserves the original tenantId across a later call with no trigger (rolling refresh)', () => {
+    const existingToken: JWT = { userId: 'user-1', sessionVersion: 1, authTime: Math.floor(Date.now() / 1000), tenantId: 'tenant-1' }
+
+    const refreshed = jwtCallback({ token: existingToken, trigger: undefined })
+
+    expect(refreshed?.tenantId).toBe('tenant-1')
   })
 
   it('preserves the original authTime across a later call with no trigger (rolling refresh)', () => {
@@ -77,7 +91,7 @@ describe('jwtCallback', () => {
 describe('sessionCallback', () => {
   it('copies token.userId onto session.user.id', () => {
     const session = sessionCallback({
-      session: { user: { id: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: '', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: { userId: 'user-1' },
     })
 
@@ -86,10 +100,28 @@ describe('sessionCallback', () => {
 
   it('leaves session.user.id untouched when the token has no userId', () => {
     const session = sessionCallback({
-      session: { user: { id: 'unchanged' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'unchanged', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: {},
     })
 
     expect(session.user.id).toBe('unchanged')
+  })
+
+  it('copies token.tenantId onto session.user.tenantId (Task 16b: the claim the sync routes trust)', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      token: { userId: 'user-1', tenantId: 'tenant-1' },
+    })
+
+    expect(session.user.tenantId).toBe('tenant-1')
+  })
+
+  it('leaves session.user.tenantId untouched when the token has no tenantId', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'unchanged' }, expires: '2099-01-01T00:00:00.000Z' },
+      token: {},
+    })
+
+    expect(session.user.tenantId).toBe('unchanged')
   })
 })

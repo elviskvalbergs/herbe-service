@@ -7,11 +7,18 @@ import { authorizeMagicLink } from './magic-link-provider'
 
 // The default Session["user"] shape has no `id` — augment it so
 // sessionCallback below (and any server-side `auth()` caller) can rely on
-// `session.user.id` being typed.
+// `session.user.id` being typed. Task 16b adds `tenantId` the same way: it's
+// the one claim the sync routes trust to scope a request — never a
+// client-supplied tenantId (that was the IDOR, see app/api/sync/*).
 declare module 'next-auth' {
+  interface User {
+    tenantId?: string
+  }
+
   interface Session {
     user: {
       id: string
+      tenantId: string
     } & DefaultSession['user']
   }
 }
@@ -28,7 +35,7 @@ const THIRTY_DAYS_SECS = 30 * 24 * 60 * 60
 // only manages iat/exp/jti at encode time, so custom claims pass through as-is.
 export function jwtCallback(params: {
   token: JWT
-  user?: { id?: string } | null
+  user?: { id?: string; tenantId?: string } | null
   trigger?: 'signIn' | 'signUp' | 'update'
 }): JWT | null {
   const { token, user, trigger } = params
@@ -36,6 +43,7 @@ export function jwtCallback(params: {
 
   if (trigger === 'signIn' && user?.id) {
     token.userId = user.id
+    token.tenantId = user.tenantId
     // Placeholder for Phase 1: bump a per-user counter in the `users` table
     // to force-invalidate all of that user's live sessions (role change /
     // offboarding). Not enforced against anything yet in Phase 0.
@@ -57,6 +65,9 @@ export function sessionCallback(params: { session: Session; token: JWT }): Sessi
   if (typeof token.userId === 'string') {
     session.user.id = token.userId
   }
+  if (typeof token.tenantId === 'string') {
+    session.user.tenantId = token.tenantId
+  }
   return session
 }
 
@@ -76,7 +87,7 @@ export const authConfig: NextAuthConfig = {
       credentials: { token: { type: 'text' } },
       authorize: async (credentials) => {
         const user = await authorizeMagicLink(db, { token: credentials.token as string })
-        return user ? { id: user.id, email: user.email } : null
+        return user ? { id: user.id, email: user.email, tenantId: user.tenantId } : null
       },
     }),
   ],

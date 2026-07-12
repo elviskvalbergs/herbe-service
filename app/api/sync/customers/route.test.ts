@@ -55,10 +55,9 @@ describe('GET /api/sync/customers', () => {
 
   it('rejects an unauthenticated request with 401 before querying', async () => {
     authMock.mockResolvedValue(null)
-    const { tenantId } = await makeCompany('unauth-tenant')
 
     const { GET } = await import('./route')
-    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}&after=0`))
+    const res = await GET(new Request(`http://x/api/sync/customers?after=0`))
 
     expect(res.status).toBe(401)
   })
@@ -66,6 +65,7 @@ describe('GET /api/sync/customers', () => {
   it('returns only rows with changeSeq greater than "after", scoped to the given tenant', async () => {
     const { tenantId, erpCompanyId } = await makeCompany('delta-tenant')
     const other = await makeCompany('other-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
 
     const [c1] = await db
       .insert(schema.customers)
@@ -88,7 +88,7 @@ describe('GET /api/sync/customers', () => {
       .returning()
 
     const { GET } = await import('./route')
-    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}&after=${c1.changeSeq}`))
+    const res = await GET(new Request(`http://x/api/sync/customers?after=${c1.changeSeq}`))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -101,13 +101,14 @@ describe('GET /api/sync/customers', () => {
 
   it('returns the unchanged cursor and no rows when nothing changed since "after"', async () => {
     const { tenantId, erpCompanyId } = await makeCompany('no-delta-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
     const [c1] = await db
       .insert(schema.customers)
       .values({ tenantId, erpCompanyId, erpRef: 'CUST001', name: 'First Client', changeSeq: BigInt(0) })
       .returning()
 
     const { GET } = await import('./route')
-    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}&after=${c1.changeSeq}`))
+    const res = await GET(new Request(`http://x/api/sync/customers?after=${c1.changeSeq}`))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -117,16 +118,51 @@ describe('GET /api/sync/customers', () => {
 
   it('defaults "after" to 0 when the query param is omitted, returning every row for the tenant', async () => {
     const { tenantId, erpCompanyId } = await makeCompany('no-after-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
     await db
       .insert(schema.customers)
       .values({ tenantId, erpCompanyId, erpRef: 'CUST001', name: 'First Client', changeSeq: BigInt(0) })
       .returning()
 
     const { GET } = await import('./route')
-    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}`))
+    const res = await GET(new Request(`http://x/api/sync/customers`))
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.data).toHaveLength(1)
+  })
+
+  it('IDOR regression (Task 16b): a session scoped to tenant A never returns tenant B\'s customers, even when the request asks for tenantId=B', async () => {
+    const a = await makeCompany('idor-tenant-a')
+    const b = await makeCompany('idor-tenant-b')
+
+    await db
+      .insert(schema.customers)
+      .values({ tenantId: a.tenantId, erpCompanyId: a.erpCompanyId, erpRef: 'CUST-A1', name: 'Tenant A Client', changeSeq: BigInt(0) })
+    await db
+      .insert(schema.customers)
+      .values({ tenantId: b.tenantId, erpCompanyId: b.erpCompanyId, erpRef: 'CUST-B1', name: 'Tenant B Client', changeSeq: BigInt(0) })
+
+    // The logged-in session belongs to tenant A...
+    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: a.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+
+    // ...but the request tries to reach tenant B's data by supplying tenantId=B.
+    const { GET } = await import('./route')
+    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${b.tenantId}&after=0`))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.data.some((row: { name: string }) => row.name === 'Tenant A Client')).toBe(true)
+    expect(body.data.some((row: { name: string }) => row.name === 'Tenant B Client')).toBe(false)
+  })
+
+  it('rejects with 401 when the session has no tenantId, rather than querying unscoped', async () => {
+    const { tenantId } = await makeCompany('no-tenant-claim')
+    authMock.mockResolvedValue({ user: { id: 'x' }, expires: '2099-01-01T00:00:00.000Z' })
+
+    const { GET } = await import('./route')
+    const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}&after=0`))
+
+    expect(res.status).toBe(401)
   })
 })

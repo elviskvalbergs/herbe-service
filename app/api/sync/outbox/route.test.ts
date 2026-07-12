@@ -72,6 +72,26 @@ beforeAll(async () => {
     pushCreate: async () => ({ erpRef: '' }),
     probeIncrementalSupport: async () => false,
   }))
+
+  // Task 16b IDOR regression: a tenant this adapter belongs to must never be
+  // reached by another tenant's session — any call proves the route trusted
+  // client-supplied tenantId instead of the session's.
+  registerAdapter('must_not_be_called_adapter', () => ({
+    capabilities: () => ({
+      supportsIncrementalSync: false,
+      supportsDeletesFeed: false,
+      supportsDocumentFetch: false,
+      supportsInvoiceStatusReadback: false,
+      supportsActivityMirror: false,
+    }),
+    pullChanges: async () => {
+      throw new Error('pullChanges must not be called by the outbox route')
+    },
+    pushCreate: async () => {
+      throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
+    },
+    probeIncrementalSupport: async () => false,
+  }))
 }, 60_000)
 
 afterAll(async () => {
@@ -116,10 +136,11 @@ describe('POST /api/sync/outbox', () => {
 
   it('accepts an op once, applies it with the real erpRef, and is a no-op idempotent replay on the same client UUID', async () => {
     const tenantId = await makeCompany('ok_push_adapter', 'ok-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
     const opId = '22222222-0000-0000-0000-000000000001'
     const callsBefore = okPushCalls
 
-    const body = { id: opId, tenantId, entity: 'serviceOrder', op: 'create', payload }
+    const body = { id: opId, entity: 'serviceOrder', op: 'create', payload }
 
     const { POST } = await import('./route')
 
@@ -144,11 +165,53 @@ describe('POST /api/sync/outbox', () => {
     expect(rows[0].erpRef).toBe('SVO-000123')
   })
 
-  it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
-    const tenantId = await makeCompany('silent_noop_adapter', 'noop-tenant')
-    const opId = '22222222-0000-0000-0000-000000000002'
+  it('IDOR regression (Task 16b): a session scoped to tenant A writes only under tenant A, even when the request body asks for tenantId=B', async () => {
+    const tenantA = await makeCompany('ok_push_adapter', 'idor-tenant-a')
+    const tenantB = await makeCompany('must_not_be_called_adapter', 'idor-tenant-b')
+    const opId = '22222222-0000-0000-0000-000000000010'
+    const callsBefore = okPushCalls
+
+    // Session belongs to tenant A; the request body tries to redirect the
+    // write to tenant B (attacker-controlled tenantId).
+    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: tenantA }, expires: '2099-01-01T00:00:00.000Z' })
+    const body = { id: opId, tenantId: tenantB, entity: 'serviceOrder', op: 'create', payload }
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+    const resBody = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(resBody).toEqual({ status: 'applied', erpRef: 'SVO-000123' })
+    // Pushed via tenant A's adapter (the only one registered to push here) —
+    // tenant B's adapter, which throws if invoked, was never reached.
+    expect(okPushCalls).toBe(callsBefore + 1)
+
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].tenantId).toBe(tenantA)
+    expect(rows[0].tenantId).not.toBe(tenantB)
+  })
+
+  it('rejects with 401 when the session has no tenantId, rather than writing unscoped', async () => {
+    const tenantId = await makeCompany('ok_push_adapter', 'no-tenant-claim')
+    const opId = '22222222-0000-0000-0000-000000000011'
+    authMock.mockResolvedValue({ user: { id: 'x' }, expires: '2099-01-01T00:00:00.000Z' })
 
     const body = { id: opId, tenantId, entity: 'serviceOrder', op: 'create', payload }
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+
+    expect(res.status).toBe(401)
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows).toHaveLength(0)
+  })
+
+  it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
+    const tenantId = await makeCompany('silent_noop_adapter', 'noop-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const opId = '22222222-0000-0000-0000-000000000002'
+
+    const body = { id: opId, entity: 'serviceOrder', op: 'create', payload }
 
     const { POST } = await import('./route')
     const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))

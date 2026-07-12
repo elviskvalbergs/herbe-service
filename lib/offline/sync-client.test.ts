@@ -29,24 +29,24 @@ describe('pullDelta', () => {
       }),
     }) as never
 
-    const result = await pullDelta(db, { tenantId: 't1', sinceCursor: '0' })
+    const result = await pullDelta(db, { sinceCursor: '0' })
 
     expect(result.cursor).toBe('5')
     const stored = await db.customers.get('c1')
     expect(stored?.name).toBe('Test Client')
   })
 
-  it('requests the delta scoped to the given tenant and cursor', async () => {
+  it('requests the delta scoped to the given cursor, without a client-supplied tenantId (Task 16b: server derives tenant from the session)', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       json: async () => ({ data: [], cursor: '9' }),
     })
     global.fetch = fetchMock as never
 
-    await pullDelta(db, { tenantId: 't2', sinceCursor: '7' })
+    await pullDelta(db, { sinceCursor: '7' })
 
     const [url] = fetchMock.mock.calls[0]
-    expect(String(url)).toContain('tenantId=t2')
     expect(String(url)).toContain('after=7')
+    expect(String(url)).not.toContain('tenantId')
   })
 
   it('upserts multiple rows and overwrites an existing row with the same id', async () => {
@@ -62,7 +62,7 @@ describe('pullDelta', () => {
       }),
     }) as never
 
-    const result = await pullDelta(db, { tenantId: 't1', sinceCursor: '1' })
+    const result = await pullDelta(db, { sinceCursor: '1' })
 
     expect(result.cursor).toBe('6')
     expect((await db.customers.get('c1'))?.name).toBe('Fresh Name')
@@ -75,7 +75,7 @@ describe('pullDelta', () => {
       json: async () => ({ data: [], cursor: '3' }),
     }) as never
 
-    const result = await pullDelta(db, { tenantId: 't1', sinceCursor: '3' })
+    const result = await pullDelta(db, { sinceCursor: '3' })
 
     expect(result.cursor).toBe('3')
     expect(await db.customers.count()).toBe(0)

@@ -13,10 +13,6 @@ import { useEffect, useState } from 'react'
 import { OfflineDb, type CustomerRecord } from '@/lib/offline/db'
 import { pullDelta } from '@/lib/offline/sync-client'
 
-// Phase-0 stand-in for the signed-in session's tenantId (no multi-tenant
-// device context yet — that's later phase work).
-const TENANT_ID = 'demo-tenant'
-
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
 
@@ -26,7 +22,9 @@ export default function CustomersPage() {
     db.customers.toArray().then(setCustomers)
 
     if (navigator.onLine) {
-      pullDelta(db, { tenantId: TENANT_ID, sinceCursor: '0' }).then(() => {
+      // tenantId is derived server-side from the session (Task 16b) — the
+      // client no longer supplies one.
+      pullDelta(db, { sinceCursor: '0' }).then(() => {
         db.customers.toArray().then(setCustomers)
       })
     }

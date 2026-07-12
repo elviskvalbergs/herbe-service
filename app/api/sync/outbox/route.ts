@@ -9,6 +9,12 @@
 // Phase 0 simplification: any pre-existing row (applied OR failed) short-
 // circuits as "already_applied" — retrying a *failed* op is Task 13's out-
 // of-scope push-queue-per-order / DLQ work (Phase 1, 04-erp-sync.md).
+//
+// Task 16b: tenantId is taken ONLY from the authenticated session
+// (session.user.tenantId), never from the request body — two reviews
+// flagged that trusting a client-supplied tenantId let any authenticated
+// user write into another tenant (IDOR). A session with no tenantId claim
+// is rejected rather than falling through to an unscoped query.
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
@@ -19,7 +25,8 @@ import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user) {
+  const tenantId = session?.user?.tenantId
+  if (!tenantId) {
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -32,7 +39,7 @@ export async function POST(request: Request) {
 
   await db.insert(schema.outboxOps).values({
     id: body.id,
-    tenantId: body.tenantId,
+    tenantId,
     entity: body.entity,
     op: body.op,
     payloadJson: body.payload,
@@ -42,7 +49,7 @@ export async function POST(request: Request) {
     // Phase 0 spike: hardcode the single-company lookup for the tenant —
     // Phase 1's push-queue-per-order generalizes this to N companies and N
     // entity types.
-    const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, body.tenantId))
+    const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
     const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
 
     const { erpRef } = await pushServiceOrderCreate(adapter, body.payload)
