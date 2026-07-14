@@ -340,6 +340,38 @@ export type TimeEntryRow = InferSelectModel<typeof timeEntries>
 export type DistanceEntryRow = InferSelectModel<typeof distanceEntries>
 export type ErpRefRow = InferSelectModel<typeof erpRefs>
 
+// Denormalized, append-only HistoryEvent projection (docs/02-data-model.md
+// "HistoryEvent (service history)", lib/domain/history-projector.ts). No
+// changeSeq/bump_change_seq trigger and no deletedAt here — history is
+// delta-fed by insert only, never updated or tombstoned, unlike
+// serviceItems/serviceOrders/worksheets above. `key` is the projector's
+// deterministic idempotency key; unique(tenantId, key) is what makes the
+// store's upsertHistoryEvents onConflictDoNothing idempotent
+// (0013_history_events.sql).
+export const historyEvents = pgTable(
+  'history_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    serviceItemId: uuid('service_item_id').notNull().references(() => serviceItems.id),
+    key: text('key').notNull(),
+    at: timestamp('at', { withTimezone: true }),
+    kind: text('kind'), // HistoryEventKind
+    summary: text('summary'),
+    orderId: uuid('order_id').references(() => serviceOrders.id),
+    worksheetId: uuid('worksheet_id').references(() => worksheets.id),
+    coverageCovered: integer('coverage_covered'),
+    coverageOf: integer('coverage_of'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.key),
+    index('history_events_tenant_item_idx').on(t.tenantId, t.serviceItemId),
+  ],
+)
+
+export type HistoryEventRow = InferSelectModel<typeof historyEvents>
+
 // tokenHash is the SHA-256 hash of the raw token handed to the user — the raw
 // token itself is never persisted (lib/auth/magic-link-provider.ts).
 export const magicLinkTokens = pgTable('magic_link_tokens', {
