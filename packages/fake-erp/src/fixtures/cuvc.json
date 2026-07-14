@@ -1,0 +1,4 @@
+[
+  { "Code": "CUST001", "Name": "Test Client OÜ", "UUID": "a1b2c3d4-0001", "ServerSequence": 1001 },
+  { "Code": "CUST002", "Name": "Another Client SIA", "UUID": "a1b2c3d4-0002", "ServerSequence": 1002 }
+]
