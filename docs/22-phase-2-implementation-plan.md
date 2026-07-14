@@ -1,8 +1,8 @@
 # herbe.service — Phase 2 Implementation Plan
 
-Status: v1.1 (2026-07-14). Scope: **roadmap Phase 2 — "Contracts, recurring service, customer experience"** (`06-roadmap.md:76-91`), the band that was old Phase 3 before the round-5 collapse (`20-spec-review-round-5.md:35`, decision #18). Phase 1 ("The product", plan in `21-phase-1-implementation-plan.md`) is **in progress**; this plan takes its outputs as **given at P1 exit** — it lists the P1 seams it stands on (§3) but does not re-plan them, exactly as the P1 plan treated Phase 0.
+Status: v1.2 (2026-07-14). Scope: **roadmap Phase 2 — "Contracts, recurring service, customer experience"** (`06-roadmap.md:76-91`), the band that was old Phase 3 before the round-5 collapse (`20-spec-review-round-5.md:35`, decision #18). Phase 1 ("The product", plan in `21-phase-1-implementation-plan.md`) is **in progress**; this plan takes its outputs as **given at P1 exit** — it lists the P1 seams it stands on (§3) but does not re-plan them, exactly as the P1 plan treated Phase 0.
 
-Owner decisions folded in (2026-07-14): recurring generation is **app-side logic** that drives ERP activities so the ERP sees them identically (§4 P2-WS2, resolves the §8 freeze gate); **revenue-per-technician is dropped** as ERP-invoiced revenue — Standard has no `IVVc`-row→technician link — replaced by an app-side "billable value booked" proxy (§4 P2-WS10, supersedes the `04-erp-sync.md:142` assumption); **SLA model is proposed** below and pending owner confirmation of specifics (§4 P2-WS3, §10).
+Owner decisions folded in (2026-07-14): recurring generation is **app-side logic** that drives ERP activities so the ERP sees them identically (§4 P2-WS2, resolves the §8 freeze gate); **Reporting v1 ships only the metrics runnable on data we own today** — first-time-fix, MTTR, top-devices (count), doc-11 coverage metrics — while revenue-per-technician (no `IVVc`-row→tech link, supersedes `04-erp-sync.md:142`), utilization (no working-hours config yet), and failure-rate (no install base) are **deferred until the data exists** (§4 P2-WS10); **SLA indicators are deferred to Phase 3** (nice-to-have; the coverage-calendar/timezone/holiday surface isn't worth blocking Phase 2) — the design is retained in §4 P2-WS3 and the roadmap line moved (`06:81`).
 
 Same shape as doc 21: a work-package / sequencing plan — what to build, in what order, reuse vs. build, how each package is tested, what still gates a calendar estimate. Not a re-spec; the truth lives in docs 02–13. Line cites point there.
 
@@ -57,7 +57,7 @@ If a P1 seam isn't delivered at P1 exit, the dependent Phase-2 workstream slips.
 
 ## 4. Workstreams
 
-Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **depends on**, **TDD focus**. IDs (P2-WSn) are stable references for §5.
+Eleven Phase-2 packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **depends on**, **TDD focus**. IDs (P2-WSn) are stable references for §5. (P2-WS3 — SLA — is deferred to Phase 3; its design is retained below under its ID so the numbering stays stable.)
 
 ### P2-WS1 — Contracts & service levels
 **Goal:** the contract spine — ERP contracts read in, overlaid with app-owned coverage, projected onto the tree.
@@ -74,20 +74,10 @@ Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **de
 - **Depends on:** P2-WS1; P1 order/booking/shadow writers + WS5 (`ActVc` write, void, echo).
 - **TDD:** cadence projection (all four `SVCVc` fields incl. weekend skip); idempotent re-run (no duplicate cycle); horizon boundary; **generated `ActVc` doesn't echo back as a new order**; **cadence change → future-cycle activity edited/voided, past ones untouched**; generation → full P1 field loop → completion feeds the coverage view.
 
-### P2-WS3 — SLA indicators & timers
-**Goal:** response/resolution expectations visible on orders, overdue surfaced.
-- **Spec state:** the docs define **no SLA mechanics** — only a roadmap one-liner ("response/resolution timers, overdue flags", `06:81`) and "response-time terms" as free-text on the service-level overlay (`02:131`; `04:99`). The model below is **proposed (2026-07-14), pending owner confirmation** of the four choices in §10.
-- **Proposed model — two clocks per order, off the P1 status-machine timestamps:**
-  - **Response clock** — starts when the order becomes actionable (reactive orders: at creation/receipt); stops at first meaningful response (**default: work started / first work segment**; alt: `enRoute` tap or on-site arrival — §10 choice). Target from the service-level overlay's response-time term.
-  - **Resolution clock** — starts at the same trigger; stops when the order reaches **Work done / Confirmed**. Target from the service-level resolution term.
-  - **Applies to reactive/corrective orders. Contract-generated PM orders use a due-window instead** (they're scheduled, not reactive) — §10 choice.
-  - **Business-hours calendar**: targets count against the contract's coverage window (8×5 / 24×7), not wall-clock — a coverage-calendar config on the service level. (v1 may simplify to wall-clock behind a flag — §10 choice.)
-  - **Pause conditions**: clock stops on defined "waiting" reasons (waiting-for-customer, parts-on-order, customer-requested delay) — reuses the worksheet pause-with-reason pattern, lifted to order level.
-  - **Indicators**: `on-track` → `at-risk` (within ~80% of target, amber) → `breached` (past target, red). Surfaced on the order list, dispatch board, and an order-detail SLA panel; **dispatcher/manager notification** on at-risk + breach (single notification, not a multi-tier escalation matrix — that's Phase 3).
-- **Deliverables:** the two-clock SLA model + business-hours calc + pause reasons + at-risk/breached flags + the order/dispatch indicators + the notification hook.
-- **Reuse:** P2-WS1 overlay (response/resolution terms); P1 order status timestamps; P1 web-push (WS1) for the notification; P1 pause-with-reason pattern. **Build:** the clock/calendar/breach engine (net-new, pure module).
-- **Depends on:** P2-WS1; §10 SLA choices.
-- **TDD:** clock start/stop against each status transition; pause-reason stops the clock; business-hours math (weekend/after-hours excluded); at-risk/breach thresholds; timezone correctness (Europe/Riga).
+### P2-WS3 — SLA indicators & timers — DEFERRED TO PHASE 3
+**Deferred (owner 2026-07-14):** a nice-to-have that opens a full time-accounting surface — per-contract coverage calendars, timezones, national/regional holidays, pause reasons — not worth blocking the Phase-2 customer experience on. Moved to Phase 3 (§11; roadmap `06`). The docs never defined SLA mechanics anyway (`06:81` was a one-liner; "response-time terms" is free text — `02:131`, `04:99`). **Design retained below** so Phase 3 starts from it, not a blank page.
+- **Proposed model — two clocks per order, off the status-machine timestamps:** a **response clock** (starts at order creation/receipt for reactive work; stops at first response — work-started by default) and a **resolution clock** (same start; stops at Work done/Confirmed), each targeted from the service-level response/resolution term. Reactive/corrective orders get SLAs; contract-generated PM orders use a due-window. Targets count against a per-contract **business-hours coverage calendar** — the timezone + holiday can-of-worms that justified the deferral. Clock pauses on waiting-for-customer / parts-on-order / customer-delay. States on-track → at-risk (~80%, amber) → breached (red) on the order list + dispatch board + an SLA panel, with a dispatcher notification at at-risk/breach (no multi-tier escalation).
+- **When Phase 3 picks it up:** reuses the P2-WS1 service-level overlay (terms), P1 status timestamps, P1 pause-with-reason, P1 web-push; builds the clock/calendar/breach engine as a pure module + the coverage-calendar (timezone + holiday) config. Open choices carried over: response-clock stop event; PM-order SLA vs. due-window; coverage-calendar vs. wall-clock v1; the pause-reason list.
 
 ### P2-WS4 — Quote flow (out-of-contract work)
 **Goal:** a quote drafted from an order, pushed to the ERP, confirmed by the customer, read back.
@@ -132,18 +122,19 @@ Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **de
 - **TDD:** each row fires from the right sender once; "On my way" → ETA in the portal view; non-portal emailed-PDF path.
 
 ### P2-WS10 — Reporting v1
-**Goal:** the core operational metrics, computed from data herbe.service actually owns.
-- **Owner decision (2026-07-14): ERP-invoiced "revenue per technician" is dropped.** Standard has no `IVVc`-row→technician link; an invoice resolves back to its source worksheet(s) only at document level (via `getrecordlinks`) and aggregates across worksheets/rows, so per-technician revenue attribution isn't reliable. This **supersedes the `04-erp-sync.md:142` assumption** (flag for a doc-sync edit). Replaced by an app-side proxy below.
-- **Metric set (definitions):**
-  - **Billable value booked per technician** (replaces revenue/tech) — sum of `invoiceable`-charge-type worksheet rows (parts + labour) at the ERP unit prices already fetched for the report/preview, attributed to the logging technician. **Explicitly not invoiced revenue** (the ERP owns invoicing); a productivity/value proxy from the work facts we own.
-  - **Utilization** — productive time ÷ available time per technician per period. Productive = logged `work` work-segment hours (billable travel optional, tenant flag); available = the technician's configured working hours (fallback: booked capacity). From P1 time-entries/work-segments.
+**Goal:** the operational metrics that **run on data herbe.service already owns** — skip anything not yet computable (owner 2026-07-14: "skip the reports that are impossible to run at the moment; time will come").
+- **Ship (runnable now):**
   - **First-time-fix rate** — % of reactive/corrective orders resolved in a single visit (one completed worksheet) with **no follow-up** order on the same service item within a configurable window and no reopen. From order/worksheet history.
-  - **MTTR** — mean elapsed business-hours time from the order start trigger to **Work done/Confirmed** (same clock basis as WS3); mean **response time** exposed as a companion. From P1 status timestamps.
-  - **Top problem devices** — ItemModel (make/model) and/or nodes ranked by corrective (non-PM) order/fault-event count over a period; **failure rate** = corrective orders ÷ installed base of that model where the base is known. From the ItemModel registry + fault/cause/remedy + HistoryEvents (aligns with doc 11 "failure rate by model" rollups).
+  - **MTTR** — mean elapsed time from the order start trigger to **Work done/Confirmed**; mean **response time** exposed as a companion (wall-clock for now — the business-hours calendar is the deferred SLA/WS3 surface). From P1 status timestamps.
+  - **Top problem devices** — ItemModel (make/model) and/or nodes ranked by corrective (non-PM) order/fault-event **count** over a period. From the ItemModel registry + fault/cause/remedy + HistoryEvents.
   - **Coverage %, subtree rollups, lot explosion, checklist sampling** — as **already defined in doc 11** (`11:53-55`, `:26`, `:37`); reuse verbatim, no new definition needed.
-- **Reuse:** P1 coverage/rollup machinery, HistoryEvent data, time-entry/work-segment data, the ERP prices already fetched for the report; portal `ARVc` mapper only for payment-status enrichment, not per-tech revenue. **Build:** the metric queries + the billable-value roll-up.
-- **Depends on:** P2-WS1 (coverage), P1 history/work-segment/time-entry data, technician working-hours config.
-- **TDD:** coverage-% and rollups against golden trees; lot-explosion history carry-over; billable-value sums only `invoiceable` rows; FTF window logic; MTTR business-hours math; each metric as a fixture.
+- **Deferred until the data/config exists (skip now):**
+  - **Revenue per technician** — impossible: Standard has no `IVVc`-row→technician link (invoices resolve to source worksheets only at document level via `getrecordlinks`, and aggregate). **Supersedes the `04-erp-sync.md:142` assumption** (doc-sync follow-up). An app-side *billable-value-booked* proxy (sum of `invoiceable` rows at ERP prices, per logging tech) is the eventual path once per-row pricing/attribution is solid — not built now.
+  - **Utilization** — needs a technician **working-hours config** that doesn't exist yet (productive work-segment time ÷ available hours). Build the config first, then the metric.
+  - **Failure rate** (corrective orders ÷ installed base) — needs a known install base per model; the count-based "top problem devices" ships now, the rate variant follows.
+- **Reuse:** P1 coverage/rollup machinery, HistoryEvent data, P1 status timestamps + work-segment/fault data. **Build:** the four runnable metric queries.
+- **Depends on:** P2-WS1 (coverage), P1 history/work-segment data.
+- **TDD:** coverage-% and rollups against golden trees; lot-explosion history carry-over; FTF window logic; MTTR math; each shipped metric as a fixture.
 
 ### P2-WS11 — Work templates (incident-type-lite)
 **Goal:** a fault type bundles its default checklist, typical parts, and estimated duration.
@@ -180,8 +171,8 @@ P2-WS8 (compliance + contract-cycle docs + signing descriptor + POR-2 fallback).
 **P2-M4 — Quotes & intake**
 P2-WS4 (`QTVc` push + POR-6 send + acceptance read-back) · P2-WS7 (Smart Booking intake) · P2-WS11 (work templates, feeding quote rows).
 
-**P2-M5 — SLA, reporting, wrappers**
-P2-WS3 (SLA — model proposed, pending the four §10 confirmations) · P2-WS10 (reporting v1 — definitions settled) · P2-WS12 (native gaps, only if P1 data warrants).
+**P2-M5 — Reporting & wrappers**
+P2-WS10 (reporting v1 — runnable metrics only; deferred ones wait for their data) · P2-WS12 (native gaps, only if P1 data warrants). (SLA — P2-WS3 — deferred to Phase 3.)
 
 **P2-M6 — Pilot**
 A contract tenant's recurring work generates and completes without manual creation; customers confirm digitally → the §1 exit criteria.
@@ -235,7 +226,7 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 | Portal module shape unsettled | Customer surface (M2/M3) stalls | Every sibling ask (CAL-4, POR-2/6/7) has a fallback; service ships the committed endpoints + emailed-PDF/canvas baseline regardless (`08:49`; `13`) |
 | Version gate hides the compliance-doc path | Certificates can't deliver digitally | Emailed PDF + on-site canvas signature is the guaranteed baseline (`12:62`; `20:22`) |
 | App-generated `ActVc` echoes back as a new order | Duplicate orders from recurring generation | P1 WS5 echo suppression (app-UUID tag); regression test in P2-WS2 |
-| No SLA model exists in the spec | P2-WS3 builds the wrong thing | Proposed model in §4 P2-WS3; owner confirms the four §10 choices before build |
+| Building reports the data can't support (revenue/tech, utilization) | Wasted effort, misleading numbers | Reporting v1 ships only runnable metrics; the rest wait for their data/config (§4 P2-WS10) |
 | POR-6 (quote send) not delivered | No quote auto-send | Human sends from the portal quotations module; acceptance read-back still works (`13:108`) |
 
 ---
@@ -244,8 +235,8 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 
 1. **Phase 2 calendar estimate** — roadmap says 8–12 weeks (`06:76`); re-estimate at P1 exit against the actual P1 seams delivered.
 2. ~~Recurring-generation owner~~ — **RESOLVED 2026-07-14: app-side** (§4 P2-WS2, §8).
-3. **SLA — confirm four choices** in the proposed model (§4 P2-WS3): (a) response-clock stop event — work-started (default) / `enRoute` tap / on-site arrival; (b) do PM/contract-generated orders get an SLA or only a due-window; (c) v1 honors a business-hours coverage calendar or wall-clock-first; (d) the pause-reason list.
-4. ~~Reporting metric definitions~~ — **RESOLVED 2026-07-14** (§4 P2-WS10): revenue/tech dropped (no `IVVc`→tech link) → billable-value-booked proxy; utilization / FTF / MTTR / top-problem-devices defined; coverage/rollups/lot/sampling from doc 11. Follow-up: **doc-sync edit to `04-erp-sync.md:142`** (still asserts revenue reads `IVVc`); needs a technician working-hours config for utilization.
+3. ~~SLA scope~~ — **DEFERRED to Phase 3 (2026-07-14)**: nice-to-have; the coverage-calendar/timezone/holiday surface isn't worth blocking Phase 2. Design + open choices retained in §4 P2-WS3.
+4. ~~Reporting metric definitions~~ — **RESOLVED 2026-07-14** (§4 P2-WS10): ship first-time-fix / MTTR / top-devices (count) / doc-11 coverage metrics; **defer** revenue-per-tech (no `IVVc`→tech link), utilization (no working-hours config), failure-rate (no install base) until their data exists. Follow-up: **doc-sync edit to `04-erp-sync.md:142`** (still asserts revenue reads `IVVc`); build the technician working-hours config before utilization returns.
 5. **Portal module shape** — drives the `/api/ext` read-API re-cut and the POR-2 generalization; only the approval-trigger endpoints are committed until it lands (`20:17`; `13:91`).
 6. **Sibling-team asks** — CAL-4 (intake asset ref), CAL-6/7/8 (calendar service-activity UX), POR-1/2/6/7 (invoice cross-link, signoff, quote/doc send). Fallbacks ready for each (`13`).
 7. **Ops & lifecycle package** — retention enforcement, `/api/ext` rate-limit hardening, tenant export: confirm which ride along Phase 2 vs. defer to Phase 3 (`16:94-104`; `20:66`).
@@ -256,6 +247,7 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 
 Do **not** build in Phase 2 (`06:93-105`; `13:63`):
 
+- **SLA indicators & timers** (response/resolution clocks, coverage calendar, breach flags) — **moved from Phase 2 (2026-07-14)** because it opens a coverage-calendar/timezone/holiday surface; the design is retained in §4 P2-WS3 so Phase 3 doesn't restart it (roadmap `06:81` moved to Phase 3).
 - Scheduling assist / suggest-technician-by-skills-distance-availability, and the **CAL-5 merged-busy-times availability query** (both **Phase 3**, not Phase 2 — `13:17,63`; `08:41`); route optimization for multi-stop days.
 - Usage/meter-based preventive maintenance with predictive due-date drift.
 - Part-compatibility mining from approved worksheet usage.

@@ -1,6 +1,6 @@
 # herbe.service — Feature Roadmap by Development Phase
 
-Status: v0.11 (2026-07-07). Four development phases: **P0 Foundations** (de-risk offline sync + ERP mapping), **P1 The product** (the full field loop, dispatch, van stock, scanning, document/checklist templates and the real config surfaces), **P2 Contracts, recurring service, customer experience**, **P3 Optimization & intelligence**. Sizing assumes a small team (2–3 devs + design shared with the suite); durations are calendar estimates, **re-planned after Phase 0** — the merged P1 is large, so its estimate below is explicitly a Phase-0-exit re-plan item.
+Status: v0.12 (2026-07-14). Four development phases: **P0 Foundations** (de-risk offline sync + ERP mapping), **P1 The product** (the full field loop, dispatch, van stock, scanning, document/checklist templates and the real config surfaces), **P2 Contracts, recurring service, customer experience**, **P3 Optimization & intelligence**. Sizing assumes a small team (2–3 devs + design shared with the suite); durations are calendar estimates, **re-planned after Phase 0** — the merged P1 is large, so its estimate below is explicitly a Phase-0-exit re-plan item.
 
 ## Phase 0 — Foundations (4–6 weeks)
 
@@ -78,7 +78,6 @@ Exit: a pilot company runs its real service work for 2+ weeks with invoices issu
 Goal: proactive service and the customer-facing surface — kept separate from Phase 1 because it stands cleanly on its own and builds on the Phase-1 document engine + `/api/ext` API.
 
 - **Service contracts/agreements**: covered service item nodes, response-time terms, price rules reference; calendar-based recurring order generation (e.g. yearly maintenance), horizon control; contract coverage view ("42/46 extinguishers inspected this year") on the tree rollups. The ERP contract (`COVc`, read inbound) is the base — per-row service levels (`SVCCode` → `SVCVc`, carrying the recurring cadence); herbe.service overlays the per-service-level extras `SVCVc` can't hold (`02-data-model.md`)
-- SLA indicators on orders (response/resolution timers, overdue flags)
 - **Customer surface = herbe.portal, exclusively** (owner 2026-07-05: herbe.service ships no customer-facing pages). Portal service modules: equipment + history (QR label deep-link target), request intake → service order, order status incl. "technician on the way" view, report PDFs, order signoff (resendable — reject re-opens the order for more work), satisfaction feedback — built portal-side, reading `/api/ext/v1`. Tenants without portal: emailed report PDFs + on-site signature — nothing web-facing from service
 - **Quote flow** for out-of-contract work: quote draft from order → `QTVc` push → confirmation in the portal's quotations module → acceptance read-back (`04-erp-sync.md`)
 - **Self-scheduling intake via herbe.calendar Smart Booking** (ERP tenants): booking template targeted at the service intake activity type (+ custom fields: site, serial, fault) → auto-converted to ServiceOrder + Booking; reschedule/cancel links from the confirmation email (ask raised in `13-suite-change-requests.md` CAL-4)
@@ -86,7 +85,7 @@ Goal: proactive service and the customer-facing surface — kept separate from P
 - **Compliance documents** (`12-documents-templates.md`): certificates per node/coverage with subtree annexes, contract-cycle documents; customer signoff **in herbe.portal** (signing descriptor primary; the no-module fallback attaches the document to the `orderShadow` activity for the portal's delivery-confirmation flow, `13-suite-change-requests.md` POR-2); on-site canvas signature remains the no-portal baseline
 - Work templates (incident-type-lite): fault type bundles default checklist, typical parts, estimated duration
 - Native wrappers (iOS/Android store presence, NFC, better background behavior) — only the gaps Phase 1 PWA data shows we need; candidates in `03-architecture.md`. (Biometric technician login already ships Phase 1 via the WebAuthn platform authenticator.)
-- Reporting v1: utilization, first-time-fix rate, MTTR, revenue per technician (ERP-priced, via `IVVc` rows through the portal's invoice mappers), top problem devices; subtree rollups + coverage %; lot explosion; checklist sampling rules
+- Reporting v1 — metrics runnable on owned data: first-time-fix rate, MTTR, top problem devices (by count); subtree rollups + coverage %; lot explosion; checklist sampling rules. Deferred until the data exists (owner 2026-07-14): revenue per technician (no `IVVc`-row→technician link in Standard), utilization (needs a technician working-hours config), failure rate (needs install base) — see `22-phase-2-implementation-plan.md` §4 P2-WS10
 
 Exit: recurring contract work generates and completes without manual creation; customers receive and confirm digitally.
 
@@ -94,6 +93,7 @@ Exit: recurring contract work generates and completes without manual creation; c
 
 Prioritize by pilot data, not upfront:
 
+- **SLA indicators on orders** (response/resolution timers, overdue flags) — moved from Phase 2 (owner 2026-07-14): opens a per-contract coverage-calendar / timezone / holiday surface not worth blocking the Phase-2 customer experience on. Design captured in `22-phase-2-implementation-plan.md` §4 P2-WS3
 - Scheduling assist: suggest technician/slot by skills, distance, availability (query herbe.calendar's merged busy-times — `13-suite-change-requests.md` CAL-5); later route optimization for multi-stop days
 - Meter/usage-based preventive maintenance with predictive drift of due dates (AllDevice pattern), per tree node
 - Part-compatibility suggestions mined from approved worksheet usage (model × part pairs → admin review queue)
