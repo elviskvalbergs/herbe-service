@@ -92,3 +92,20 @@ export async function setOrderStatus(
     .set({ status })
     .where(and(eq(schema.serviceOrders.id, id), eq(schema.serviceOrders.tenantId, tenantId)))
 }
+
+// SEED/TEST-ONLY. In production, 'Invoiced'/'Closed' are ERP-owned states
+// (docs/02-data-model.md:64-72 — Closed via SVOVc.DoneMark, Invoiced via a
+// linked IVVc) that only ever arrive through the real ERP sync pipeline,
+// never through application code calling setOrderStatus directly. That sync
+// path doesn't exist yet, so seed/test code has no legitimate way to put an
+// order in one of these states — this helper is that bypass. It is
+// deliberately not tenant-scoped (unlike setOrderStatus) since it is never
+// meant to be called from request-handling code; do not call it outside
+// seed scripts or tests.
+export async function setErpOwnedState(
+  db: Db,
+  orderId: string,
+  status: Extract<OrderStatus, 'Invoiced' | 'Closed'>,
+): Promise<void> {
+  await db.update(schema.serviceOrders).set({ status }).where(eq(schema.serviceOrders.id, orderId))
+}
