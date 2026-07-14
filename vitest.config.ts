@@ -51,6 +51,7 @@ export default defineConfig({
         'lib/erp/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'packages/erp-core/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/sync/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+        'lib/domain/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
       },
     },
   },

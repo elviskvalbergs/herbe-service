@@ -19,8 +19,18 @@ describe('deriveOrderStatus — precedence: Closed > Invoiced > Cancelled > manu
       'Invoiced',
     ],
     [
+      'Invoiced wins over manual Confirmed',
+      { erpState: 'Invoiced', manualState: 'Confirmed', worksheets: ['Approved'] },
+      'Invoiced',
+    ],
+    [
       'Cancelled wins over manual Confirmed',
       { cancelled: true, manualState: 'Confirmed', worksheets: ['Approved'] },
+      'Cancelled',
+    ],
+    [
+      'Cancelled wins over manual Work done',
+      { cancelled: true, manualState: 'Work done', worksheets: ['Done'] },
       'Cancelled',
     ],
     [
@@ -34,8 +44,18 @@ describe('deriveOrderStatus — precedence: Closed > Invoiced > Cancelled > manu
       'Confirmed',
     ],
     [
+      'manual Confirmed wins over derived Planned',
+      { manualState: 'Confirmed', bookingCount: 1 },
+      'Confirmed',
+    ],
+    [
       'manual Work done wins over derived Planned',
       { manualState: 'Work done', bookingCount: 1 },
+      'Work done',
+    ],
+    [
+      'manual Work done wins over derived In progress',
+      { manualState: 'Work done', worksheets: ['In progress'] },
       'Work done',
     ],
     [

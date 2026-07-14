@@ -14,6 +14,9 @@ describe('charge type ↔ ItemType (string set 31)', () => {
   it('maps ERP 1..4 back without a review flag', () => {
     expect(itemTypeToChargeType(2)).toEqual({ charge: 'warranty', needsReview: false });
   });
+  it('maps an out-of-range ItemType (unmapped integer) to invoiceable AND flags it for manager review', () => {
+    expect(itemTypeToChargeType(5)).toEqual({ charge: 'invoiceable', needsReview: true });
+  });
 });
 
 describe('suggestChargeType', () => {
