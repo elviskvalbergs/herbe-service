@@ -90,6 +90,7 @@ export async function seedDomain(db: Db, ctx: SeedDomainCtx): Promise<void> {
     name: 'Seed Circulation Unit',
     labelId: seedLabel(erpCompanyId, 'unit'),
     parentId: system.id,
+    customerId,
   })
   await insertServiceItem(db, {
     tenantId,
@@ -98,6 +99,7 @@ export async function seedDomain(db: Db, ctx: SeedDomainCtx): Promise<void> {
     name: 'Seed Filter Lot',
     labelId: seedLabel(erpCompanyId, 'lot'),
     parentId: system.id,
+    customerId,
   })
 
   // --- orders + worksheets: one order per required OrderStatus ---

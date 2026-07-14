@@ -120,6 +120,7 @@ export const serviceItems = pgTable(
     erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
     erpRef: text('erp_ref'),
     parentId: uuid('parent_id').references((): AnyPgColumn => serviceItems.id),
+    customerId: uuid('customer_id').references(() => customers.id),
     kind: text('kind').notNull(), // NodeKind: 'system' | 'unit' | 'lot'
     name: text('name').notNull(),
     serialNr: text('serial_nr'),
@@ -145,6 +146,7 @@ export const serviceItems = pgTable(
     index('service_items_parent_idx').on(t.parentId),
     index('service_items_label_idx').on(t.labelId),
     index('service_items_change_seq_idx').on(t.changeSeq),
+    index('service_items_customer_idx').on(t.customerId),
   ],
 )
 
@@ -433,3 +435,32 @@ export const pairedDevices = pgTable('paired_devices', {
   lastUnlockAt: timestamp('last_unlock_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 })
+
+// Task 1 of the /api/ext/v1 read-API slice (docs/superpowers/sdd/task-1-brief.md):
+// scoped bearer tokens the ext API authenticates against. tokenHash is the
+// SHA-256 hash of the raw token (same never-persist-the-raw-value idiom as
+// magicLinkTokens above). customerCodes scopes a token to a subset of
+// customers; empty array means no customer restriction is encoded here (the
+// route layer decides what an empty scope means). No changeSeq/deletedAt —
+// append-only-ish like historyEvents: tokens aren't delta-synced, and
+// revocation is a revokedAt timestamp, not a tombstone.
+export const extTokens = pgTable(
+  'ext_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    customerCodes: text('customer_codes').array().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique().on(t.tokenHash),
+    index('ext_tokens_company_idx').on(t.erpCompanyId),
+  ],
+)
+
+export type ExtTokenRow = InferSelectModel<typeof extTokens>

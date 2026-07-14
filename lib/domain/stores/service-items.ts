@@ -24,6 +24,7 @@ export interface InsertServiceItemInput {
   erpCompanyId?: string
   erpRef?: string
   parentId?: string
+  customerId?: string
   serialNr?: string
   secondarySerial?: string
   quantity?: number
@@ -45,6 +46,7 @@ export async function insertServiceItem(db: Db, input: InsertServiceItemInput): 
       erpCompanyId: input.erpCompanyId,
       erpRef: input.erpRef,
       parentId: input.parentId,
+      customerId: input.customerId,
       kind: input.kind,
       name: input.name,
       serialNr: input.serialNr,

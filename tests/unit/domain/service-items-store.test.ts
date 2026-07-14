@@ -89,4 +89,26 @@ describe('service-items store', () => {
     // (insertServiceItem / getServiceItemById / scanServiceItemsForTenant / getChildren
     // only) — the deletedAt-exclusion half of this test is skipped per the task note.
   })
+
+  it('inserts an item with customerId and reads it back', async () => {
+    const [erpCompany] = await db
+      .insert(schema.erpCompanies)
+      .values({ tenantId, displayName: 'Store Test Co', adapterType: 'standard_books' })
+      .returning()
+    const [customer] = await db
+      .insert(schema.customers)
+      .values({ tenantId, erpCompanyId: erpCompany.id, erpRef: 'CUST-1', name: 'Store Test Customer', changeSeq: BigInt(0) })
+      .returning()
+
+    const unit = await insertServiceItem(db, {
+      tenantId,
+      kind: 'unit',
+      name: 'Customer-linked Unit',
+      labelId: 'L-cust-unit-1',
+      customerId: customer.id,
+    })
+
+    const got = await getServiceItemById(db, tenantId, unit.id)
+    expect(got?.customerId).toBe(customer.id)
+  })
 })
