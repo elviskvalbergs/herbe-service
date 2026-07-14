@@ -98,8 +98,14 @@ export const itemModels = pgTable(
     model: text('model'),
     category: text('category'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
-  (t) => [index('item_models_tenant_idx').on(t.tenantId)],
+  (t) => [
+    index('item_models_tenant_idx').on(t.tenantId),
+    index('item_models_change_seq_idx').on(t.changeSeq),
+  ],
 )
 
 // The service-item location tree (docs/11-service-items-and-parts.md "Part 1
