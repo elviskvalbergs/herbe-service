@@ -28,6 +28,7 @@ For service companies: service orders in, planned work on a board, technicians e
 | [18-demo-probe-handoff.md](docs/18-demo-probe-handoff.md) | Work order for the demo-ERP probe session (env-var setup, checklist, deliverables) |
 | [19-demo-probe-results.md](docs/19-demo-probe-results.md) | Live demo-ERP probe results: register/API behavior confirmed, back-link mechanism decided, write-test findings |
 | [20-spec-review-round-5.md](docs/20-spec-review-round-5.md) | Review round 5 (cross-dimension audit, owner decisions 2026-07-07, doc-sync fixes) |
+| [22-phase-2-implementation-plan.md](docs/22-phase-2-implementation-plan.md) | Phase 2 (contracts, recurring service, customer experience) work-package / sequencing plan |
 | [docs/research/](docs/research/) | Raw competitor + suite research notes (appendix) |
 
 ## Product principles
