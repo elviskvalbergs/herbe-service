@@ -1,6 +1,8 @@
 # herbe.service — Phase 2 Implementation Plan
 
-Status: v1.0 (2026-07-14). Scope: **roadmap Phase 2 — "Contracts, recurring service, customer experience"** (`06-roadmap.md:76-91`), the band that was old Phase 3 before the round-5 collapse (`20-spec-review-round-5.md:35`, decision #18). Phase 1 ("The product", plan in `21-phase-1-implementation-plan.md`) is **in progress**; this plan takes its outputs as **given at P1 exit** — it lists the P1 seams it stands on (§3) but does not re-plan them, exactly as the P1 plan treated Phase 0.
+Status: v1.1 (2026-07-14). Scope: **roadmap Phase 2 — "Contracts, recurring service, customer experience"** (`06-roadmap.md:76-91`), the band that was old Phase 3 before the round-5 collapse (`20-spec-review-round-5.md:35`, decision #18). Phase 1 ("The product", plan in `21-phase-1-implementation-plan.md`) is **in progress**; this plan takes its outputs as **given at P1 exit** — it lists the P1 seams it stands on (§3) but does not re-plan them, exactly as the P1 plan treated Phase 0.
+
+Owner decisions folded in (2026-07-14): recurring generation is **app-side logic** that drives ERP activities so the ERP sees them identically (§4 P2-WS2, resolves the §8 freeze gate); **revenue-per-technician is dropped** as ERP-invoiced revenue — Standard has no `IVVc`-row→technician link — replaced by an app-side "billable value booked" proxy (§4 P2-WS10, supersedes the `04-erp-sync.md:142` assumption); **SLA model is proposed** below and pending owner confirmation of specifics (§4 P2-WS3, §10).
 
 Same shape as doc 21: a work-package / sequencing plan — what to build, in what order, reuse vs. build, how each package is tested, what still gates a calendar estimate. Not a re-spec; the truth lives in docs 02–13. Line cites point there.
 
@@ -66,17 +68,26 @@ Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **de
 
 ### P2-WS2 — Recurring service generation
 **Goal:** a maintenance cadence produces its work on schedule, with no manual creation.
-- **Deliverables:** the recurring-order **generator** — reads `SVCVc` cadence per covered `COVc` row, projects due dates (horizon control), emits ServiceOrder + Booking (+ shadow activities); idempotent (no duplicate cycles on re-run); horizon/backfill controls; **coverage projection** so "n of m due this cycle" is visible. **This workstream's design is gated on a freeze decision (§8): who owns generation — an app-side scheduler, or ERP-side Service Management generating activities that flow back inbound.** `SVCVc`'s `ActType`/`MainPersons`/`CCPersons` ("what to generate") points at ERP-side activity generation, but it is not decided (`02:131`; `04:99`; `06:80`).
-- **Reuse:** P1 cron dispatcher + table locks; P1 order/booking creation + `ActVc` writers. **Build:** the cadence→due-date projector, generation idempotency, horizon control.
-- **Depends on:** P2-WS1; P1 order/booking/shadow writers; **§8 generation-owner decision**.
-- **TDD:** cadence projection (all four `SVCVc` fields incl. weekend skip); idempotent re-run (no duplicate cycle); horizon boundary; generation → full P1 field loop → completion feeds the coverage view.
+- **Owner decision (2026-07-14): generation is app-side logic; the ERP sees the result identically.** herbe.service runs the scheduler/generator (cadence projection, horizon, idempotency all app-owned), and the resulting ServiceOrder + Booking **create / edit / remove their `ActVc` activities through the P1 outbound push path** — so from the ERP's side a generated activity is indistinguishable from an ERP-native one. We do **not** depend on the ERP's Service Management module to generate anything; `SVCVc.ActType`/`MainPersons`/`CCPersons` are consumed as *inputs* to what the app writes, not as an ERP-side generator.
+- **Deliverables:** the recurring-order **generator** — reads `SVCVc` cadence per covered `COVc` row, projects due dates (horizon control), emits ServiceOrder + Booking and **writes the `ActVc` activity** via the P1 writers; **cycle edits/removals propagate as activity edits / void-in-place cancellation** (P1 WS5 mechanism); **echo suppression** (P1 WS5 app-UUID tag) so the app-created activity doesn't re-import as a new order; idempotent (no duplicate cycles on re-run); horizon/backfill controls; **coverage projection** so "n of m due this cycle" is visible (`02:131`; `04:99`; `06:80`).
+- **Reuse:** P1 cron dispatcher + table locks; P1 order/booking creation + `ActVc` writers + **void-in-place cancellation + echo suppression** (WS5). **Build:** the cadence→due-date projector, generation idempotency, horizon control.
+- **Depends on:** P2-WS1; P1 order/booking/shadow writers + WS5 (`ActVc` write, void, echo).
+- **TDD:** cadence projection (all four `SVCVc` fields incl. weekend skip); idempotent re-run (no duplicate cycle); horizon boundary; **generated `ActVc` doesn't echo back as a new order**; **cadence change → future-cycle activity edited/voided, past ones untouched**; generation → full P1 field loop → completion feeds the coverage view.
 
 ### P2-WS3 — SLA indicators & timers
 **Goal:** response/resolution expectations visible on orders, overdue surfaced.
-- **Deliverables:** **define the SLA model first** — no clock/breach entity exists today; `02:131` captures only "response-time terms" as free overlay data. Then: response + resolution timers seeded from the service-level overlay, overdue flags on orders, dispatcher-visible indicators. Scope decision needed (§10): full timer/breach/escalation vs. a plain response-time display.
-- **Reuse:** P2-WS1 overlay (response-time terms); P1 order status timestamps. **Build:** the timer model + indicators (net-new).
-- **Depends on:** P2-WS1; §10 SLA scope decision.
-- **TDD:** timer start/stop against status transitions; overdue-flag thresholds; timezone correctness (Europe/Riga).
+- **Spec state:** the docs define **no SLA mechanics** — only a roadmap one-liner ("response/resolution timers, overdue flags", `06:81`) and "response-time terms" as free-text on the service-level overlay (`02:131`; `04:99`). The model below is **proposed (2026-07-14), pending owner confirmation** of the four choices in §10.
+- **Proposed model — two clocks per order, off the P1 status-machine timestamps:**
+  - **Response clock** — starts when the order becomes actionable (reactive orders: at creation/receipt); stops at first meaningful response (**default: work started / first work segment**; alt: `enRoute` tap or on-site arrival — §10 choice). Target from the service-level overlay's response-time term.
+  - **Resolution clock** — starts at the same trigger; stops when the order reaches **Work done / Confirmed**. Target from the service-level resolution term.
+  - **Applies to reactive/corrective orders. Contract-generated PM orders use a due-window instead** (they're scheduled, not reactive) — §10 choice.
+  - **Business-hours calendar**: targets count against the contract's coverage window (8×5 / 24×7), not wall-clock — a coverage-calendar config on the service level. (v1 may simplify to wall-clock behind a flag — §10 choice.)
+  - **Pause conditions**: clock stops on defined "waiting" reasons (waiting-for-customer, parts-on-order, customer-requested delay) — reuses the worksheet pause-with-reason pattern, lifted to order level.
+  - **Indicators**: `on-track` → `at-risk` (within ~80% of target, amber) → `breached` (past target, red). Surfaced on the order list, dispatch board, and an order-detail SLA panel; **dispatcher/manager notification** on at-risk + breach (single notification, not a multi-tier escalation matrix — that's Phase 3).
+- **Deliverables:** the two-clock SLA model + business-hours calc + pause reasons + at-risk/breached flags + the order/dispatch indicators + the notification hook.
+- **Reuse:** P2-WS1 overlay (response/resolution terms); P1 order status timestamps; P1 web-push (WS1) for the notification; P1 pause-with-reason pattern. **Build:** the clock/calendar/breach engine (net-new, pure module).
+- **Depends on:** P2-WS1; §10 SLA choices.
+- **TDD:** clock start/stop against each status transition; pause-reason stops the clock; business-hours math (weekend/after-hours excluded); at-risk/breach thresholds; timezone correctness (Europe/Riga).
 
 ### P2-WS4 — Quote flow (out-of-contract work)
 **Goal:** a quote drafted from an order, pushed to the ERP, confirmed by the customer, read back.
@@ -121,11 +132,18 @@ Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **de
 - **TDD:** each row fires from the right sender once; "On my way" → ETA in the portal view; non-portal emailed-PDF path.
 
 ### P2-WS10 — Reporting v1
-**Goal:** the core operational metrics, ERP-priced where money is involved.
-- **Deliverables:** **utilization, first-time-fix rate, MTTR, revenue per technician** (ERP-priced via `IVVc` rows through the portal invoice mappers), **top problem devices**, **subtree rollups + coverage %**, **lot explosion**, **checklist sampling rules** (`06:89`; `11:53-55`, `:26`, `:37`). **Metric definitions must be decided first (§10):** coverage %, subtree rollups, lot explosion, and checklist sampling have written definitions in doc 11; utilization / FTF / MTTR / top-problem-devices do **not** — each needs a definition decision. Revenue-per-technician needs the `IVVc`-row → technician/worksheet attribution join defined (likely via the `RLinkVc` back-link).
-- **Reuse:** the P1 coverage/rollup machinery, HistoryEvent data, the portal invoice mappers. **Build:** the metric queries + definitions, the `IVVc`→technician join.
-- **Depends on:** P2-WS1 (coverage), P1 history/work-segment data, the portal invoice mappers; §10 metric-definition decisions.
-- **TDD:** coverage-% and rollups against golden trees; lot-explosion history carry-over; metric definitions as fixtures once decided.
+**Goal:** the core operational metrics, computed from data herbe.service actually owns.
+- **Owner decision (2026-07-14): ERP-invoiced "revenue per technician" is dropped.** Standard has no `IVVc`-row→technician link; an invoice resolves back to its source worksheet(s) only at document level (via `getrecordlinks`) and aggregates across worksheets/rows, so per-technician revenue attribution isn't reliable. This **supersedes the `04-erp-sync.md:142` assumption** (flag for a doc-sync edit). Replaced by an app-side proxy below.
+- **Metric set (definitions):**
+  - **Billable value booked per technician** (replaces revenue/tech) — sum of `invoiceable`-charge-type worksheet rows (parts + labour) at the ERP unit prices already fetched for the report/preview, attributed to the logging technician. **Explicitly not invoiced revenue** (the ERP owns invoicing); a productivity/value proxy from the work facts we own.
+  - **Utilization** — productive time ÷ available time per technician per period. Productive = logged `work` work-segment hours (billable travel optional, tenant flag); available = the technician's configured working hours (fallback: booked capacity). From P1 time-entries/work-segments.
+  - **First-time-fix rate** — % of reactive/corrective orders resolved in a single visit (one completed worksheet) with **no follow-up** order on the same service item within a configurable window and no reopen. From order/worksheet history.
+  - **MTTR** — mean elapsed business-hours time from the order start trigger to **Work done/Confirmed** (same clock basis as WS3); mean **response time** exposed as a companion. From P1 status timestamps.
+  - **Top problem devices** — ItemModel (make/model) and/or nodes ranked by corrective (non-PM) order/fault-event count over a period; **failure rate** = corrective orders ÷ installed base of that model where the base is known. From the ItemModel registry + fault/cause/remedy + HistoryEvents (aligns with doc 11 "failure rate by model" rollups).
+  - **Coverage %, subtree rollups, lot explosion, checklist sampling** — as **already defined in doc 11** (`11:53-55`, `:26`, `:37`); reuse verbatim, no new definition needed.
+- **Reuse:** P1 coverage/rollup machinery, HistoryEvent data, time-entry/work-segment data, the ERP prices already fetched for the report; portal `ARVc` mapper only for payment-status enrichment, not per-tech revenue. **Build:** the metric queries + the billable-value roll-up.
+- **Depends on:** P2-WS1 (coverage), P1 history/work-segment/time-entry data, technician working-hours config.
+- **TDD:** coverage-% and rollups against golden trees; lot-explosion history carry-over; billable-value sums only `invoiceable` rows; FTF window logic; MTTR business-hours math; each metric as a fixture.
 
 ### P2-WS11 — Work templates (incident-type-lite)
 **Goal:** a fault type bundles its default checklist, typical parts, and estimated duration.
@@ -148,7 +166,7 @@ Twelve packages. Each: **goal**, **key deliverables**, **reuse vs. build**, **de
 Milestones, not calendar dates (§10 re-estimate). The ordering front-loads the **contracts+recurring spine** (self-contained on the P1 tree, the headline exit criterion) while the **customer surface** runs in parallel gated on the portal team's module.
 
 **P2-M0 — Contract spine**
-P2-WS1 (`COVc`/`SVCVc` inbound + overlay + coverage view). Resolve the **generation-owner freeze gate** (§8) here — it blocks P2-WS2's design.
+P2-WS1 (`COVc`/`SVCVc` inbound + overlay + coverage view). (Generation owner resolved — app-side, §8.)
 
 **P2-M1 — Recurring generation (prove exit criterion #1)**
 P2-WS2 end-to-end: cadence → generated order/booking → P1 field loop → completion → coverage view updates. The de-risking milestone for the contract half; don't fan out contract features until a generated cycle completes green.
@@ -163,7 +181,7 @@ P2-WS8 (compliance + contract-cycle docs + signing descriptor + POR-2 fallback).
 P2-WS4 (`QTVc` push + POR-6 send + acceptance read-back) · P2-WS7 (Smart Booking intake) · P2-WS11 (work templates, feeding quote rows).
 
 **P2-M5 — SLA, reporting, wrappers**
-P2-WS3 (SLA, once its scope is decided) · P2-WS10 (reporting v1, once metric definitions are decided) · P2-WS12 (native gaps, only if P1 data warrants).
+P2-WS3 (SLA — model proposed, pending the four §10 confirmations) · P2-WS10 (reporting v1 — definitions settled) · P2-WS12 (native gaps, only if P1 data warrants).
 
 **P2-M6 — Pilot**
 A contract tenant's recurring work generates and completes without manual creation; customers confirm digitally → the §1 exit criteria.
@@ -182,7 +200,7 @@ Critical path: P2-M0 → P2-M1 (contracts→recurring). The customer surface (M2
 | Push-queue saga + persistence-verification + `getrecordlinks` (for `QTVc`) | Reuse P1 as-is | `21` WS4 / `04:207` |
 | Portal quotations module (customer-facing accept/reject + share view) | **Do not build** — portal's | `04:204` |
 | Portal signing gateways (Dokobit/eParaksts/Smart-ID) | **Do not build** — used portal-side | `08:107` |
-| Portal invoice mappers (`IVVc` → revenue) | Consume portal-side | `06:89` |
+| Portal `ARVc` mapper (payment-status enrichment only — **not** per-tech revenue) | Consume portal-side | `04:142` |
 | Email TemplateKey engine | Reuse P1 copy | `08:106` |
 | Cron dispatcher + table locks (recurring generation) | Reuse P1 copy | `21` §6 |
 
@@ -202,7 +220,7 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 
 ## 8. Freeze gates & one-way doors
 
-- **Recurring-generation owner** — app-side scheduler vs. ERP-side activity generation. Decide before P2-WS2 design; `SVCVc.ActType`/`MainPersons`/`CCPersons` leans ERP-side but is undecided (`02:131`; `04:99`). **Blocks P2-M1.**
+- **Recurring-generation owner — RESOLVED (2026-07-14): app-side.** herbe.service runs the generator; it creates/edits/removes the ERP `ActVc` activities through the P1 outbound path so the ERP sees them identically. No ERP-side Service Management dependency (§4 P2-WS2).
 - **`COVc` stays read-only** — enabling `ContractClass` / row-`SVCCode` write-back reverses ownership; deferred, don't build it into the contract model (`20:64`; `02:131`).
 - **Persistence-verification on `QTVc` push** — mandatory before a step is marked done (`04:117`).
 - **The `/api/ext/v1` read contract is deliberately unfrozen** — commit only the approval-trigger endpoints; re-cut the wider read API once the portal module shape lands (`20:17`; `08:70`).
@@ -216,9 +234,8 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 |---|---|---|
 | Portal module shape unsettled | Customer surface (M2/M3) stalls | Every sibling ask (CAL-4, POR-2/6/7) has a fallback; service ships the committed endpoints + emailed-PDF/canvas baseline regardless (`08:49`; `13`) |
 | Version gate hides the compliance-doc path | Certificates can't deliver digitally | Emailed PDF + on-site canvas signature is the guaranteed baseline (`12:62`; `20:22`) |
-| Recurring-generation owner undecided | P2-WS2 can't start | Freeze-gate decision in M0 (§8) |
-| `revenue/technician` attribution underspecified | Reporting metric wrong or blocked | Define the `IVVc`→technician join (likely `RLinkVc` back-link) before P2-WS10; treat as a design task, not a query (`06:89`; `16:167`) |
-| No SLA model exists | P2-WS3 ambiguous | Decide scope (full timers vs. display) before building (§10; `02:131`) |
+| App-generated `ActVc` echoes back as a new order | Duplicate orders from recurring generation | P1 WS5 echo suppression (app-UUID tag); regression test in P2-WS2 |
+| No SLA model exists in the spec | P2-WS3 builds the wrong thing | Proposed model in §4 P2-WS3; owner confirms the four §10 choices before build |
 | POR-6 (quote send) not delivered | No quote auto-send | Human sends from the portal quotations module; acceptance read-back still works (`13:108`) |
 
 ---
@@ -226,9 +243,9 @@ Rule holds from P1: only `@herbe/erp-core` is shared; everything else is copy-fi
 ## 10. Open items that gate estimation / start
 
 1. **Phase 2 calendar estimate** — roadmap says 8–12 weeks (`06:76`); re-estimate at P1 exit against the actual P1 seams delivered.
-2. **Recurring-generation owner** (app vs. ERP) — §8 freeze gate.
-3. **SLA scope** — a full timer/breach/escalation model, or a plain response-time display? No model exists today (`02:131`).
-4. **Reporting metric definitions** — utilization / FTF / MTTR / top-problem-devices are undefined in the docs; coverage-%/rollups/lot/sampling are defined in doc 11 (`06:89`; `11:53-55`). Plus the revenue-per-technician attribution join.
+2. ~~Recurring-generation owner~~ — **RESOLVED 2026-07-14: app-side** (§4 P2-WS2, §8).
+3. **SLA — confirm four choices** in the proposed model (§4 P2-WS3): (a) response-clock stop event — work-started (default) / `enRoute` tap / on-site arrival; (b) do PM/contract-generated orders get an SLA or only a due-window; (c) v1 honors a business-hours coverage calendar or wall-clock-first; (d) the pause-reason list.
+4. ~~Reporting metric definitions~~ — **RESOLVED 2026-07-14** (§4 P2-WS10): revenue/tech dropped (no `IVVc`→tech link) → billable-value-booked proxy; utilization / FTF / MTTR / top-problem-devices defined; coverage/rollups/lot/sampling from doc 11. Follow-up: **doc-sync edit to `04-erp-sync.md:142`** (still asserts revenue reads `IVVc`); needs a technician working-hours config for utilization.
 5. **Portal module shape** — drives the `/api/ext` read-API re-cut and the POR-2 generalization; only the approval-trigger endpoints are committed until it lands (`20:17`; `13:91`).
 6. **Sibling-team asks** — CAL-4 (intake asset ref), CAL-6/7/8 (calendar service-activity UX), POR-1/2/6/7 (invoice cross-link, signoff, quote/doc send). Fallbacks ready for each (`13`).
 7. **Ops & lifecycle package** — retention enforcement, `/api/ext` rate-limit hardening, tenant export: confirm which ride along Phase 2 vs. defer to Phase 3 (`16:94-104`; `20:66`).
