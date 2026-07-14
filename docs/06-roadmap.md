@@ -94,6 +94,7 @@ Exit: recurring contract work generates and completes without manual creation; c
 Prioritize by pilot data, not upfront:
 
 - **SLA indicators on orders** (response/resolution timers, overdue flags) — moved from Phase 2 (owner 2026-07-14): opens a per-contract coverage-calendar / timezone / holiday surface not worth blocking the Phase-2 customer experience on. Design captured in `22-phase-2-implementation-plan.md` §4 P2-WS3
+- **Analytics query layer + MCP server** — copy-first from herbe.portal (owner 2026-07-14: the service DB needs the same primitives near-verbatim): an `analytics_tokens` scoped bearer + OAuth/PKCE minting, the read-only MCP server (schema/query/search tools, per-tenant customization, module-gated per company), and a pgvector `cached_embeddings` store for semantic search — the tool set re-pointed at service entities (orders, worksheets, service items, contracts). Detail + file cites in `22-phase-2-implementation-plan.md` §11
 - Scheduling assist: suggest technician/slot by skills, distance, availability (query herbe.calendar's merged busy-times — `13-suite-change-requests.md` CAL-5); later route optimization for multi-stop days
 - Meter/usage-based preventive maintenance with predictive drift of due dates (AllDevice pattern), per tree node
 - Part-compatibility suggestions mined from approved worksheet usage (model × part pairs → admin review queue)
