@@ -1,5 +1,7 @@
 // drizzle/schema.ts
-import { bigint, index, jsonb, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
+import { bigint, index, jsonb, numeric, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import type { InferSelectModel } from 'drizzle-orm'
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -84,9 +86,76 @@ export const items = pgTable(
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_items_change_seq').on(t.changeSeq)],
 )
 
+// ItemModel registry (docs/11-service-items-and-parts.md "Model registry is
+// the join point"): make/model/category, referenced by serviceItems.modelId
+// and (later) PartCompatibility rows.
+export const itemModels = pgTable(
+  'item_models',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    make: text('make'),
+    model: text('model'),
+    category: text('category'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('item_models_tenant_idx').on(t.tenantId),
+    index('item_models_change_seq_idx').on(t.changeSeq),
+  ],
+)
+
+// The service-item location tree (docs/11-service-items-and-parts.md "Part 1
+// — The service item hierarchy"): system/unit/lot nodes, self-referencing
+// parentId, materialized path. changeSeq is bumped by the same
+// bump_change_seq() trigger as customers/items (0009_service_items.sql).
+export const serviceItems = pgTable(
+  'service_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    erpRef: text('erp_ref'),
+    parentId: uuid('parent_id').references((): AnyPgColumn => serviceItems.id),
+    kind: text('kind').notNull(), // NodeKind: 'system' | 'unit' | 'lot'
+    name: text('name').notNull(),
+    serialNr: text('serial_nr'),
+    secondarySerial: text('secondary_serial'),
+    quantity: integer('quantity'),
+    modelId: uuid('model_id').references(() => itemModels.id),
+    path: text('path').notNull().default(''),
+    positionCode: text('position_code'),
+    labelId: text('label_id').notNull(),
+    attributes: jsonb('attributes').notNull().default({}),
+    siteName: text('site_name'),
+    warrantyUntil: timestamp('warranty_until', { withTimezone: true }),
+    warrantyLaborCovered: boolean('warranty_labor_covered').notNull().default(false),
+    warrantyPartsCovered: boolean('warranty_parts_covered').notNull().default(false),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique().on(t.erpCompanyId, t.erpRef),
+    unique().on(t.labelId),
+    index('service_items_tenant_idx').on(t.tenantId),
+    index('service_items_parent_idx').on(t.parentId),
+    index('service_items_label_idx').on(t.labelId),
+    index('service_items_change_seq_idx').on(t.changeSeq),
+  ],
+)
+
+export type ItemModelRow = InferSelectModel<typeof itemModels>
+export type ServiceItemRow = InferSelectModel<typeof serviceItems>
+
 // Task 14: the app's own identity table (docs/05-users-auth.md). External
 // logins (Entra ID, Baltic eID, ...) attach as separate identity links in a
-// later phase; this table is the identity itself, not a link.
+// later phase; this table is the identity itself, not a link. Declared here
+// (ahead of its usual place below) because worksheets.technicianUserId
+// references it.
 export const users = pgTable(
   'users',
   {
@@ -98,6 +167,210 @@ export const users = pgTable(
   },
   (t) => [unique().on(t.tenantId, t.email)],
 )
+
+// Service orders (docs/02-data-model.md, 11-service-items-and-parts.md): the
+// top-level job entity. orderNumber is the app's OWN number — the ERP
+// register ref lives in erpRefs (below), not a scalar erpRef column here: a
+// service order has no single scalar ERP counterpart (see erpRefs comment).
+// changeSeq is bumped by the same bump_change_seq() trigger as
+// customers/items/serviceItems (0010_service_orders.sql).
+export const serviceOrders = pgTable(
+  'service_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    customerId: uuid('customer_id').notNull().references(() => customers.id),
+    siteName: text('site_name'),
+    contactName: text('contact_name'),
+    description: text('description'),
+    priority: text('priority'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }),
+    promisedDate: timestamp('promised_date', { withTimezone: true }),
+    status: text('status').notNull().default('New'), // OrderStatus
+    defaultChargeType: text('default_charge_type').notNull().default('invoiceable'), // ChargeType
+    orderNumber: text('order_number'),
+    crewGroupId: uuid('crew_group_id'),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('service_orders_tenant_idx').on(t.tenantId),
+    index('service_orders_customer_idx').on(t.customerId),
+    index('service_orders_status_idx').on(t.status),
+    index('service_orders_change_seq_idx').on(t.changeSeq),
+  ],
+)
+
+// Per-line group-service rows (lib/domain/coverage.ts resolves `coverage`
+// against a member set). Child rows of an order: no independent
+// changeSeq/tombstone of their own, same as the order they belong to.
+export const serviceOrderRows = pgTable(
+  'service_order_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orderId: uuid('order_id').notNull().references(() => serviceOrders.id),
+    serviceItemId: uuid('service_item_id').references(() => serviceItems.id),
+    coverage: jsonb('coverage'), // Coverage
+    symptom: text('symptom'),
+    workType: text('work_type'),
+    chargeType: text('charge_type'), // ChargeType
+  },
+  (t) => [index('service_order_rows_order_idx').on(t.orderId)],
+)
+
+// Worksheets (docs/02-data-model.md, 11-service-items-and-parts.md): one per
+// (service order x technician) — WSVc.EMCode is single-technician, so a crew
+// is N worksheets sharing crewGroupId. No scalar erpRef column: a worksheet
+// maps to BOTH a WSVc record and a worksheetShadow ActVc, so its ERP refs
+// live in erpRefs (below), keyed by purpose. changeSeq is bumped by the same
+// trigger as serviceOrders (0011_worksheets.sql).
+export const worksheets = pgTable(
+  'worksheets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    orderId: uuid('order_id').notNull().references(() => serviceOrders.id),
+    technicianUserId: uuid('technician_user_id').references(() => users.id),
+    crewGroupId: uuid('crew_group_id'),
+    status: text('status').notNull().default('Draft'), // WorksheetStatus
+    workDescription: text('work_description'),
+    fault: text('fault'),
+    cause: text('cause'),
+    remedy: text('remedy'),
+    signedOnSite: boolean('signed_on_site').notNull().default(false),
+    signatureLockedAt: timestamp('signature_locked_at', { withTimezone: true }),
+    revision: integer('revision').notNull().default(0),
+    rejectedReason: text('rejected_reason'),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('worksheets_tenant_idx').on(t.tenantId),
+    index('worksheets_order_idx').on(t.orderId),
+    index('worksheets_status_idx').on(t.status),
+    index('worksheets_change_seq_idx').on(t.changeSeq),
+    // One worksheet per (order x technician) — enforced as a partial unique
+    // index (0011_worksheets.sql) so it can't be expressed as a plain
+    // drizzle `unique()` (those don't support a WHERE predicate); the index
+    // is created by the migration and this definition is documentation-only
+    // for drizzle-kit's diffing.
+  ],
+)
+
+// Child rows of a worksheet: no independent changeSeq/tombstone of their
+// own, same as serviceOrderRows above.
+export const worksheetRows = pgTable(
+  'worksheet_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    worksheetId: uuid('worksheet_id').notNull().references(() => worksheets.id),
+    serviceItemId: uuid('service_item_id').references(() => serviceItems.id),
+    description: text('description'),
+    quantity: numeric('quantity'),
+    unit: text('unit'),
+    serial: text('serial'),
+    chargeType: text('charge_type').notNull().default('invoiceable'), // ChargeType
+    stockLocation: text('stock_location'),
+    price: numeric('price'),
+    sum: numeric('sum'),
+  },
+  (t) => [index('worksheet_rows_worksheet_idx').on(t.worksheetId)],
+)
+
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    worksheetId: uuid('worksheet_id').notNull().references(() => worksheets.id),
+    kind: text('kind').notNull(), // 'work' | 'travel'
+    direction: text('direction'), // 'to' | 'from' | null
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    minutes: integer('minutes'),
+    pauseReason: text('pause_reason'),
+  },
+  (t) => [index('time_entries_worksheet_idx').on(t.worksheetId)],
+)
+
+export const distanceEntries = pgTable(
+  'distance_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    worksheetId: uuid('worksheet_id').notNull().references(() => worksheets.id),
+    km: numeric('km'),
+    billable: boolean('billable'),
+  },
+  (t) => [index('distance_entries_worksheet_idx').on(t.worksheetId)],
+)
+
+// The erpRef set (docs/02-data-model.md 154-158): erpRef is a SET keyed by
+// purpose, not a scalar column — e.g. a worksheet maps to both a primary
+// WSVc record and a worksheetShadow ActVc. entityType/entityId is a loose
+// polymorphic reference (no FK) so this one table serves
+// service_order/worksheet/service_item alike (0012_erp_refs.sql).
+export const erpRefs = pgTable(
+  'erp_refs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    entityType: text('entity_type').notNull(), // 'service_order' | 'worksheet' | 'service_item'
+    entityId: uuid('entity_id').notNull(),
+    purpose: text('purpose').notNull(), // ErpRefPurpose
+    register: text('register'), // 'SVOVc' | 'WSVc' | 'SVOSerVc' | 'ActVc'
+    recordRef: text('record_ref').notNull(),
+    lastSequence: bigint('last_sequence', { mode: 'bigint' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.entityType, t.entityId, t.purpose),
+    index('erp_refs_entity_idx').on(t.entityType, t.entityId),
+  ],
+)
+
+export type ServiceOrderRow = InferSelectModel<typeof serviceOrders>
+export type ServiceOrderLineRow = InferSelectModel<typeof serviceOrderRows>
+export type WorksheetRow = InferSelectModel<typeof worksheets>
+export type WorksheetLineRow = InferSelectModel<typeof worksheetRows>
+export type TimeEntryRow = InferSelectModel<typeof timeEntries>
+export type DistanceEntryRow = InferSelectModel<typeof distanceEntries>
+export type ErpRefRow = InferSelectModel<typeof erpRefs>
+
+// Denormalized, append-only HistoryEvent projection (docs/02-data-model.md
+// "HistoryEvent (service history)", lib/domain/history-projector.ts). No
+// changeSeq/bump_change_seq trigger and no deletedAt here — history is
+// delta-fed by insert only, never updated or tombstoned, unlike
+// serviceItems/serviceOrders/worksheets above. `key` is the projector's
+// deterministic idempotency key; unique(tenantId, key) is what makes the
+// store's upsertHistoryEvents onConflictDoNothing idempotent
+// (0013_history_events.sql).
+export const historyEvents = pgTable(
+  'history_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    serviceItemId: uuid('service_item_id').notNull().references(() => serviceItems.id),
+    key: text('key').notNull(),
+    at: timestamp('at', { withTimezone: true }),
+    kind: text('kind'), // HistoryEventKind
+    summary: text('summary'),
+    orderId: uuid('order_id').references(() => serviceOrders.id),
+    worksheetId: uuid('worksheet_id').references(() => worksheets.id),
+    coverageCovered: integer('coverage_covered'),
+    coverageOf: integer('coverage_of'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.key),
+    index('history_events_tenant_item_idx').on(t.tenantId, t.serviceItemId),
+  ],
+)
+
+export type HistoryEventRow = InferSelectModel<typeof historyEvents>
 
 // tokenHash is the SHA-256 hash of the raw token handed to the user — the raw
 // token itself is never persisted (lib/auth/magic-link-provider.ts).
