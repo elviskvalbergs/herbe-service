@@ -6,6 +6,9 @@
 
 export type NodeKind = 'system' | 'unit' | 'lot';
 
+// 'Accepted' is set-only in this slice: deriveOrderStatus only derives New/Planned/In
+// progress, so 'Accepted' is reachable only via the thin setOrderStatus until a later
+// slice wires its trigger.
 export type OrderStatus =
   | 'New' | 'Accepted' | 'Planned' | 'In progress'
   | 'Work done' | 'Confirmed' | 'Invoiced' | 'Closed' | 'Cancelled';

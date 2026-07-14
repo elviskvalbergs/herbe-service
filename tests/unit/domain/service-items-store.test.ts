@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
-import { getChildren, getServiceItemById, insertServiceItem } from '@/lib/domain/stores/service-items'
+import { getChildren, getServiceItemById, insertServiceItem, scanServiceItemsForTenant } from '@/lib/domain/stores/service-items'
 
 let testDb: TestDatabase
 let sql: ReturnType<typeof postgres>
@@ -54,5 +54,39 @@ describe('service-items store', () => {
     })
     const kids = await getChildren(db, tenantId, sys.id)
     expect(kids.map((k) => k.id)).toContain(unit.id)
+  })
+
+  it('scans all items for a tenant, excluding other tenants', async () => {
+    // Own tenants (not the shared tenantId/otherTenantId) so the count assertion
+    // below isn't affected by rows inserted by earlier tests in this file.
+    const [scanTenant] = await db.insert(schema.tenants).values({ slug: 'scan-t1', name: 'Scan T1' }).returning()
+    const [scanOtherTenant] = await db.insert(schema.tenants).values({ slug: 'scan-t2', name: 'Scan T2' }).returning()
+
+    const sys = await insertServiceItem(db, {
+      tenantId: scanTenant.id,
+      kind: 'system',
+      name: 'Scan System',
+      labelId: 'L-scan-sys-1',
+    })
+    const unit = await insertServiceItem(db, {
+      tenantId: scanTenant.id,
+      kind: 'unit',
+      name: 'Scan Unit',
+      serialNr: 'SN-scan-1',
+      parentId: sys.id,
+      labelId: 'L-scan-unit-1',
+    })
+    await insertServiceItem(db, {
+      tenantId: scanOtherTenant.id,
+      kind: 'system',
+      name: 'Other Tenant System',
+      labelId: 'L-scan-other-1',
+    })
+
+    const rows = await scanServiceItemsForTenant(db, scanTenant.id)
+    expect(rows.map((r) => r.id).sort()).toEqual([sys.id, unit.id].sort())
+    // Note: the store exposes no soft-delete/tombstone function to exercise here
+    // (insertServiceItem / getServiceItemById / scanServiceItemsForTenant / getChildren
+    // only) — the deletedAt-exclusion half of this test is skipped per the task note.
   })
 })

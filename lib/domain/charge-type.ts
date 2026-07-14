@@ -9,7 +9,7 @@
 import type { ChargeType } from './types';
 
 const TO_INT: Record<ChargeType, 1 | 2 | 3 | 4> = { invoiceable: 1, warranty: 2, contract: 3, goodwill: 4 };
-const FROM_INT: Record<number, ChargeType> = { 1: 'invoiceable', 2: 'warranty', 3: 'contract', 4: 'goodwill' };
+const FROM_INT: Partial<Record<number, ChargeType>> = { 1: 'invoiceable', 2: 'warranty', 3: 'contract', 4: 'goodwill' };
 
 export function chargeTypeToItemType(c: ChargeType): 1 | 2 | 3 | 4 {
   return TO_INT[c];
