@@ -1,5 +1,6 @@
 // lib/seed/scenarios/baseline.test.ts
 import { drizzle } from 'drizzle-orm/postgres-js'
+import { sql as sqlOp } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
@@ -29,8 +30,7 @@ describe('baseline seed scenario', () => {
     const firstTenants = await db.select().from(schema.tenants)
     const firstCompanies = await db.select().from(schema.erpCompanies)
 
-    await db.delete(schema.erpCompanies)
-    await db.delete(schema.tenants)
+    await db.execute(sqlOp`TRUNCATE TABLE tenants RESTART IDENTITY CASCADE`)
     await seedBaseline(db)
     const secondTenants = await db.select().from(schema.tenants)
     const secondCompanies = await db.select().from(schema.erpCompanies)
