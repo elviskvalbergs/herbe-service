@@ -5,10 +5,9 @@
 // not a scalar column on the entity tables — e.g. a worksheet maps to both
 // a primary WSVc record and a worksheetShadow ActVc. putErpRef upserts on
 // the erp_refs_uniq constraint (0012_erp_refs.sql); getErpRefs returns
-// every purpose recorded for one entity. entityId is a UUID the caller
-// already resolved via a tenant-scoped lookup (getServiceOrderById /
-// getWorksheetById), so getErpRefs does not re-filter by tenantId — same
-// as the erp_refs table itself, which is keyed by entity, not tenant.
+// every purpose recorded for one entity, scoped to the caller's tenantId
+// (erp_refs has a tenant_id column populated on every write — every other
+// domain store read filters by tenant, and this one must too).
 import { and, eq } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
@@ -56,9 +55,20 @@ export async function putErpRef(db: Db, input: PutErpRefInput): Promise<ErpRefRo
   return row
 }
 
-export async function getErpRefs(db: Db, entityType: string, entityId: string): Promise<ErpRefRow[]> {
+export async function getErpRefs(
+  db: Db,
+  tenantId: string,
+  entityType: string,
+  entityId: string,
+): Promise<ErpRefRow[]> {
   return db
     .select()
     .from(schema.erpRefs)
-    .where(and(eq(schema.erpRefs.entityType, entityType), eq(schema.erpRefs.entityId, entityId)))
+    .where(
+      and(
+        eq(schema.erpRefs.tenantId, tenantId),
+        eq(schema.erpRefs.entityType, entityType),
+        eq(schema.erpRefs.entityId, entityId),
+      ),
+    )
 }

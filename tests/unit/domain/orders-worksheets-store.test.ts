@@ -130,7 +130,7 @@ describe('erp-refs store', () => {
       recordRef: 'ACT-1',
     })
 
-    const refs = await getErpRefs(db, 'worksheet', worksheet.id)
+    const refs = await getErpRefs(db, tenantId, 'worksheet', worksheet.id)
     expect(refs).toHaveLength(2)
     const byPurpose = Object.fromEntries(refs.map((r) => [r.purpose, r]))
     expect(byPurpose.primary.recordRef).toBe('WS-1')
@@ -158,7 +158,7 @@ describe('erp-refs store', () => {
       recordRef: 'WS-2-updated',
     })
 
-    const refs = await getErpRefs(db, 'worksheet', worksheet.id)
+    const refs = await getErpRefs(db, tenantId, 'worksheet', worksheet.id)
     expect(refs).toHaveLength(1)
     expect(refs[0].recordRef).toBe('WS-2-updated')
   })
