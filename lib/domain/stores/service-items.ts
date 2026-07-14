@@ -8,7 +8,7 @@
 // bump_change_seq() trigger (0009_service_items.sql) — the explicit
 // `changeSeq: BigInt(0)` below is overwritten before the row is written, same
 // as ingestCustomers.
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import type { ServiceItemRow } from '@/drizzle/schema'
@@ -88,6 +88,41 @@ export async function scanServiceItemsForTenant(db: Db, tenantId: string): Promi
     .select()
     .from(schema.serviceItems)
     .where(and(eq(schema.serviceItems.tenantId, tenantId), isNull(schema.serviceItems.deletedAt)))
+}
+
+// Task 2 (docs/superpowers/sdd/task-2-brief.md): customer-scoped,
+// changeSeq-paginated read for the /api/ext/v1 read API. customerIds comes
+// from resolveCustomerIdsByCodes (lib/domain/stores/customers.ts) — an
+// empty list means the caller's token resolved to no known customer, so
+// this returns [] rather than falling through to an unscoped scan.
+export interface ScanServiceItemsForCustomerInput {
+  tenantId: string
+  customerIds: string[]
+  after?: bigint
+  limit: number
+}
+
+export async function scanServiceItemsForCustomer(
+  db: Db,
+  { tenantId, customerIds, after, limit }: ScanServiceItemsForCustomerInput,
+): Promise<ServiceItemRow[]> {
+  if (customerIds.length === 0) return []
+
+  const conditions = [
+    eq(schema.serviceItems.tenantId, tenantId),
+    inArray(schema.serviceItems.customerId, customerIds),
+    isNull(schema.serviceItems.deletedAt),
+  ]
+  if (after !== undefined) {
+    conditions.push(gt(schema.serviceItems.changeSeq, after))
+  }
+
+  return db
+    .select()
+    .from(schema.serviceItems)
+    .where(and(...conditions))
+    .orderBy(schema.serviceItems.changeSeq)
+    .limit(limit)
 }
 
 export async function getChildren(db: Db, tenantId: string, parentId: string): Promise<ServiceItemRow[]> {

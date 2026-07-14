@@ -13,7 +13,7 @@
 // and nothing else. Transition rules (which statuses may follow which) live
 // in lib/domain/order-status.ts (a later task) and call this setter — this
 // store never validates a transition.
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import type { ServiceOrderRow } from '@/drizzle/schema'
@@ -79,6 +79,47 @@ export async function scanServiceOrdersForTenant(db: Db, tenantId: string): Prom
     .select()
     .from(schema.serviceOrders)
     .where(and(eq(schema.serviceOrders.tenantId, tenantId), isNull(schema.serviceOrders.deletedAt)))
+}
+
+// Task 2 (docs/superpowers/sdd/task-2-brief.md): customer-scoped,
+// changeSeq-paginated read for the /api/ext/v1 read API, mirroring
+// scanServiceItemsForCustomer's shape. customerIds comes from
+// resolveCustomerIdsByCodes (lib/domain/stores/customers.ts) — an empty
+// list means the caller's token resolved to no known customer, so this
+// returns [] rather than falling through to an unscoped scan. `status` is
+// an optional exact-match filter on the internal OrderStatus column.
+export interface ScanServiceOrdersForCustomerInput {
+  tenantId: string
+  customerIds: string[]
+  after?: bigint
+  limit: number
+  status?: OrderStatus
+}
+
+export async function scanServiceOrdersForCustomer(
+  db: Db,
+  { tenantId, customerIds, after, limit, status }: ScanServiceOrdersForCustomerInput,
+): Promise<ServiceOrderRow[]> {
+  if (customerIds.length === 0) return []
+
+  const conditions = [
+    eq(schema.serviceOrders.tenantId, tenantId),
+    inArray(schema.serviceOrders.customerId, customerIds),
+    isNull(schema.serviceOrders.deletedAt),
+  ]
+  if (after !== undefined) {
+    conditions.push(gt(schema.serviceOrders.changeSeq, after))
+  }
+  if (status !== undefined) {
+    conditions.push(eq(schema.serviceOrders.status, status))
+  }
+
+  return db
+    .select()
+    .from(schema.serviceOrders)
+    .where(and(...conditions))
+    .orderBy(schema.serviceOrders.changeSeq)
+    .limit(limit)
 }
 
 export async function setOrderStatus(
