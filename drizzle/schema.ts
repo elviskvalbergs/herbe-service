@@ -1,5 +1,7 @@
 // drizzle/schema.ts
 import { bigint, index, jsonb, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+import type { InferSelectModel } from 'drizzle-orm'
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -83,6 +85,65 @@ export const items = pgTable(
   },
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_items_change_seq').on(t.changeSeq)],
 )
+
+// ItemModel registry (docs/11-service-items-and-parts.md "Model registry is
+// the join point"): make/model/category, referenced by serviceItems.modelId
+// and (later) PartCompatibility rows.
+export const itemModels = pgTable(
+  'item_models',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    make: text('make'),
+    model: text('model'),
+    category: text('category'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('item_models_tenant_idx').on(t.tenantId)],
+)
+
+// The service-item location tree (docs/11-service-items-and-parts.md "Part 1
+// — The service item hierarchy"): system/unit/lot nodes, self-referencing
+// parentId, materialized path. changeSeq is bumped by the same
+// bump_change_seq() trigger as customers/items (0009_service_items.sql).
+export const serviceItems = pgTable(
+  'service_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    erpRef: text('erp_ref'),
+    parentId: uuid('parent_id').references((): AnyPgColumn => serviceItems.id),
+    kind: text('kind').notNull(), // NodeKind: 'system' | 'unit' | 'lot'
+    name: text('name').notNull(),
+    serialNr: text('serial_nr'),
+    secondarySerial: text('secondary_serial'),
+    quantity: integer('quantity'),
+    modelId: uuid('model_id').references(() => itemModels.id),
+    path: text('path').notNull().default(''),
+    positionCode: text('position_code'),
+    labelId: text('label_id').notNull(),
+    attributes: jsonb('attributes').notNull().default({}),
+    siteName: text('site_name'),
+    warrantyUntil: timestamp('warranty_until', { withTimezone: true }),
+    warrantyLaborCovered: boolean('warranty_labor_covered').notNull().default(false),
+    warrantyPartsCovered: boolean('warranty_parts_covered').notNull().default(false),
+    changeSeq: bigint('change_seq', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique().on(t.erpCompanyId, t.erpRef),
+    unique().on(t.labelId),
+    index('service_items_tenant_idx').on(t.tenantId),
+    index('service_items_parent_idx').on(t.parentId),
+    index('service_items_label_idx').on(t.labelId),
+    index('service_items_change_seq_idx').on(t.changeSeq),
+  ],
+)
+
+export type ItemModelRow = InferSelectModel<typeof itemModels>
+export type ServiceItemRow = InferSelectModel<typeof serviceItems>
 
 // Task 14: the app's own identity table (docs/05-users-auth.md). External
 // logins (Entra ID, Baltic eID, ...) attach as separate identity links in a
