@@ -1,0 +1,5 @@
+.env
+.env.*
+.superpowers
+*.log
+coverage
