@@ -1,4 +1,6 @@
 {
+  "framework": "nextjs",
+  "buildCommand": "pnpm build",
   "crons": [
     { "path": "/api/cron/sync-tick", "schedule": "* * * * *" }
   ]
