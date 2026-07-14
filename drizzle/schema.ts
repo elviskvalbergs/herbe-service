@@ -464,3 +464,18 @@ export const extTokens = pgTable(
 )
 
 export type ExtTokenRow = InferSelectModel<typeof extTokens>
+
+// Task 6 of the /api/ext/v1 read-API slice (docs/superpowers/sdd/task-6-brief.md):
+// fixed-window rate-limit counter keyed on (tokenId, endpoint, windowStart).
+// No FK to extTokens — standalone, so a deleted token just orphans its
+// counter rows instead of requiring cascade bookkeeping.
+export const extRateLimit = pgTable(
+  'ext_rate_limit',
+  {
+    tokenId: uuid('token_id').notNull(),
+    endpoint: text('endpoint').notNull(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tokenId, t.endpoint, t.windowStart] })],
+)
