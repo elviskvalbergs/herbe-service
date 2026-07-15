@@ -58,7 +58,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 401 (plain text) when the bearer header is missing', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(makeRequest({ erpCompanyId, name: 'Token' }))
@@ -68,7 +68,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 401 when the bearer is wrong', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(makeRequest({ erpCompanyId, name: 'Token' }, { authorization: 'Bearer wrong-secret' }))
@@ -76,8 +76,8 @@ describe('POST /api/admin/ext-tokens', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 401 when ADMIN_EXT_TOKENS_SECRET is unset', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', '')
+  it('returns 401 when ADMIN_MIGRATIONS_SECRET is unset', async () => {
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', '')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(makeRequest({ erpCompanyId, name: 'Token' }, { authorization: 'Bearer anything' }))
@@ -86,7 +86,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 400 for a malformed JSON body', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(
@@ -101,7 +101,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 400 when erpCompanyId is missing or not a uuid', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(makeRequest({ erpCompanyId: 'not-a-uuid', name: 'Token' }, { authorization: 'Bearer the-secret' }))
@@ -110,7 +110,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 400 when name is missing', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(makeRequest({ erpCompanyId }, { authorization: 'Bearer the-secret' }))
@@ -119,7 +119,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 400 when customerCodes is not an array of strings', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(
@@ -130,7 +130,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('returns 404 for a well-formed but nonexistent erpCompanyId', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(
@@ -144,7 +144,7 @@ describe('POST /api/admin/ext-tokens', () => {
   })
 
   it('mints a token, derives tenantId from the erpCompany, and returns the raw token once', async () => {
-    vi.stubEnv('ADMIN_EXT_TOKENS_SECRET', 'the-secret')
+    vi.stubEnv('ADMIN_MIGRATIONS_SECRET', 'the-secret')
     const { POST } = await import('@/app/api/admin/ext-tokens/route')
 
     const res = await POST(

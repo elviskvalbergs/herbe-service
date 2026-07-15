@@ -6,10 +6,9 @@
 // app/api/admin/run-migrations/route.ts's guard/error shape exactly — same
 // constant-time `bearerMatches` check, same plain-text 401.
 //
-// Uses its own secret (ADMIN_EXT_TOKENS_SECRET) rather than reusing
-// ADMIN_MIGRATIONS_SECRET: least privilege — this route mints live
-// customer-facing bearer credentials, a different blast radius than
-// triggering a schema migration, so the two shouldn't share a secret.
+// Reuses ADMIN_MIGRATIONS_SECRET — the repo's single admin-operations
+// bearer secret, same as run-migrations — so no separate secret is
+// provisioned.
 //
 // The admin secret is not tenant-scoped, so tenantId is never accepted as
 // input — it's derived from the given erpCompanyId row. That way an admin
@@ -24,7 +23,7 @@ import { mintExtToken } from '@/lib/api/ext/tokens-store'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function authorized(request: Request): boolean {
-  const secret = process.env.ADMIN_EXT_TOKENS_SECRET
+  const secret = process.env.ADMIN_MIGRATIONS_SECRET
   if (!secret) return false
   const header = request.headers.get('authorization')
   return bearerMatches(header, secret)
