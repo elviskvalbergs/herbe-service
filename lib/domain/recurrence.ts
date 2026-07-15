@@ -10,31 +10,36 @@
 //
 // SVCVc cadence fields (verified via halocron list_registers("SVCVc")):
 //   DaysFromStart — days after the contract start to the FIRST occurrence
-//   DaysBetween   — days between consecutive occurrences
+//   DaysBetween   — minimum days between services (a spacer)
 //   NrOfTimes     — number of occurrences to schedule
 //   Weekends      — whether an occurrence may fall on a weekend
 //
-// ASSUMPTIONS (the ERP knowledge base has no indexed generation algorithm, so
-// these follow standard HansaWorld semantics — CONFIRM with the owner / a live
-// ERP probe before this drives real order creation):
+// SEMANTICS (owner-confirmed 2026-07-15):
 //   1. NrOfTimes <= 0  → open-ended: generate every occurrence inside the
 //      horizon window (no finite cap).
 //   2. Weekends = false → a nominal date landing on Sat/Sun is pushed FORWARD
 //      to the following Monday. Weekends = true → dates are kept as-is.
-//   3. DaysBetween is a fixed DAY COUNT, so a "yearly" cadence set as 365 days
-//      DRIFTS by a day across each leap year (SVCVc has no calendar-aware
-//      "same date each year" option). If calendar-anniversary cadence is
-//      wanted, that is an app-overlay extra, not an SVCVc field.
+//   3. DaysBetween is the MINIMUM number of days between services, as a plain
+//      day count. Leap-year drift of a day-count cadence is acceptable (owner:
+//      "leap year doesn't matter"); calendar-anchored schedules ("same date
+//      each year", "first Monday") are an app-overlay concern, not an SVCVc
+//      field — see docs/23-recurring-service-overlay.md.
 //   4. DaysBetween <= 0 → a single occurrence (guards against an infinite
 //      same-day schedule).
 // Intervals are measured on the NOMINAL schedule; each occurrence is
 // weekend-adjusted independently, so a shift never drifts later occurrences.
+//
+// This module is the SVCVc *primitive* — the ERP-cadence → date projector.
+// Production recurring-service scheduling adopts the suite repeat engine
+// (herbe.calendar lib/repeatRules.ts, copy-first), which adds after-completion
+// mode, calendar anchoring and correct month/year clamping on top of this
+// baseline (docs/23 §3-4). SVCVc seeds an app-owned ServiceScheduleRule.
 
 /** An ERP service level's recurring cadence (SVCVc). */
 export interface ServiceCadence {
   /** SVCVc.DaysFromStart — offset from the contract start to the first occurrence. */
   daysFromStart: number;
-  /** SVCVc.DaysBetween — interval in days between occurrences (<= 0 → single occurrence). */
+  /** SVCVc.DaysBetween — minimum days between services, a spacer (<= 0 → single occurrence). */
   daysBetween: number;
   /** SVCVc.NrOfTimes — occurrence count (<= 0 → open-ended, horizon-bounded). */
   nrOfTimes: number;

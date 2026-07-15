@@ -29,6 +29,7 @@ For service companies: service orders in, planned work on a board, technicians e
 | [19-demo-probe-results.md](docs/19-demo-probe-results.md) | Live demo-ERP probe results: register/API behavior confirmed, back-link mechanism decided, write-test findings |
 | [20-spec-review-round-5.md](docs/20-spec-review-round-5.md) | Review round 5 (cross-dimension audit, owner decisions 2026-07-07, doc-sync fixes) |
 | [22-phase-2-implementation-plan.md](docs/22-phase-2-implementation-plan.md) | Phase 2 (contracts, recurring service, customer experience) work-package / sequencing plan |
+| [23-recurring-service-overlay.md](docs/23-recurring-service-overlay.md) | Recurring/contract service: SVCVc gaps + the app overlay (reuses the suite repeat engine) |
 | [docs/research/](docs/research/) | Raw competitor + suite research notes (appendix) |
 
 ## Product principles

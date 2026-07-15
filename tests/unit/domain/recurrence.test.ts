@@ -34,9 +34,10 @@ describe('projectDueDates — cadence projection', () => {
     ]);
   });
 
-  it('DaysBetween is a fixed day count, so a 365-day cadence drifts across a leap year', () => {
+  it('DaysBetween is a plain day count, so a 365-day cadence drifts across a leap year (accepted)', () => {
     // Occurrence 4 is 3×365 days after 2026-01-01; 2028 is a leap year → lands on 2028-12-31, not 2029-01-01.
-    // (SVCVc offers only day counts, no calendar-aware "same date each year" — flagged in the module header.)
+    // SVCVc offers only day counts; this drift is acceptable (owner 2026-07-15). Calendar-anchored
+    // ("same date each year") scheduling is the app overlay's job (docs/23), not this primitive's.
     expect(
       projectDueDates(yearly({ nrOfTimes: 0 }), { start: '2026-01-01', from: '2026-01-01', to: '2029-06-01' }),
     ).toEqual(['2026-01-01', '2027-01-01', '2028-01-01', '2028-12-31']);
