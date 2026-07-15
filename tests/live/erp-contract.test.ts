@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { drizzle } from 'drizzle-orm/postgres-js'
+import { eq } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
@@ -21,6 +22,7 @@ import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { encryptErpCredentials } from '@/lib/erp/credentials'
 import { buildAdapterForConnection } from '@/lib/erp/connection'
+import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -51,6 +53,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
   let sql: ReturnType<typeof postgres>
   let db: ReturnType<typeof drizzle<typeof schema>>
   let adapter: ErpAdapter
+  let companyId: string
 
   beforeAll(async () => {
     // Encryption round-trips locally regardless of which key is used, so a
@@ -85,6 +88,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
       })
       .returning()
 
+    companyId = company.id
     // Exercises the full production path: stored row -> decrypt -> adapter.
     adapter = await buildAdapterForConnection(db, company.id)
   }, 60_000)
@@ -122,5 +126,29 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
       supportsInvoiceStatusReadback: false,
       supportsActivityMirror: false,
     })
+  })
+
+  it('pulls SVOSerVc as a full no-delta list and ingests it end-to-end into service_items', async () => {
+    const rows = await adapter.pullFullList('SVOSerVc')
+    expect(Array.isArray(rows)).toBe(true)
+    expect(rows.length).toBeGreaterThanOrEqual(1)
+    // Never log row contents (SVOSerVc carries client names + serials) — only
+    // the count, which is safe shape/size information.
+    console.log(`live SVOSerVc pullFullList: ${rows.length} rows`)
+
+    await ingestServiceItems(db, companyId, { upserts: rows, deletedRefs: [], cursor: '0' })
+
+    const ingested = await db.select().from(schema.serviceItems).where(eq(schema.serviceItems.erpCompanyId, companyId))
+    console.log(`live SVOSerVc ingest: ${ingested.length} service_items rows`)
+    expect(ingested.length).toBeGreaterThanOrEqual(1)
+
+    const units = ingested.filter((row) => row.kind === 'unit' && !!row.serialNr)
+    expect(units.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('listLiveRefs(SVOSerVc) returns exactly one ref per row pulled by pullFullList', async () => {
+    const rows = await adapter.pullFullList('SVOSerVc')
+    const refs = await adapter.listLiveRefs('SVOSerVc')
+    expect(refs.length).toBe(rows.length)
   })
 })

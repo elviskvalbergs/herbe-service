@@ -18,6 +18,12 @@ export interface ErpAdapter {
   pullChanges(register: string, sinceCursor: string): Promise<ChangeSet<Record<string, unknown>>>
   pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }>
   probeIncrementalSupport(register: string): Promise<boolean>
+  // No-delta full pull: GET the register with no updates_after, for registers
+  // that don't support incremental sync (e.g. SVOSerVc).
+  pullFullList(register: string): Promise<Record<string, unknown>[]>
+  // Live identity refs for the register, for key-sweep reconciliation
+  // (RefListingAdapter in lib/sync/ingest/key-sweep.ts).
+  listLiveRefs(register: string): Promise<string[]>
 }
 
 export type ErpAdapterFactory = (config: unknown) => ErpAdapter

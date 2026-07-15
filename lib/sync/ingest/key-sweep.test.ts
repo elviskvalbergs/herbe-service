@@ -156,4 +156,20 @@ describe('keySweepReconcile (integration, real harness DB)', () => {
     expect(rows.find((r) => r.erpRef === 'ITEM01')?.deletedAt).toBeNull()
     expect(rows.find((r) => r.erpRef === 'ITEM02')?.deletedAt).toBeInstanceOf(Date)
   })
+
+  it('sweeps the service_items table by serial when register is SVOSerVc', async () => {
+    await db.insert(schema.serviceItems).values([
+      { tenantId, erpCompanyId, erpRef: 'SN-STAYS', kind: 'unit', name: 'Stays', labelId: `erp:${erpCompanyId}:SN-STAYS`, changeSeq: BigInt(0) },
+      { tenantId, erpCompanyId, erpRef: 'SN-GOES', kind: 'unit', name: 'Goes', labelId: `erp:${erpCompanyId}:SN-GOES`, changeSeq: BigInt(0) },
+    ])
+
+    const adapter: RefListingAdapter = { listLiveRefs: vi.fn().mockResolvedValue(['SN-STAYS']) }
+    const result = await keySweepReconcile(db, adapter, erpCompanyId, 'SVOSerVc')
+
+    expect(result.tombstoned).toEqual(['SN-GOES'])
+
+    const rows = await db.select().from(schema.serviceItems).where(eq(schema.serviceItems.erpCompanyId, erpCompanyId))
+    expect(rows.find((r) => r.erpRef === 'SN-STAYS')?.deletedAt).toBeNull()
+    expect(rows.find((r) => r.erpRef === 'SN-GOES')?.deletedAt).toBeInstanceOf(Date)
+  })
 })

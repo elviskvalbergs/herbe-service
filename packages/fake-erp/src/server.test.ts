@@ -26,6 +26,16 @@ describe('fake ERP server', () => {
     expect(res.status).toBe(404)
   })
 
+  it('serves SVOSerVc rows on a full fetch but 404s updates_after (no-delta register)', async () => {
+    const full = await fetch(`${server.url}/api/1/SVOSerVc`)
+    const body = await full.json()
+    expect(full.status).toBe(200)
+    expect(body.data.SVOSerVc.length).toBe(3)
+
+    const delta = await fetch(`${server.url}/api/1/SVOSerVc?updates_after=0`)
+    expect(delta.status).toBe(404)
+  })
+
   it('returns 204 empty body for deletes_after on any register (confirmed unreliable)', async () => {
     const res = await fetch(`${server.url}/api/1/CUVc?deletes_after=0`)
     expect(res.status).toBe(204)

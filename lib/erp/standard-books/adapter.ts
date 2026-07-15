@@ -2,8 +2,33 @@ import { registerAdapter, ErpPermanentError, type ChangeSet, type ErpAdapter } f
 import { standardBooksConfigSchema } from './config-schema'
 import { fetchRegisterJson } from './fetch-json'
 
+// Standard Books nests rows under `data.<Register>` (verified live) — NOT a
+// flat `data` array. Mirrors the portal's extractRegisterRows, with a
+// `data.rows` fallback. Shared by pullChanges and pullFullList.
+function extractRows(body: Record<string, unknown> | null, register: string): Record<string, unknown>[] {
+  const container = (body?.data ?? {}) as Record<string, unknown>
+  const direct = container[register]
+  if (Array.isArray(direct)) return direct as Record<string, unknown>[]
+  const rowsFallback = (container as { rows?: unknown }).rows
+  return Array.isArray(rowsFallback) ? (rowsFallback as Record<string, unknown>[]) : []
+}
+
+// Per-register identity field, used by listLiveRefs to derive the erpRef that
+// key-sweep reconciles stored rows against. Extend cautiously — a register
+// mapped here must key its domain table on this exact field.
+const REF_FIELD: Record<string, string> = {
+  CUVc: 'Code',
+  INVc: 'Code',
+  SVOSerVc: 'SerialNr',
+}
+
 export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
   const config = standardBooksConfigSchema.parse(rawConfig)
+
+  async function pullFullList(register: string): Promise<Record<string, unknown>[]> {
+    const { body } = await fetchRegisterJson(config, register, {})
+    return extractRows(body, register)
+  }
 
   return {
     capabilities: () => ({
@@ -23,19 +48,28 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
         )
       }
 
-      // Standard Books nests rows under `data.<Register>` (verified live) —
-      // NOT a flat `data` array. Mirror the portal's extractRegisterRows,
-      // with a `data.rows` fallback.
-      const container = (body?.data ?? {}) as Record<string, unknown>
-      const direct = container[register]
-      const rows: Record<string, unknown>[] = Array.isArray(direct)
-        ? (direct as Record<string, unknown>[])
-        : Array.isArray((container as { rows?: unknown }).rows)
-          ? ((container as { rows: Record<string, unknown>[] }).rows)
-          : []
+      const rows = extractRows(body, register)
       const cursor = String(body?.['@sequence'] ?? sinceCursor)
 
       return { upserts: rows, deletedRefs: [], cursor }
+    },
+
+    pullFullList,
+
+    async listLiveRefs(register: string): Promise<string[]> {
+      const refField = REF_FIELD[register]
+      if (!refField) {
+        throw new Error(`listLiveRefs: no REF_FIELD mapping for register ${register}`)
+      }
+      const rows = await pullFullList(register)
+      const refs: string[] = []
+      for (const row of rows) {
+        const value = row[refField]
+        if (value === null || value === undefined) continue
+        const ref = String(value)
+        if (ref) refs.push(ref)
+      }
+      return refs
     },
 
     async pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }> {

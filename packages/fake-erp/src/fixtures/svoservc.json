@@ -1,0 +1,50 @@
+[
+  {
+    "SerialNr": "FAKE-SN-0001",
+    "ItemCode": "DEMO-AHU-500",
+    "ItemName": "Demo Air Handler 500",
+    "CustCode": "CUST001",
+    "CustName": "Test Client OÜ",
+    "WarrantyUntil": "2028-01-31",
+    "LaborCovered": "1",
+    "PartCovered": "1",
+    "SecondarySerialNr": "FAKE-SEC-0001",
+    "MotherNr": "",
+    "WarrantyStatus": "InWarranty",
+    "CoverageStartDate": "2026-01-31",
+    "CoverageEndDate": "2028-01-31",
+    "ContractType": "Gold",
+    "Contract": "DEMO-C-01",
+    "SoldDate": "2026-01-31",
+    "ServerSequence": 2001
+  },
+  {
+    "SerialNr": "FAKE-SN-0002",
+    "ItemCode": "DEMO-FAN-200",
+    "ItemName": "Demo Fan Module 200",
+    "CustCode": "CUST001",
+    "CustName": "Test Client OÜ",
+    "WarrantyUntil": "2027-06-30",
+    "LaborCovered": "0",
+    "PartCovered": "1",
+    "AlternateDeviceID": "FAKE-ALT-0002",
+    "MotherNr": "FAKE-SN-0001",
+    "WarrantyStatus": "InWarranty",
+    "ContractType": "Gold",
+    "Contract": "DEMO-C-01",
+    "ServerSequence": 2002
+  },
+  {
+    "SerialNr": "FAKE-SN-0003",
+    "ItemCode": "DEMO-CTRL-010",
+    "ItemName": "Demo Controller 010",
+    "CustCode": "CUST002",
+    "CustName": "Another Client SIA",
+    "WarrantyUntil": "",
+    "LaborCovered": 0,
+    "PartCovered": 0,
+    "MotherNr": "",
+    "WarrantyStatus": "OutOfWarranty",
+    "ServerSequence": 2003
+  }
+]
