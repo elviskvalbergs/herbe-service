@@ -1,0 +1,98 @@
+[
+  {
+    "SerNr": 5001,
+    "CustCode": "CUST001",
+    "CustComplaint1": "Unit not cooling",
+    "CustComplaint2": "Noise on startup",
+    "CustComplaint3": "",
+    "CustComplaint4": "",
+    "CustContact": "Demo Contact One",
+    "OurContact": "Demo Tech One",
+    "RegDate": "2026-06-01",
+    "TransDate": "2026-06-01",
+    "PlanShipDate": "2026-06-10",
+    "DoneMark": "1",
+    "rows": [
+      {
+        "ArtCode": "DEMO-AHU-500",
+        "SerialNr": "FAKE-SN-0001",
+        "Spec": "Replace filter",
+        "StandProblem": "NOCOOL",
+        "ItemType": "Warranty"
+      }
+    ],
+    "ServerSequence": 3001
+  },
+  {
+    "SerNr": 5002,
+    "CustCode": "CUST002",
+    "CustComplaint1": "Annual maintenance",
+    "CustComplaint2": "",
+    "CustComplaint3": "",
+    "CustComplaint4": "",
+    "CustContact": "",
+    "OurContact": "Demo Tech One",
+    "RegDate": "2026-06-05",
+    "TransDate": "2026-06-05",
+    "PlanShipDate": "2026-06-20",
+    "DoneMark": "0",
+    "rows": [
+      {
+        "ArtCode": "DEMO-CTRL-010",
+        "SerialNr": "FAKE-SN-0003",
+        "Spec": "Inspect controller",
+        "StandProblem": "PM",
+        "ItemType": "Jāizr.rēķ."
+      }
+    ],
+    "ServerSequence": 3002
+  },
+  {
+    "SerNr": 5003,
+    "CustCode": "CUST001",
+    "CustComplaint1": "Leaking valve",
+    "CustComplaint2": "",
+    "CustComplaint3": "",
+    "CustComplaint4": "",
+    "CustContact": "Demo Contact One",
+    "OurContact": "",
+    "RegDate": "2026-06-08",
+    "TransDate": "2026-06-08",
+    "PlanShipDate": "",
+    "DoneMark": "0",
+    "rows": [
+      {
+        "ArtCode": "DEMO-FAN-200",
+        "SerialNr": "FAKE-SN-0002",
+        "Spec": "Tighten valve",
+        "StandProblem": "LEAK",
+        "ItemType": "1"
+      }
+    ],
+    "ServerSequence": 3003
+  },
+  {
+    "SerNr": 5004,
+    "CustCode": "CUST002",
+    "CustComplaint1": "Pump seal replacement",
+    "CustComplaint2": "",
+    "CustComplaint3": "",
+    "CustComplaint4": "",
+    "CustContact": "",
+    "OurContact": "Demo Tech Two",
+    "RegDate": "2026-06-12",
+    "TransDate": "2026-06-12",
+    "PlanShipDate": "2026-06-25",
+    "DoneMark": "0",
+    "rows": [
+      {
+        "ArtCode": "DEMO-PUMP-300",
+        "SerialNr": "",
+        "Spec": "Replace seal",
+        "StandProblem": "LEAK2",
+        "ItemType": "Invoiceable"
+      }
+    ],
+    "ServerSequence": 3004
+  }
+]

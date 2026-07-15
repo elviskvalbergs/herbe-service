@@ -72,3 +72,36 @@ export async function getErpRefs(
       ),
     )
 }
+
+// Reverse lookup: some entities (service_order — see 0010_service_orders.sql)
+// have no scalar erpRef column to onConflict against, so re-ingesting an ERP
+// row needs to find the existing entity by its recorded ref instead. Scoped
+// by erpCompanyId (not tenantId) to mirror how putErpRef itself is keyed and
+// how ingest code already has the company id in hand; backed by the
+// erp_refs_record_ref_idx index (0016_erp_refs_record_ref_idx.sql).
+export interface FindEntityIdByErpRefInput {
+  erpCompanyId: string
+  entityType: string
+  purpose: ErpRefPurpose
+  recordRef: string
+}
+
+export async function findEntityIdByErpRef(
+  db: Db,
+  { erpCompanyId, entityType, purpose, recordRef }: FindEntityIdByErpRefInput,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ entityId: schema.erpRefs.entityId })
+    .from(schema.erpRefs)
+    .where(
+      and(
+        eq(schema.erpRefs.erpCompanyId, erpCompanyId),
+        eq(schema.erpRefs.entityType, entityType),
+        eq(schema.erpRefs.purpose, purpose),
+        eq(schema.erpRefs.recordRef, recordRef),
+      ),
+    )
+    .limit(1)
+
+  return row?.entityId ?? null
+}

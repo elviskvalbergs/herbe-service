@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { drizzle } from 'drizzle-orm/postgres-js'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
@@ -22,7 +22,9 @@ import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { encryptErpCredentials } from '@/lib/erp/credentials'
 import { buildAdapterForConnection } from '@/lib/erp/connection'
+import { ingestCustomers } from '@/lib/sync/ingest/customers'
 import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
+import { ingestServiceOrders } from '@/lib/sync/ingest/service-orders'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -150,5 +152,60 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     const rows = await adapter.pullFullList('SVOSerVc')
     const refs = await adapter.listLiveRefs('SVOSerVc')
     expect(refs.length).toBe(rows.length)
+  })
+
+  // Runs last: ingests customers, then service items, then orders — the
+  // dependency order service_orders needs (customerId is NOT NULL; line
+  // serviceItemId resolution looks up service_items by serial).
+  it('pulls SVOVc and ingests orders + line rows end-to-end into service_orders/service_order_rows', async () => {
+    const custs = await adapter.pullFullList('CUVc')
+    await ingestCustomers(db, companyId, { upserts: custs, deletedRefs: [], cursor: '0' })
+
+    const units = await adapter.pullFullList('SVOSerVc')
+    await ingestServiceItems(db, companyId, { upserts: units, deletedRefs: [], cursor: '0' })
+
+    const orders = await adapter.pullFullList('SVOVc')
+    const result = await ingestServiceOrders(db, companyId, { upserts: orders, deletedRefs: [], cursor: '0' })
+
+    // Never log row contents — counts only, same discipline as the other tests here.
+    console.log(`live SVOVc: pulled ${orders.length}, ingested ${result.ingested}, skipped ${result.skipped}`)
+
+    // If this is 0 with a high skipped count, CustCodes didn't resolve to
+    // ingested customers — a real finding, not something to relax the
+    // assertion around.
+    expect(result.ingested).toBeGreaterThanOrEqual(1)
+
+    const ingestedOrders = await db
+      .select()
+      .from(schema.serviceOrders)
+      .where(eq(schema.serviceOrders.erpCompanyId, companyId))
+    const orderIds = ingestedOrders.map((o) => o.id)
+
+    const lineRows = orderIds.length
+      ? await db.select().from(schema.serviceOrderRows).where(inArray(schema.serviceOrderRows.orderId, orderIds))
+      : []
+
+    console.log(
+      `live SVOVc ingest: ${ingestedOrders.length} service_orders rows, ${lineRows.length} service_order_rows rows`,
+    )
+    expect(lineRows.length).toBeGreaterThanOrEqual(1)
+
+    const refs = await db
+      .select()
+      .from(schema.erpRefs)
+      .where(
+        and(
+          eq(schema.erpRefs.erpCompanyId, companyId),
+          eq(schema.erpRefs.entityType, 'service_order'),
+          eq(schema.erpRefs.purpose, 'primary'),
+          eq(schema.erpRefs.register, 'SVOVc'),
+        ),
+      )
+    expect(refs.length).toBeGreaterThanOrEqual(1)
+
+    // Soft: depends on serial overlap between SVOSerVc and SVOVc lines in
+    // the demo data, so logged only, never asserted on.
+    const resolvedItemCount = lineRows.filter((r) => !!r.serviceItemId).length
+    console.log(`live SVOVc lines: ${resolvedItemCount}/${lineRows.length} rows resolved a serviceItemId`)
   })
 })
