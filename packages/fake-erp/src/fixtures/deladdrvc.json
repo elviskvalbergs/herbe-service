@@ -1,0 +1,4 @@
+[
+  { "DelCode": "DEL001", "Name": "Riga Service Site", "UUID": "a1b2c3d4-6001", "ServerSequence": 6001 },
+  { "DelCode": "DEL002", "Name": "Daugavpils Warehouse", "UUID": "a1b2c3d4-6002", "ServerSequence": 6002 }
+]
