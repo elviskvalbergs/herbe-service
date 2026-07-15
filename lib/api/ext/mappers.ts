@@ -96,6 +96,29 @@ export function mapHistoryEvent(row: HistoryEventRow, orderNumber?: string): His
   };
 }
 
+// Shared by both orders/route.ts (list) and orders/[id]/route.ts (detail):
+// turns an order's service_order_rows + a batch-fetched itemById map into
+// the DTO's serviceItems[]. Drops rows whose serviceItemId is null or whose
+// item wasn't found (e.g. soft-deleted, filtered out of itemById upstream),
+// and dedupes by item id (first occurrence wins) — a group-service order can
+// have multiple rows referencing the same service item, and the DTO must
+// not list that item twice.
+export function resolveOrderServiceItems(
+  rows: { serviceItemId: string | null }[],
+  itemById: Map<string, { id: string; name: string; serialNr: string | null }>,
+): { id: string; name: string; serial?: string }[] {
+  const seen = new Set<string>();
+  const result: { id: string; name: string; serial?: string }[] = [];
+  for (const row of rows) {
+    if (!row.serviceItemId) continue;
+    const item = itemById.get(row.serviceItemId);
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push({ id: item.id, name: item.name, ...(item.serialNr ? { serial: item.serialNr } : {}) });
+  }
+  return result;
+}
+
 export function mapOrderSummary(
   order: ServiceOrderRow,
   opts: { customerStatus: CustomerOrderStatus; serviceItems: { id: string; name: string; serial?: string }[] },

@@ -29,6 +29,7 @@ import {
   mapOrderSummary,
   mapOrderDetail,
   mapWorksheetSummary,
+  resolveOrderServiceItems,
 } from '@/lib/api/ext/mappers'
 
 function serviceItem(overrides: Partial<ServiceItemRow> = {}): ServiceItemRow {
@@ -255,6 +256,43 @@ describe('mapHistoryEvent', () => {
   it('passes orderNumber through when provided by the caller', () => {
     const mapped = mapHistoryEvent(historyEvent(), 'SO-1001')
     expect(mapped.orderNumber).toBe('SO-1001')
+  })
+})
+
+describe('resolveOrderServiceItems', () => {
+  const itemById = new Map([
+    ['si-1', { id: 'si-1', name: 'Compressor A', serialNr: 'SN-123' }],
+    ['si-2', { id: 'si-2', name: 'Compressor B', serialNr: null }],
+  ])
+
+  it('maps rows through itemById, field-for-field, omitting serial when null', () => {
+    const result = resolveOrderServiceItems(
+      [{ serviceItemId: 'si-1' }, { serviceItemId: 'si-2' }],
+      itemById,
+    )
+    expect(result).toEqual([
+      { id: 'si-1', name: 'Compressor A', serial: 'SN-123' },
+      { id: 'si-2', name: 'Compressor B' },
+    ])
+  })
+
+  it('drops rows with a null serviceItemId or an item not found in itemById', () => {
+    const result = resolveOrderServiceItems(
+      [{ serviceItemId: null }, { serviceItemId: 'si-missing' }, { serviceItemId: 'si-1' }],
+      itemById,
+    )
+    expect(result).toEqual([{ id: 'si-1', name: 'Compressor A', serial: 'SN-123' }])
+  })
+
+  it('dedupes by item id, first occurrence wins, when multiple rows reference the same service item', () => {
+    const result = resolveOrderServiceItems(
+      [{ serviceItemId: 'si-1' }, { serviceItemId: 'si-1' }, { serviceItemId: 'si-2' }],
+      itemById,
+    )
+    expect(result).toEqual([
+      { id: 'si-1', name: 'Compressor A', serial: 'SN-123' },
+      { id: 'si-2', name: 'Compressor B' },
+    ])
   })
 })
 

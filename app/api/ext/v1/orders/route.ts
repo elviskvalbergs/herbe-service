@@ -40,8 +40,8 @@ import { scanServiceOrdersForCustomer, getServiceOrderRowsForOrders } from '@/li
 import { getServiceItemsByIds } from '@/lib/domain/stores/service-items'
 import { toCustomerOrderStatus } from '@/lib/domain/customer-order-status'
 import type { OrderStatus } from '@/lib/domain/types'
-import { mapOrderSummary } from '@/lib/api/ext/mappers'
-import { orderListSchema } from '@/lib/api/ext/dto'
+import { mapOrderSummary, resolveOrderServiceItems } from '@/lib/api/ext/mappers'
+import { orderListSchema, customerOrderStatus } from '@/lib/api/ext/dto'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 200
@@ -69,6 +69,9 @@ export async function GET(req: Request) {
     ? customerCodesParam.split(',').map((c) => c.trim()).filter(Boolean)
     : undefined
   const statusParam = url.searchParams.get('status')
+  if (statusParam !== null && !customerOrderStatus.safeParse(statusParam).success) {
+    return Response.json({ error: 'invalid_status', code: 'invalid_status' }, { status: 400 })
+  }
   const afterParam = url.searchParams.get('after')
   if (afterParam !== null && !/^\d+$/.test(afterParam)) {
     return Response.json({ error: 'invalid_cursor', code: 'invalid_cursor' }, { status: 400 })
@@ -99,10 +102,7 @@ export async function GET(req: Request) {
 
   let data = orders.map((order) => {
     const customerStatus = toCustomerOrderStatus(order.status as OrderStatus)
-    const serviceItems = (rowsByOrder.get(order.id) ?? [])
-      .map((row) => (row.serviceItemId ? itemById.get(row.serviceItemId) : undefined))
-      .filter((item): item is NonNullable<typeof item> => item != null)
-      .map((item) => ({ id: item.id, name: item.name, ...(item.serialNr ? { serial: item.serialNr } : {}) }))
+    const serviceItems = resolveOrderServiceItems(rowsByOrder.get(order.id) ?? [], itemById)
     return mapOrderSummary(order, { customerStatus, serviceItems })
   })
 

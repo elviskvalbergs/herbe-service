@@ -21,7 +21,7 @@ import { getWorksheetsForOrder, getWorksheetRowsForWorksheets } from '@/lib/doma
 import { getServiceItemsByIds } from '@/lib/domain/stores/service-items'
 import { toCustomerOrderStatus } from '@/lib/domain/customer-order-status'
 import type { OrderStatus } from '@/lib/domain/types'
-import { mapOrderDetail, mapWorksheetSummary } from '@/lib/api/ext/mappers'
+import { mapOrderDetail, mapWorksheetSummary, resolveOrderServiceItems } from '@/lib/api/ext/mappers'
 import { orderDetailSchema } from '@/lib/api/ext/dto'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -71,10 +71,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const itemIds = [...new Set(orderRows.map((r) => r.serviceItemId).filter((v): v is string => v != null))]
   const items = await getServiceItemsByIds(db, verified.tenantId, itemIds)
   const itemById = new Map(items.map((i) => [i.id, i]))
-  const serviceItems = orderRows
-    .map((row) => (row.serviceItemId ? itemById.get(row.serviceItemId) : undefined))
-    .filter((item): item is NonNullable<typeof item> => item != null)
-    .map((item) => ({ id: item.id, name: item.name, ...(item.serialNr ? { serial: item.serialNr } : {}) }))
+  const serviceItems = resolveOrderServiceItems(orderRows, itemById)
 
   const customerStatus = toCustomerOrderStatus(order.status as OrderStatus)
   return Response.json(

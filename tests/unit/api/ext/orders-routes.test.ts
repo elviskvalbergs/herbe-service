@@ -83,12 +83,15 @@ beforeAll(async () => {
 
   // Link the confirmed order to the unit item, so the serviceItems[] batch
   // join has a real row to resolve (seedDomain never writes
-  // service_order_rows itself).
-  await db.insert(schema.serviceOrderRows).values({
-    orderId: confirmedOrderId,
-    serviceItemId: unitItemId,
-    chargeType: 'invoiceable',
-  })
+  // service_order_rows itself). A SECOND row is inserted referencing the
+  // SAME service item (a group-service order can have multiple rows against
+  // one item) — resolveOrderServiceItems (lib/api/ext/mappers.ts) must dedupe
+  // these to one entry; the assertions below (`serviceItems` toEqual a
+  // single-element array) fail if it doesn't.
+  await db.insert(schema.serviceOrderRows).values([
+    { orderId: confirmedOrderId, serviceItemId: unitItemId, chargeType: 'invoiceable' },
+    { orderId: confirmedOrderId, serviceItemId: unitItemId, chargeType: 'invoiceable' },
+  ])
 
   // Second customer + order, same tenant/company as the token, but NOT in
   // its customerCodes scope.
@@ -138,6 +141,8 @@ describe('GET /api/ext/v1/orders', () => {
     const confirmed = body.data.find((o: { id: string }) => o.id === confirmedOrderId)
     expect(confirmed).toBeDefined()
     expect(confirmed.status).toBe('work_done')
+    // Two service_order_rows reference unitItemId (beforeAll above) -> ONE
+    // entry, not two: proves resolveOrderServiceItems dedupes by item id.
     expect(confirmed.serviceItems).toEqual([{ id: unitItemId, name: unitItemName }])
   })
 
@@ -180,6 +185,17 @@ describe('GET /api/ext/v1/orders', () => {
     expect(res.status).toBe(400)
     expect(body.code).toBe('invalid_cursor')
   })
+
+  it('returns 400 for an invalid ?status= value instead of silently filtering to []', async () => {
+    const { GET } = await import('@/app/api/ext/v1/orders/route')
+    const res = await GET(
+      new Request(`http://x/api/ext/v1/orders?customerCodes=${SEED_CUSTOMER_CODE}&status=bogus`, { headers: authed(rawToken) }),
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('invalid_status')
+  })
 })
 
 describe('GET /api/ext/v1/orders/[id]', () => {
@@ -206,6 +222,7 @@ describe('GET /api/ext/v1/orders/[id]', () => {
     expect(body.worksheets[0].signedOnSite).toBe(true)
     expect(body.timeline).toEqual([])
     expect(body.invoices).toEqual([])
+    // Same two-rows-one-item dedupe as the list route's test above.
     expect(body.serviceItems).toEqual([{ id: unitItemId, name: unitItemName }])
   })
 
