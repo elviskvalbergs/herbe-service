@@ -1,10 +1,12 @@
 # herbe.service — Recurring & Contract Service: the app overlay (design)
 
-Status: v1.3 (2026-07-15). Feeds Phase 2 P2-WS1/WS2 (`22-phase-2-implementation-plan.md`). Owner steer 2026-07-15: *"SVCVc lacked a lot in real life — think what would be beneficial as an overlay; the main challenge is bulk reporting and managing the schedule when there are many service items."* This doc is that thinking: what the ERP service level actually is, where it falls short, the clashes to avoid, and the app-owned overlay — whose headline value is **managing and reporting the schedule at scale**, built on the suite's existing repeat engine.
+Status: v1.4 (2026-07-15). Feeds Phase 2 P2-WS1/WS2 (`22-phase-2-implementation-plan.md`). Owner steer 2026-07-15: *"SVCVc lacked a lot in real life — think what would be beneficial as an overlay; the main challenge is bulk reporting and managing the schedule when there are many service items."* This doc is that thinking: what the ERP service level actually is, where it falls short, the clashes to avoid, and the app-owned overlay — whose headline value is **managing and reporting the schedule at scale**, built on the suite's existing repeat engine.
 
 v1.2 folded in the source manuals (HansaManuals Service Agreements + Excellent help): the correct **first-occurrence formula** (Start + Initial Days + Days Between), the ERP's cross-cycle looping, the `Last Activity` duplicate guard, and the separate **periodic-invoicing** dimension of Contracts.
 
 v1.3 reframes §4 around the owner's actual pain (2026-07-15): **visibility is coupled to premature materialization** — today you must create activities months ahead to see the plan, then delete-and-recreate on every change. The fix is **projection-first** scheduling (see the plan from rules, materialize only the near term) with reassignment delegated to an embedded herbe.calendar view. Default mode is **`regularly`** (calendar-driven); grouping consolidates at ServiceOrder creation with bookings kept 1:1 per item.
+
+v1.4 adds the two lead settings (`materializeAheadDays` + `orderLeadDays`) and the **occurrence-override + blackout** model that makes a projection editable without materialising it (owner 2026-07-15); confirms **copy-first** repeats; and turns the calendar needs into committed asks — **CAL-9** (embeddable team view) and **CAL-10** (per-person national-holiday data) in `13`. All design questions are now closed (§9).
 
 ---
 
@@ -68,6 +70,16 @@ The overlay's answer, ordered by the pain it removes:
 
 **Design implication — two layers of state:** a *projected* layer (rules → dates, cheap to recompute, changes freely) and a thin *materialized* layer (near-term committed orders/bookings). The matrix, rollups, and bulk edits read the **projection**; only the near horizon is materialized. That split is precisely what removes the "generate 6 months ahead, then delete-and-recreate on every change" pain.
 
+**Two lead settings (owner 2026-07-15; tenant default + per-rule override):**
+- `materializeAheadDays` — how far ahead the projection is **committed into bookings/planned work** so it appears on the calendar for planning and reassignment (the longer horizon).
+- `orderLeadDays` — how many days before due the actual **ServiceOrder** is created from that booking (usually shorter — enough to plan parts/route).
+The **projection view** itself shows further still (e.g. 12–24 months, a display setting) while committing nothing. So: *see* far, *materialise bookings* medium, *cut the order* near.
+
+**Editing a projection without materialising it (owner 2026-07-15).** Because far-out work is a projection, you don't move/cancel an activity — there isn't one yet. You edit it by writing a lightweight record the projection applies:
+- **Occurrence override** — skip / reschedule / reassign / cancel **one instance** (keyed by rule + occurrence date). "No work can be done on the 14th, push it" = one override, not a delete-and-recreate.
+- **Blackout date/period** — "nobody works that day" (site closed, public holiday); every occurrence landing on it shifts or skips per the weekend/blackout rule. Holidays piggyback on **herbe.calendar's per-person national-holiday import** (CAL-10, `13`) rather than a bespoke list.
+So the projection = **rules + overrides + blackouts**; the engine folds them in. This override layer is **net-new** — the reused repeat engine clones-then-edits (it has `paused` and end conditions but no per-instance override), so a deliberate service-overlay addition keeps the schedule freely editable while still projection-first. When the near horizon materialises, overrides/blackouts are already baked in, so committed bookings never contradict the plan.
+
 ## 5. Reuse the suite repeat engine, don't reinvent
 
 herbe.calendar already solved the per-rule scheduling. `lib/repeatRules.ts` is a **source-agnostic, fully-tested, pure** repeat engine (verified 2026-07-15):
@@ -85,9 +97,10 @@ A **Service Agreement** (from `COVc`+`SVCVc`, or authored in-app) = a **group of
 
 | Overlay field | Purpose |
 |---|---|
-| `leadDays` | generate the order this many days **before** due (plan + parts) |
+| `materializeAheadDays` | how far ahead to **commit** the projection into bookings/planned work (§4) |
+| `orderLeadDays` | how many days before due to **cut the ServiceOrder** from the booking (§4) |
 | `groupBy` | `per_item` \| `per_site` \| `per_contract` — consolidation applied **at ServiceOrder creation**, not at booking level (owner 2026-07-15): each occurrence stays a 1:1 activity/booking per service item (the ERP has dedicated item fields on the activity), and co-due items are merged into one order at generation |
-| `blackoutCalendarId` | holiday / customer-closed windows to skip (beyond weekends) |
+| `blackoutCalendarId` | per-customer closed windows; **national holidays reuse herbe.calendar's per-person import** (CAL-10, `13`), not a bespoke list |
 | `coverageRef` + rotation | which *n of m* units this cycle covers, rotating each time (`11`) |
 | `catchUp` | `generate_late` \| `skip` \| `collapse` for a missed cycle |
 | `assignmentHint` | preferred technician / crew / skill (from SVCVc `Persons`) |
@@ -96,16 +109,19 @@ A **Service Agreement** (from `COVc`+`SVCVc`, or authored in-app) = a **group of
 
 Mode, interval/unit, weekdays, anchoring, end conditions, pause, tz come from the reused engine.
 
+**`OccurrenceOverride`** — a sibling model (net-new, §4): `{ ruleId, occurrenceDate, action: skip | reschedule | reassign | cancel, newDate?, newAssignee? }`. The projection = **rules + overrides + blackouts**, so a single-instance edit is one small row, not a materialize-and-delete. Repeats are **copy-first** from `herbe.calendar/lib/repeatRules.ts` (owner 2026-07-15 — no shared package); the override layer is added on top, since the calendar engine has none.
+
 **SVCVc → rules mapping** (inbound seed; re-sync; never pushed back): each matrix row → one rule (`Act.Type`→booking/task type, `Persons`→assignment, `Days Between`→interval or, when `0`, co-anchored to the prior row); header `DaysFromStart`→the first-interval offset (first occurrence = Start + Initial Days + Days Between; negative allowed); `Weekends`→`WeekendMode`. `No.of Times` seeds an `after_n` cap *per cycle* — with the sequence-loop-until-End-Date modeled at the group level, not the rule. Seeded rules are then **editable beyond SVCVc** (anchoring, lead time, grouping, blackout, after-completion) — the overlay, kept app-side (consistent with `COVc` read-only).
 
 `lib/domain/recurrence.ts` (P2-WS2, 19 tests green) is the **SVCVc primitive** — one matrix row's date projection with the correct first-occurrence formula, 3-way weekends, and negative Initial Days — used to seed/cross-check; the production scheduler delegates to the copied engine.
 
 ## 7. Generation with the overlay (P2-WS2)
 
-1. Cron materializer (copy calendar's) scans active, non-paused rules; materializes due dates within `[now, horizon + leadDays]`, honoring end conditions, the blackout calendar, and the weekend mode; **records them as queryable state** (feeds §4).
-2. Each due occurrence → a **1:1 activity/booking per service item** (the ERP activity has dedicated item fields), written to `ActVc` via the P1 writers. **Consolidation into a ServiceOrder happens here, at generation** (per `groupBy`) — co-due items at a site merge into one order while their bookings stay per-item. **App-side generation, ERP sees it identically** (owner 2026-07-14); echo-suppressed; cancel → void-in-place. (Customers run herbe.service, not the ERP agreement maintenance, so there's no dual-generation — §2.)
-3. `after_completion`: on completion, bump the anchor → next service scheduled from the completion date.
-4. Idempotent via `materialized_count` / pending-date diffing — re-runs never duplicate a cycle.
+1. **Project** (always, cheap): rules + overrides + blackouts → due dates, out to the display horizon. Nothing committed. This is what the §4 surface reads.
+2. **Materialise bookings** within `[now, now + materializeAheadDays]`: turn those projected dates into `ActVc`/bookings (1:1 per service item — the ERP activity has dedicated item fields) so they're visible/plannable/reassignable on the calendar. End conditions, weekend mode, blackouts and overrides are already folded into the projection.
+3. **Cut the ServiceOrder** at `orderLeadDays` before due: consolidate co-due items per `groupBy` into one order (bookings stay per-item). **App-side generation, ERP sees it identically** (owner 2026-07-14); echo-suppressed; cancel → void-in-place. (Customers run herbe.service, not the ERP agreement maintenance — no dual-generation, §2.)
+4. `after_completion`: on completion, bump the anchor → next service projected from the completion date.
+5. Idempotent via `materialized_count` / pending-date diffing — re-runs never duplicate a cycle; an occurrence override edits the projection, so a re-materialise reflects it rather than fighting it.
 
 ## 8. What to prioritize (opinionated)
 
@@ -117,10 +133,19 @@ Mode, interval/unit, weekdays, anchoring, end conditions, pause, tz come from th
 
 Defer to Phase 3: usage/meter-based triggers; assignment auto-suggest (rides Phase-3 scheduling-assist, `06`).
 
-## 9. Open questions for the owner
+## 9. Status of the open questions
 
-1. **Holiday/blackout source** — per-country public-holiday set, per-customer blackout windows, or both?
-2. **`repeatRules` reuse mechanism** — copy-first, or extract a shared `@herbe/repeat` package (default copy-first per `22` §6)?
-3. **Embedded calendar view** — is a herbe.calendar team view embedded in the service app the intended reassignment surface (§4.4)? If so it needs a calendar-team conversation (candidate CAL-* ask, `13`).
+All the design questions are now answered (owner 2026-07-15). Nothing blocks building P2-WS1/WS2 against this doc.
 
-*Resolved 2026-07-15:* generation is app-side, customers don't run the ERP agreement maintenance (§2); default mode is **`regularly`** (calendar-driven — most service is quarterly/yearly/monthly); grouping consolidates **at ServiceOrder creation**, bookings stay 1:1 per item (§6); herbe.service never invoices (§2).
+*Resolved 2026-07-15:*
+- Generation is **app-side**; customers run herbe.service, not the ERP agreement maintenance (§2).
+- Default mode **`regularly`** (calendar-driven — most service is quarterly/yearly/monthly); `after_completion` secondary (§8).
+- Grouping consolidates **at ServiceOrder creation**; bookings stay 1:1 per item (§6).
+- herbe.service **never invoices** — periodic billing is ERP/portal (§2).
+- **Two lead settings** — `materializeAheadDays` + `orderLeadDays` — plus a display horizon (§4).
+- **Editing the projection** — occurrence overrides + blackouts, a net-new overlay layer (§4, §6).
+- **Holidays** piggyback on herbe.calendar's per-person national-holiday import → **CAL-10** (`13`).
+- **Repeats** are **copy-first** (no shared package) (§6).
+- **Embedded team calendar** for reassignment → committed ask **CAL-9** (`13`); calendar team chooses the embedding mechanism.
+
+Remaining is execution: the two calendar asks (CAL-9/10) need the calendar team, and the override/two-layer state model is a net-new build item on top of the copied engine.
