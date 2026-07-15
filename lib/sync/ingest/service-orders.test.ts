@@ -14,6 +14,7 @@ import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { setOrderStatus } from '@/lib/domain/stores/service-orders'
+import { insertServiceItem } from '@/lib/domain/stores/service-items'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
 import { ingestServiceOrders } from './service-orders'
 
@@ -55,6 +56,10 @@ async function orderByNumber(orderNumber: string) {
   return found
 }
 
+async function rowsForOrder(orderId: string) {
+  return db.select().from(schema.serviceOrderRows).where(eq(schema.serviceOrderRows.orderId, orderId))
+}
+
 beforeAll(async () => {
   testDb = await createTestDatabase()
   await runMigrations(testDb.url)
@@ -74,6 +79,17 @@ beforeAll(async () => {
   await db
     .insert(schema.customers)
     .values({ tenantId, erpCompanyId, erpRef: 'CUST001', name: 'Test Client OÜ', changeSeq: BigInt(0) })
+
+  // Seeded so a line's SerialNr can resolve to a real service_items row
+  // (Task B — serviceItemId resolution).
+  await insertServiceItem(db, {
+    tenantId,
+    erpCompanyId,
+    kind: 'unit',
+    name: 'Demo Air Handler',
+    labelId: 'test-label-fake-sn-line-1',
+    serialNr: 'FAKE-SN-LINE-1',
+  })
 }, 60_000)
 
 afterAll(async () => {
@@ -220,5 +236,143 @@ describe('ingestServiceOrders', () => {
     await expect(
       ingestServiceOrders(db, '00000000-0000-0000-0000-000000000000', changeSetOf([row({ SerNr: 5006 })])),
     ).rejects.toThrow(/unknown erpCompanyId/)
+  })
+})
+
+describe('ingestServiceOrders — line rows (Task B: service_order_rows + ItemType charge-type parsing)', () => {
+  it('inserts one service_order_rows row per line, resolving serviceItemId by SerialNr and chargeType from ItemType', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([
+        row({
+          SerNr: 7001,
+          rows: [
+            {
+              ArtCode: 'ART-1',
+              SerialNr: 'FAKE-SN-LINE-1',
+              ItemType: 'Warranty',
+              StandProblem: 'NOCOOL',
+              Spec: 'Replace filter',
+              ContractNr: 'CN-1',
+              DiagnosticCode: 'D1',
+            },
+          ],
+        }),
+      ]),
+    )
+
+    const order = await orderByNumber('7001')
+    const rows = await rowsForOrder(order.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].chargeType).toBe('warranty')
+    expect(rows[0].serviceItemId).toBeTruthy() // resolved to the seeded FAKE-SN-LINE-1 service_item
+    expect(rows[0].symptom).toBe('NOCOOL') // StandProblem takes priority over Spec
+    expect(rows[0].workType).toBe('ART-1')
+    expect(rows[0].coverage).toEqual({ contractNr: 'CN-1', diagnosticCode: 'D1' }) // no reviewNeeded — mapped label
+  })
+
+  it('falls back to Spec for symptom when StandProblem is blank', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([
+        row({
+          SerNr: 7002,
+          rows: [{ ArtCode: 'ART-2', SerialNr: '', ItemType: 'Invoiceable', StandProblem: '', Spec: 'Inspect unit' }],
+        }),
+      ]),
+    )
+
+    const order = await orderByNumber('7002')
+    const rows = await rowsForOrder(order.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].symptom).toBe('Inspect unit')
+  })
+
+  it('a blank SerialNr resolves serviceItemId to null, tolerated (never throws)', async () => {
+    const order = await orderByNumber('7002')
+    const rows = await rowsForOrder(order.id)
+    expect(rows[0].serviceItemId).toBeNull()
+  })
+
+  it('a non-empty SerialNr that matches no service_items row (dangling) also resolves to null', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([
+        row({ SerNr: 7007, rows: [{ ArtCode: 'ART-7', SerialNr: 'FAKE-SN-DOES-NOT-EXIST', ItemType: 'Warranty' }] }),
+      ]),
+    )
+    const order = await orderByNumber('7007')
+    const rows = await rowsForOrder(order.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].serviceItemId).toBeNull()
+  })
+
+  it('an unmapped/"-" ItemType flags coverage.chargeTypeReviewNeeded and defaults to invoiceable', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([row({ SerNr: 7003, rows: [{ ArtCode: 'ART-3', SerialNr: '', ItemType: '-' }] })]),
+    )
+
+    const order = await orderByNumber('7003')
+    const rows = await rowsForOrder(order.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].chargeType).toBe('invoiceable')
+    expect(rows[0].coverage).toEqual({ chargeTypeReviewNeeded: true })
+  })
+
+  it('re-ingesting the same order replaces its rows — no accumulation or duplication', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([
+        row({
+          SerNr: 7004,
+          rows: [
+            { ArtCode: 'ART-4A', SerialNr: '', ItemType: 'Warranty' },
+            { ArtCode: 'ART-4B', SerialNr: '', ItemType: 'Goodwill' },
+          ],
+        }),
+      ]),
+    )
+    const order = await orderByNumber('7004')
+    expect(await rowsForOrder(order.id)).toHaveLength(2)
+
+    // Re-ingest with a single, different line — the old two must be gone,
+    // not accumulated alongside the new one.
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([row({ SerNr: 7004, rows: [{ ArtCode: 'ART-4C', SerialNr: '', ItemType: 'Contract' }] })]),
+    )
+    const rowsAfter = await rowsForOrder(order.id)
+    expect(rowsAfter).toHaveLength(1)
+    expect(rowsAfter[0].workType).toBe('ART-4C')
+    expect(rowsAfter[0].chargeType).toBe('contract')
+  })
+
+  it('blank StandProblem/Spec/ArtCode on a line resolve to no symptom and no workType', async () => {
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([
+        row({ SerNr: 7006, rows: [{ ArtCode: '', SerialNr: '', ItemType: 'Warranty', StandProblem: '', Spec: '' }] }),
+      ]),
+    )
+
+    const order = await orderByNumber('7006')
+    const rows = await rowsForOrder(order.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].symptom).toBeNull()
+    expect(rows[0].workType).toBeNull()
+  })
+
+  it('a header with no rows[] leaves the order with zero line rows', async () => {
+    await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 7005 })]))
+    const order = await orderByNumber('7005')
+    expect(await rowsForOrder(order.id)).toHaveLength(0)
   })
 })

@@ -18,6 +18,12 @@
 // otherwise the existing status is left untouched — this ingest has none of
 // the manualState/booking/worksheet facets needed to re-derive from, and
 // must never downgrade a locally-advanced status.
+//
+// Line rows (Task B): each header's rows[] reconciles into service_order_rows
+// via reconcileServiceOrderRows (delete-and-reinsert — see that function's
+// comment for why). Line ItemType is parsed by parseItemTypeLabel
+// (lib/domain/charge-type.ts), which reads the English label string this
+// tenant returns rather than the raw string-set-31 integer.
 import { and, eq } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type { ChangeSet } from '@herbe/erp-core'
@@ -25,6 +31,7 @@ import * as schema from '@/drizzle/schema'
 import { deriveOrderStatus } from '@/lib/domain/order-status'
 import { insertServiceOrder, setOrderStatus } from '@/lib/domain/stores/service-orders'
 import { findEntityIdByErpRef, putErpRef } from '@/lib/domain/stores/erp-refs'
+import { parseItemTypeLabel } from '@/lib/domain/charge-type'
 
 // Standard Books returns dates as ISO-ish 'YYYY-MM-DD' strings; empty/blank
 // means "no date". Best-effort: null on anything unparseable, don't over-parse.
@@ -44,6 +51,59 @@ function isBooksTrue(value: unknown): boolean {
 export interface IngestServiceOrdersResult {
   ingested: number
   skipped: number
+}
+
+// service_order_rows has no per-row ERP key (no SerNr-equivalent identity on
+// a line), so a re-ingest can't onConflict against anything — delete every
+// existing line for the order and reinsert from the header's current
+// rows[], making the reconciliation idempotent by replacement rather than
+// by matching. A header with no rows[] (or an empty one) leaves the order
+// with zero line rows after the delete.
+async function reconcileServiceOrderRows(
+  db: PostgresJsDatabase<typeof schema>,
+  erpCompanyId: string,
+  orderId: string,
+  lines: unknown,
+): Promise<void> {
+  await db.delete(schema.serviceOrderRows).where(eq(schema.serviceOrderRows.orderId, orderId))
+
+  const rows = Array.isArray(lines) ? (lines as Record<string, unknown>[]) : []
+
+  for (const line of rows) {
+    // Best-effort FK, tolerated dangling (same idiom as SVOSerVc's MotherNr
+    // resolution in service-items.ts): a line whose SerialNr doesn't resolve
+    // to a known service_items row gets a null serviceItemId, never a throw.
+    const serialNr = line.SerialNr ? String(line.SerialNr) : ''
+    let serviceItemId: string | null = null
+    if (serialNr) {
+      const [item] = await db
+        .select({ id: schema.serviceItems.id })
+        .from(schema.serviceItems)
+        .where(and(eq(schema.serviceItems.erpCompanyId, erpCompanyId), eq(schema.serviceItems.serialNr, serialNr)))
+      serviceItemId = item?.id ?? null
+    }
+
+    const { charge, needsReview } = parseItemTypeLabel(line.ItemType)
+    const symptom = String(line.StandProblem || line.Spec || '') || null
+    const workType = String(line.ArtCode || '') || null
+
+    // Only include keys that have a value — chargeTypeReviewNeeded is the
+    // one exception, recorded whenever the charge-type parse needed review
+    // (never written when false, since "no flag" already reads as "fine").
+    const coverage: Record<string, unknown> = {}
+    if (line.ContractNr) coverage.contractNr = line.ContractNr
+    if (line.DiagnosticCode) coverage.diagnosticCode = line.DiagnosticCode
+    if (needsReview) coverage.chargeTypeReviewNeeded = true
+
+    await db.insert(schema.serviceOrderRows).values({
+      orderId,
+      serviceItemId,
+      coverage,
+      symptom,
+      workType,
+      chargeType: charge,
+    })
+  }
 }
 
 export async function ingestServiceOrders(
@@ -97,6 +157,8 @@ export async function ingestServiceOrders(
       recordRef: erpRef,
     })
 
+    let orderId: string
+
     if (existingId) {
       await db
         .update(schema.serviceOrders)
@@ -109,6 +171,7 @@ export async function ingestServiceOrders(
         await setOrderStatus(db, company.tenantId, existingId, 'Closed')
       }
       // else: leave status unchanged — never downgrade a locally-advanced status.
+      orderId = existingId
     } else {
       const order = await insertServiceOrder(db, {
         tenantId: company.tenantId,
@@ -139,7 +202,11 @@ export async function ingestServiceOrders(
         recordRef: erpRef,
         erpCompanyId,
       })
+
+      orderId = order.id
     }
+
+    await reconcileServiceOrderRows(db, erpCompanyId, orderId, row.rows)
 
     ingested++
   }
