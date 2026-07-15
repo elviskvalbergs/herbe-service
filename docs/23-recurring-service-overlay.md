@@ -1,6 +1,8 @@
 # herbe.service — Recurring & Contract Service: the app overlay (design)
 
-Status: v1.1 (2026-07-15). Feeds Phase 2 P2-WS1/WS2 (`22-phase-2-implementation-plan.md`). Owner steer 2026-07-15: *"SVCVc lacked a lot in real life — think what would be beneficial as an overlay; the main challenge is bulk reporting and managing the schedule when there are many service items."* This doc is that thinking: what the ERP service level actually is, where it falls short, the clashes to avoid, and the app-owned overlay — whose headline value is **managing and reporting the schedule at scale**, built on the suite's existing repeat engine.
+Status: v1.2 (2026-07-15). Feeds Phase 2 P2-WS1/WS2 (`22-phase-2-implementation-plan.md`). Owner steer 2026-07-15: *"SVCVc lacked a lot in real life — think what would be beneficial as an overlay; the main challenge is bulk reporting and managing the schedule when there are many service items."* This doc is that thinking: what the ERP service level actually is, where it falls short, the clashes to avoid, and the app-owned overlay — whose headline value is **managing and reporting the schedule at scale**, built on the suite's existing repeat engine.
+
+v1.2 folds in the source manuals (HansaManuals Service Agreements + Excellent help): the correct **first-occurrence formula** (Start + Initial Days + Days Between), the ERP's cross-cycle looping, the `Last Activity` duplicate guard, and the separate **periodic-invoicing** dimension of Contracts. Duplicate-generation is no longer a concern — owner 2026-07-15: customers use herbe.service *instead of* the ERP's agreement maintenance, not both.
 
 ---
 
@@ -10,7 +12,7 @@ SVCVc is the **Service Agreements** register in the Contracts module — a *mult
 
 **Header**
 - `Code` / `Comment` — template id + name.
-- `DaysFromStart` ("Initial Days") — offset from the Contract row's start date to the **first** activity of a cycle; **may be negative** (e.g. `-30` schedules a month before the interval start).
+- `DaysFromStart` ("Initial Days") — an **extra offset on the first interval**, applied only to the first activity of a cycle; **may be negative**. First activity = **Start + Initial Days + Days Between** (e.g. `7 + 60` = 67 days after start; `-30 + 60` = 30 days after).
 - `Weekends` — **3-way**: *Ignore* (allow), *Before* (move to **Friday**), *After* (move to **Monday**). The next `Days Between` is counted from the **original** (weekend) date, not the shifted one.
 
 **Matrix rows (Flip A)** — the sequence:
@@ -20,15 +22,18 @@ SVCVc is the **Service Agreements** register in the Contracts module — a *mult
 - `Days Between` — interval for this row; **`0` = same date as the prior row** (a co-scheduled companion, e.g. a check that rides the last visit).
 - `Task Type` — routes to **Calendar** vs **Task Manager**; `Symbol` — iconography.
 
-Linked on a Contract row (Flip F) with a start date; running the **Service Agreement maintenance** generates the Activities into the Persons' Calendar/Task Manager. Example: row 1 = `60 days ×3, CV, FF`; row 2 = `0 days ×1, ET, IP` → three CV visits 60 days apart for FF, plus one ET for IP on the 3rd visit's date; the cycle repeats if the run window is long enough.
+Linked on a Contract row (Flip F) with a start date; running the **Service Agreement maintenance** generates the Activities into the Persons' Calendar/Task Manager. Example: row 1 = `60 days ×3, CV, FF`; row 2 = `0 days ×1, ET, IP` → three CV visits 60 days apart for FF, plus one ET for IP on the 3rd visit's date; **the whole row-sequence then loops** until the run window / Contract End Date runs out (so `No.of Times` is a *per-cycle* count, not a lifetime cap). The maintenance generates between `max(period start, row Start Date, Last Activity)` and `min(period end, End Date)`, and auto-updates a **`Last Activity`** field per contract row to prevent duplicates on re-run — the ERP parallel of our materialized-state idempotency (§7).
 
 For us `COVc`/`SVCVc` are **read-only inbound** (`22` §2) — a seed, never pushed back.
 
 ## 2. Clashes to avoid
 
-- **Duplicate generation (critical).** SVCVc's own maintenance *creates ERP Activities*. Our decision is that **herbe.service generates app-side and writes the `ActVc`** (owner 2026-07-14, `22` P2-WS2). If the ERP's Service Agreement maintenance is *also* run for a service-managed contract, **both** create activities → duplicates. Rule: generation ownership is **exclusive per contract** — for contracts herbe.service schedules, the ERP-side Service Agreement maintenance must not be run; the sync-health screen should flag any contract that has both an app schedule and ERP-side agreement generation.
+- **Generation ownership — resolved (owner 2026-07-15): customers use herbe.service *instead of* the ERP's Service Agreement maintenance, not both.** So there is no dual-generation to guard against: herbe.service owns recurring generation app-side and writes the `ActVc` (`22` P2-WS2), and the ERP-side agreement maintenance simply isn't run for these tenants. (Running both *would* double-create — but that's ruled out by the owner's decision, so no exclusive-ownership enforcement is needed.)
+- **Periodic invoicing is a *separate* recurring dimension — leave it to the ERP.** A Contract (`COVc`) drives two recurring things: recurring **service activities** (SVCVc — our overlay) *and* recurring **invoices** (period/term, factor, "Invoice, Days", "Create contract invoices"). The invoicing side is recurring *money*, which the ERP owns (product principle 3). herbe.service's engine schedules *service work* only — it never generates invoices. A generated visit carries a `chargeContext` (contract-covered vs billable), but the periodic invoice itself is created ERP-side.
 - **`Weekends` is 3-way**, not boolean — modeled as `WeekendMode = 'ignore' | 'before' | 'after'` (engine fixed, `lib/domain/recurrence.ts`).
+- **First occurrence is one full interval out** (`Start + Initial Days + Days Between`), not `Start + Initial Days` — a subtle off-by-one that would mis-time the very first service (engine fixed).
 - **`Days Between = 0` = co-scheduled companion**, not "no repeat". A lone primitive row treats `≤0` as a single occurrence; the *sequence* meaning (same date as prior row) is composed at the overlay level.
+- **`No.of Times` is a per-cycle count, not a lifetime cap** — the ERP loops the row-sequence until the End Date. The primitive treats it as a plain cap; the cross-row looping is overlay-level (§6).
 - **A Service Agreement is a multi-row sequence**, so it maps to **several** `ServiceScheduleRule`s grouped under one agreement — not one rule (§6).
 - **`Persons`/`Cc`/`Task Type`** — SVCVc assigns ERP Persons and routes Calendar vs Task Manager; map via identity links to our technician assignment and the booking (calendar) vs task (task-manager) split, don't drop them.
 
@@ -86,14 +91,14 @@ A **Service Agreement** (from `COVc`+`SVCVc`, or authored in-app) = a **group of
 
 Mode, interval/unit, weekdays, anchoring, end conditions, pause, tz come from the reused engine.
 
-**SVCVc → rules mapping** (inbound seed; re-sync; never pushed back): each matrix row → one rule (`Act.Type`→booking/task type, `Persons`→assignment, `No.of Times`→`after_n`, `Days Between`→interval or, when `0`, co-anchored to the prior row); header `DaysFromStart`→first-anchor offset (negative allowed); `Weekends`→`WeekendMode`. Seeded rules are then **editable beyond SVCVc** (anchoring, lead time, grouping, blackout, after-completion) — the overlay, kept app-side (consistent with `COVc` read-only).
+**SVCVc → rules mapping** (inbound seed; re-sync; never pushed back): each matrix row → one rule (`Act.Type`→booking/task type, `Persons`→assignment, `Days Between`→interval or, when `0`, co-anchored to the prior row); header `DaysFromStart`→the first-interval offset (first occurrence = Start + Initial Days + Days Between; negative allowed); `Weekends`→`WeekendMode`. `No.of Times` seeds an `after_n` cap *per cycle* — with the sequence-loop-until-End-Date modeled at the group level, not the rule. Seeded rules are then **editable beyond SVCVc** (anchoring, lead time, grouping, blackout, after-completion) — the overlay, kept app-side (consistent with `COVc` read-only).
 
-`lib/domain/recurrence.ts` (P2-WS2, 18 tests green) is the **SVCVc primitive** — one matrix row's date projection, 3-way weekends, negative Initial Days — used to seed/cross-check; the production scheduler delegates to the copied engine.
+`lib/domain/recurrence.ts` (P2-WS2, 19 tests green) is the **SVCVc primitive** — one matrix row's date projection with the correct first-occurrence formula, 3-way weekends, and negative Initial Days — used to seed/cross-check; the production scheduler delegates to the copied engine.
 
 ## 7. Generation with the overlay (P2-WS2)
 
 1. Cron materializer (copy calendar's) scans active, non-paused rules; materializes due dates within `[now, horizon + leadDays]`, honoring end conditions, the blackout calendar, and the weekend mode; **records them as queryable state** (feeds §4).
-2. Each due date → ServiceOrder + Booking (+ `ActVc`) via the P1 writers. **App-side generation, ERP sees it identically** (owner 2026-07-14); echo-suppressed; cancel → void-in-place. **The ERP-side agreement maintenance must be off for these contracts (§2).**
+2. Each due date → ServiceOrder + Booking (+ `ActVc`) via the P1 writers. **App-side generation, ERP sees it identically** (owner 2026-07-14); echo-suppressed; cancel → void-in-place. (Customers run herbe.service, not the ERP agreement maintenance, so there's no dual-generation — §2.)
 3. `after_completion`: on completion, bump the anchor → next service scheduled from the completion date.
 4. Idempotent via `materialized_count` / pending-date diffing — re-runs never duplicate a cycle.
 
@@ -109,8 +114,9 @@ Defer to Phase 3: usage/meter-based triggers; assignment auto-suggest (rides Pha
 
 ## 9. Open questions for the owner
 
-1. **Generation ownership toggle** — is it always app-side, or do some tenants keep ERP-side Service Agreement maintenance? (Drives the duplicate-generation guard, §2.)
-2. **Holiday/blackout source** — per-country public-holiday set, per-customer blackout windows, or both?
-3. **Grouping default** — per-site or per-item out of the box?
-4. **Default mode per contract type** — `after_completion` (condition-driven) vs `regularly` (compliance/calendar-driven inspections)?
-5. **`repeatRules` reuse mechanism** — copy-first, or extract a shared `@herbe/repeat` package (default copy-first per `22` §6)?
+1. **Holiday/blackout source** — per-country public-holiday set, per-customer blackout windows, or both?
+2. **Grouping default** — per-site or per-item out of the box?
+3. **Default mode per contract type** — `after_completion` (condition-driven) vs `regularly` (compliance/calendar-driven inspections)?
+4. **`repeatRules` reuse mechanism** — copy-first, or extract a shared `@herbe/repeat` package (default copy-first per `22` §6)?
+
+*(Resolved 2026-07-15: generation is app-side and customers don't run the ERP agreement maintenance — §2.)*

@@ -13,10 +13,15 @@
 // overlay composes as several of these — see docs/23-recurring-service-overlay.md.
 //
 // SVCVc fields (per the Service Agreements register, owner-confirmed 2026-07-15):
-//   DaysFromStart — "Initial Days": offset to the FIRST occurrence; may be NEGATIVE
+//   DaysFromStart — "Initial Days": extra offset on the FIRST interval; may be
+//                   NEGATIVE. First occurrence = Start + Initial Days + Days Between
+//                   (e.g. 7 + 60 = 67 days after Start; -30 + 60 = 30 days after).
 //   DaysBetween   — minimum days between services (a spacer); 0 in a later row means
 //                   "same date as the prior row" (sequence-level; a lone row uses #4)
-//   NrOfTimes     — number of occurrences for this row
+//   NrOfTimes     — occurrences of this row per cycle. NOTE: in a full agreement the
+//                   ERP loops the row-sequence until the Contract End Date, so
+//                   NrOfTimes is per-cycle; this primitive treats it as a plain cap
+//                   and leaves the cross-row cycle-repeat to the overlay (docs/23).
 //   Weekends      — 3-way: Ignore / Before (→ Friday) / After (→ Monday)
 //
 // SEMANTICS (owner-confirmed 2026-07-15):
@@ -109,14 +114,17 @@ export function projectDueDates(cadence: ServiceCadence, window: DueDateWindow):
   const toDay = toEpochDay(window.to);
   if (fromDay > toDay) return [];
 
-  const firstNominal = toEpochDay(window.start) + daysFromStart;
+  // ERP formula: occurrence[i] = Start + Initial Days + (i+1)·Days Between, so the
+  // FIRST activity is one full interval out (Start + Initial Days + Days Between),
+  // not at Start + Initial Days. (HansaManuals + owner example: 7 + 60 = 67 days.)
+  const base = toEpochDay(window.start) + daysFromStart;
   const singleOnly = daysBetween <= 0; // assumption 4
   const openEnded = nrOfTimes <= 0; // assumption 1
 
   const out: string[] = [];
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (!openEnded && i >= nrOfTimes) break;
-    const nominal = firstNominal + (singleOnly ? 0 : i * daysBetween);
+    const nominal = base + (singleOnly ? 0 : (i + 1) * daysBetween);
     // A 'before' shift can pull a date up to 2 days back, so a nominal date just
     // past the horizon end can still land inside it — widen the cutoff by 2.
     if (nominal > toDay + 2) break;
