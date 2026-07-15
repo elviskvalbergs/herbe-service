@@ -7,7 +7,7 @@
 // inserts nothing new — no read-before-write race, no duplicate rows.
 // getHistoryForItem is tenant-scoped, following the customers/items/
 // service-items store idiom (lib/domain/stores/service-items.ts).
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import type { HistoryEventRow } from '@/drizzle/schema'
@@ -42,4 +42,8 @@ export async function getHistoryForItem(db: Db, tenantId: string, serviceItemId:
     .select()
     .from(schema.historyEvents)
     .where(and(eq(schema.historyEvents.tenantId, tenantId), eq(schema.historyEvents.serviceItemId, serviceItemId)))
+    // `at` can be null (see mapHistoryEvent's `at ?? createdAt` fallback) —
+    // coalesce to createdAt here so ordering matches what the mapper renders,
+    // rather than pushing null-`at` rows to the end regardless of createdAt.
+    .orderBy(asc(sql`coalesce(${schema.historyEvents.at}, ${schema.historyEvents.createdAt})`))
 }

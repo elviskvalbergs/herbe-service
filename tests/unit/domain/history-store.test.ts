@@ -75,4 +75,37 @@ describe('history store', () => {
     // cross-tenant read returns nothing
     expect(await getHistoryForItem(db, otherTenantId, item.id)).toHaveLength(0)
   })
+
+  it('getHistoryForItem returns events ordered chronologically by at, not insertion order', async () => {
+    const item = await insertServiceItem(db, { tenantId, kind: 'unit', name: 'AHU-2', labelId: 'L-hist-2' })
+
+    // Inserted latest-first so a WHERE-only (no ORDER BY) query would return
+    // them out of chronological order.
+    await upsertHistoryEvents(db, tenantId, [
+      {
+        serviceItemId: item.id,
+        key: 'test:order:latest',
+        at: '2026-07-03T00:00:00Z',
+        kind: 'work_done',
+        summary: 'Latest',
+      },
+      {
+        serviceItemId: item.id,
+        key: 'test:order:earliest',
+        at: '2026-07-01T00:00:00Z',
+        kind: 'work_done',
+        summary: 'Earliest',
+      },
+      {
+        serviceItemId: item.id,
+        key: 'test:order:middle',
+        at: '2026-07-02T00:00:00Z',
+        kind: 'work_done',
+        summary: 'Middle',
+      },
+    ])
+
+    const rows = await getHistoryForItem(db, tenantId, item.id)
+    expect(rows.map((r) => r.summary)).toEqual(['Earliest', 'Middle', 'Latest'])
+  })
 })

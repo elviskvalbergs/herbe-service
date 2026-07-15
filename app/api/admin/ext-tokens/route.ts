@@ -70,6 +70,7 @@ export async function POST(request: Request) {
     })
     return Response.json({ id, token: raw })
   } catch (err) {
-    return Response.json({ status: 'error', message: String(err) }, { status: 500 })
+    console.error('POST /api/admin/ext-tokens failed', err)
+    return Response.json({ error: 'internal_error', code: 'internal_error' }, { status: 500 })
   }
 }
