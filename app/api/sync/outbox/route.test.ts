@@ -54,6 +54,8 @@ beforeAll(async () => {
       return { erpRef: 'SVO-000123' }
     },
     probeIncrementalSupport: async () => false,
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 
   // Confirmed real-ERP finding (docs/19-demo-probe-results.md §10): a 200
@@ -71,6 +73,8 @@ beforeAll(async () => {
     },
     pushCreate: async () => ({ erpRef: '' }),
     probeIncrementalSupport: async () => false,
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 
   // Task 16b IDOR regression: a tenant this adapter belongs to must never be
@@ -91,6 +95,8 @@ beforeAll(async () => {
       throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
     },
     probeIncrementalSupport: async () => false,
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 }, 60_000)
 

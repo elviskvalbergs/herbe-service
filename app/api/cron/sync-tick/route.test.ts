@@ -43,6 +43,8 @@ beforeAll(async () => {
     },
     pushCreate: async () => ({ erpRef: 'n/a' }),
     probeIncrementalSupport: async () => true,
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 
   // Succeeds end-to-end — proves the ok path persists a cursor and ingests.
@@ -61,6 +63,8 @@ beforeAll(async () => {
     }),
     pushCreate: async () => ({ erpRef: 'n/a' }),
     probeIncrementalSupport: async () => true,
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 
   // Probe reports "not supported" — proves the dispatcher records it and
@@ -83,6 +87,8 @@ beforeAll(async () => {
       unsupportedProbeCalls += 1
       return false
     },
+    pullFullList: async () => [],
+    listLiveRefs: async () => [],
   }))
 }, 60_000)
 

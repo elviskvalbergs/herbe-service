@@ -141,6 +141,99 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   })
 })
 
+describe('Standard Books adapter — pullFullList (no-delta full pull)', () => {
+  it('pulls CUVc with no updates_after param and returns all fixture rows', async () => {
+    const adapter = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const rows = await adapter.pullFullList('CUVc')
+
+    expect(rows.length).toBe(2)
+    expect(rows.map((r) => r.Code).sort()).toEqual(['CUST001', 'CUST002'])
+  })
+
+  it('pulls SVOSerVc (no-delta register) with no updates_after param and returns all fixture rows', async () => {
+    const adapter = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const rows = await adapter.pullFullList('SVOSerVc')
+
+    expect(rows.length).toBe(3)
+    expect(rows.map((r) => r.SerialNr).sort()).toEqual(['FAKE-SN-0001', 'FAKE-SN-0002', 'FAKE-SN-0003'])
+  })
+
+  describe('data.rows fallback (no <Register> key nested under data)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('falls back to data.rows when the register-named key is absent', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ data: { rows: [{ Code: 'FALLBACK001' }] }, '@sequence': 9 }), {
+            status: 200,
+          }),
+        ),
+      )
+
+      const adapter = createStandardBooksAdapter({
+        baseUrl: 'http://localhost:9999',
+        companyNumber: '1',
+        auth: { kind: 'basic', username: 'test', password: 'test' },
+      })
+
+      const rows = await adapter.pullFullList('CUVc')
+
+      expect(rows).toEqual([{ Code: 'FALLBACK001' }])
+    })
+  })
+})
+
+describe('Standard Books adapter — listLiveRefs (RefListingAdapter for key-sweep)', () => {
+  it('returns the SerialNr of every live SVOSerVc row', async () => {
+    const adapter = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const refs = await adapter.listLiveRefs('SVOSerVc')
+
+    expect(new Set(refs)).toEqual(new Set(['FAKE-SN-0001', 'FAKE-SN-0002', 'FAKE-SN-0003']))
+  })
+
+  it('returns the Code of every live CUVc row', async () => {
+    const adapter = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const refs = await adapter.listLiveRefs('CUVc')
+
+    expect(new Set(refs)).toEqual(new Set(['CUST001', 'CUST002']))
+  })
+
+  it('throws for a register with no REF_FIELD mapping', async () => {
+    const adapter = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    await expect(adapter.listLiveRefs('WSVc')).rejects.toThrow(
+      'listLiveRefs: no REF_FIELD mapping for register WSVc',
+    )
+  })
+})
+
 describe('Standard Books adapter — capability probe', () => {
   it('marks CUVc as supporting incremental sync after a successful updates_after probe', async () => {
     const adapter = createStandardBooksAdapter({
