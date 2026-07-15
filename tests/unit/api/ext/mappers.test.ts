@@ -257,6 +257,27 @@ describe('mapHistoryEvent', () => {
     const mapped = mapHistoryEvent(historyEvent(), 'SO-1001')
     expect(mapped.orderNumber).toBe('SO-1001')
   })
+
+  it('falls back kind to "erp_history" when the row has no kind', () => {
+    const mapped = mapHistoryEvent(historyEvent({ kind: null }))
+    expect(mapped.kind).toBe('erp_history')
+  })
+
+  it('falls back summary to "" when the row has no summary', () => {
+    const mapped = mapHistoryEvent(historyEvent({ summary: null }))
+    expect(mapped.summary).toBe('')
+  })
+
+  it('omits orderId/worksheetId when the row has neither', () => {
+    const mapped = mapHistoryEvent(historyEvent({ orderId: null, worksheetId: null }))
+    expect(mapped).not.toHaveProperty('orderId')
+    expect(mapped).not.toHaveProperty('worksheetId')
+  })
+
+  it('omits coverage when neither coverageCovered nor coverageOf is set', () => {
+    const mapped = mapHistoryEvent(historyEvent({ coverageCovered: null, coverageOf: null }))
+    expect(mapped).not.toHaveProperty('coverage')
+  })
 })
 
 describe('resolveOrderServiceItems', () => {
@@ -383,5 +404,11 @@ describe('mapWorksheetSummary', () => {
     expect(mapped).not.toHaveProperty('leadName')
     expect(mapped).not.toHaveProperty('crewSize')
     expect(mapped).not.toHaveProperty('timeTotalMinutes')
+  })
+
+  it('falls back a row\'s description to "" when null, and includes serial when present', () => {
+    const mapped = mapWorksheetSummary(worksheet(), [worksheetLine({ description: null, serial: 'SN-99' })])
+    expect(mapped.rows[0].description).toBe('')
+    expect(mapped.rows[0].serial).toBe('SN-99')
   })
 })

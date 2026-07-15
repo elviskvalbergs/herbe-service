@@ -89,4 +89,10 @@ describe('checkExtRateLimit', () => {
     const otherEndpoint = await checkExtRateLimit(db, tokenId, 'orders', NOW)
     expect(otherEndpoint.allowed).toBe(true)
   }, 30_000)
+
+  it('falls back to the default policy for an endpoint not in POLICY', async () => {
+    const tokenId = randomUUID()
+    const result = await checkExtRateLimit(db, tokenId, 'some-unlisted-endpoint', NOW)
+    expect(result.allowed).toBe(true)
+  })
 })
