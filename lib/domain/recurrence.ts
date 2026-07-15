@@ -8,17 +8,23 @@
 // module is that decision's pure, side-effect-free heart — no I/O, no clock;
 // every date is an input, so it is fully deterministic and TDD-able.
 //
-// SVCVc cadence fields (verified via halocron list_registers("SVCVc")):
-//   DaysFromStart — days after the contract start to the FIRST occurrence
-//   DaysBetween   — minimum days between services (a spacer)
-//   NrOfTimes     — number of occurrences to schedule
-//   Weekends      — whether an occurrence may fall on a weekend
+// This models ONE SVCVc matrix row. A full Service Agreement is a *sequence* of
+// rows (each its own Act.Type / Persons / No.of Times / Days Between), which the
+// overlay composes as several of these — see docs/23-recurring-service-overlay.md.
+//
+// SVCVc fields (per the Service Agreements register, owner-confirmed 2026-07-15):
+//   DaysFromStart — "Initial Days": offset to the FIRST occurrence; may be NEGATIVE
+//   DaysBetween   — minimum days between services (a spacer); 0 in a later row means
+//                   "same date as the prior row" (sequence-level; a lone row uses #4)
+//   NrOfTimes     — number of occurrences for this row
+//   Weekends      — 3-way: Ignore / Before (→ Friday) / After (→ Monday)
 //
 // SEMANTICS (owner-confirmed 2026-07-15):
 //   1. NrOfTimes <= 0  → open-ended: generate every occurrence inside the
 //      horizon window (no finite cap).
-//   2. Weekends = false → a nominal date landing on Sat/Sun is pushed FORWARD
-//      to the following Monday. Weekends = true → dates are kept as-is.
+//   2. Weekends is 3-way: 'ignore' keeps the date; 'before' moves Sat/Sun back
+//      to Friday; 'after' moves them forward to Monday. The next DaysBetween is
+//      counted from the ORIGINAL (nominal) date, not the shifted one.
 //   3. DaysBetween is the MINIMUM number of days between services, as a plain
 //      day count. Leap-year drift of a day-count cadence is acceptable (owner:
 //      "leap year doesn't matter"); calendar-anchored schedules ("same date
@@ -35,16 +41,19 @@
 // mode, calendar anchoring and correct month/year clamping on top of this
 // baseline (docs/23 §3-4). SVCVc seeds an app-owned ServiceScheduleRule.
 
-/** An ERP service level's recurring cadence (SVCVc). */
+/** SVCVc.Weekends — how a date landing on a weekend is moved (ERP: Ignore/Before/After). */
+export type WeekendMode = 'ignore' | 'before' | 'after';
+
+/** An ERP service level's recurring cadence — one SVCVc matrix row (see module header). */
 export interface ServiceCadence {
-  /** SVCVc.DaysFromStart — offset from the contract start to the first occurrence. */
+  /** SVCVc.DaysFromStart (Initial Days) — offset to the first occurrence; may be NEGATIVE. */
   daysFromStart: number;
   /** SVCVc.DaysBetween — minimum days between services, a spacer (<= 0 → single occurrence). */
   daysBetween: number;
   /** SVCVc.NrOfTimes — occurrence count (<= 0 → open-ended, horizon-bounded). */
   nrOfTimes: number;
-  /** SVCVc.Weekends — true keeps weekend dates; false shifts them to the next Monday. */
-  weekends: boolean;
+  /** SVCVc.Weekends — 'ignore' keeps the date; 'before' → Friday; 'after' → Monday. */
+  weekends: WeekendMode;
 }
 
 /** The contract start plus the horizon [from, to] to generate within (all `YYYY-MM-DD`). */
@@ -74,10 +83,16 @@ function fromEpochDay(day: number): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Push Sat/Sun forward to Monday when weekends are disallowed (assumption 2). */
-function adjustWeekend(day: number, weekends: boolean): number {
-  if (weekends) return day;
+/** Move a weekend date per the SVCVc Weekends mode (semantics 2). */
+function adjustWeekend(day: number, mode: WeekendMode): number {
+  if (mode === 'ignore') return day;
   const dow = new Date(day * MS_PER_DAY).getUTCDay(); // 0 = Sun … 6 = Sat
+  if (mode === 'before') {
+    if (dow === 6) return day - 1; // Sat → Fri
+    if (dow === 0) return day - 2; // Sun → Fri
+    return day;
+  }
+  // 'after'
   if (dow === 6) return day + 2; // Sat → Mon
   if (dow === 0) return day + 1; // Sun → Mon
   return day;
@@ -102,9 +117,9 @@ export function projectDueDates(cadence: ServiceCadence, window: DueDateWindow):
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (!openEnded && i >= nrOfTimes) break;
     const nominal = firstNominal + (singleOnly ? 0 : i * daysBetween);
-    // A shift only moves a date forward, so once the nominal date passes the
-    // horizon end no later occurrence can fall inside it — safe to stop.
-    if (nominal > toDay) break;
+    // A 'before' shift can pull a date up to 2 days back, so a nominal date just
+    // past the horizon end can still land inside it — widen the cutoff by 2.
+    if (nominal > toDay + 2) break;
     const adjusted = adjustWeekend(nominal, weekends);
     if (adjusted >= fromDay && adjusted <= toDay) out.push(fromEpochDay(adjusted));
     if (singleOnly) break;

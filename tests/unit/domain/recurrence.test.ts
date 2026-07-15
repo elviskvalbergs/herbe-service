@@ -9,12 +9,12 @@ import {
 // A horizon wide enough to capture everything unless a test narrows it.
 const WIDE = { from: '2000-01-01', to: '2099-12-31' } satisfies Pick<DueDateWindow, 'from' | 'to'>;
 
-// Default = a 3× "yearly" (365-day) cadence, weekends allowed.
+// Default = a 3× "yearly" (365-day) cadence, weekends ignored.
 const yearly = (over: Partial<ServiceCadence> = {}): ServiceCadence => ({
   daysFromStart: 0,
   daysBetween: 365,
   nrOfTimes: 3,
-  weekends: true,
+  weekends: 'ignore',
   ...over,
 });
 
@@ -23,6 +23,13 @@ describe('projectDueDates — cadence projection', () => {
     expect(
       projectDueDates({ ...yearly(), daysFromStart: 30, nrOfTimes: 1 }, { start: '2026-01-01', ...WIDE }),
     ).toEqual(['2026-01-31']);
+  });
+
+  it('accepts a negative daysFromStart (Initial Days), scheduling before the start', () => {
+    // Initial Days = -10 → first occurrence 10 days before the contract start.
+    expect(
+      projectDueDates({ ...yearly(), daysFromStart: -10, nrOfTimes: 1 }, { start: '2026-01-20', ...WIDE }),
+    ).toEqual(['2026-01-10']);
   });
 
   it('projects NrOfTimes occurrences DaysBetween apart', () => {
@@ -60,35 +67,51 @@ describe('projectDueDates — cadence projection', () => {
     // ASSUMPTION (flagged for owner): NrOfTimes = 0 means "no finite cap".
     expect(
       projectDueDates(
-        { daysFromStart: 0, daysBetween: 30, nrOfTimes: 0, weekends: true },
+        { daysFromStart: 0, daysBetween: 30, nrOfTimes: 0, weekends: 'ignore' },
         { start: '2026-01-01', from: '2026-01-01', to: '2026-03-15' },
       ),
     ).toEqual(['2026-01-01', '2026-01-31', '2026-03-02']);
   });
 
-  it('shifts weekend dates to the following Monday when weekends are disallowed', () => {
+  it("weekends 'after' shifts Sat/Sun forward to the following Monday", () => {
     // 2026-01-03 = Sat, 2026-01-04 = Sun → both → Mon 2026-01-05
-    const cad: ServiceCadence = { daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: false };
+    const cad: ServiceCadence = { daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: 'after' };
     expect(projectDueDates(cad, { start: '2026-01-03', ...WIDE })).toEqual(['2026-01-05']);
     expect(projectDueDates(cad, { start: '2026-01-04', ...WIDE })).toEqual(['2026-01-05']);
   });
 
-  it('keeps weekend dates as-is when weekends are allowed', () => {
+  it("weekends 'before' shifts Sat/Sun back to the preceding Friday", () => {
+    // 2026-01-03 = Sat → Fri 2026-01-02; 2026-01-04 = Sun → Fri 2026-01-02
+    const cad: ServiceCadence = { daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: 'before' };
+    expect(projectDueDates(cad, { start: '2026-01-03', ...WIDE })).toEqual(['2026-01-02']);
+    expect(projectDueDates(cad, { start: '2026-01-04', ...WIDE })).toEqual(['2026-01-02']);
+  });
+
+  it("weekends 'before' pulls a nominal date from past 'to' back into the horizon", () => {
+    // nominal = Sat 2026-01-10 is PAST to = Fri 2026-01-09; 'before' → Fri 2026-01-09 = to.
+    // Exercises the +2 loop-cutoff widening so this occurrence isn't dropped.
+    const cad: ServiceCadence = { daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: 'before' };
+    expect(projectDueDates(cad, { start: '2026-01-10', from: '2026-01-01', to: '2026-01-09' })).toEqual([
+      '2026-01-09',
+    ]);
+  });
+
+  it("weekends 'ignore' keeps weekend dates as-is", () => {
     expect(
-      projectDueDates({ daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: true }, { start: '2026-01-03', ...WIDE }),
+      projectDueDates({ daysFromStart: 0, daysBetween: 30, nrOfTimes: 1, weekends: 'ignore' }, { start: '2026-01-03', ...WIDE }),
     ).toEqual(['2026-01-03']); // Saturday stays
   });
 
   it('measures DaysBetween on nominal dates; weekend shifts do not drift the schedule', () => {
     // Every 7 days from Sat 2026-01-03: nominal Sat 03,10,17 → each shifted to Mon 05,12,19 (still 7 apart).
     expect(
-      projectDueDates({ daysFromStart: 0, daysBetween: 7, nrOfTimes: 3, weekends: false }, { start: '2026-01-03', ...WIDE }),
+      projectDueDates({ daysFromStart: 0, daysBetween: 7, nrOfTimes: 3, weekends: 'after' }, { start: '2026-01-03', ...WIDE }),
     ).toEqual(['2026-01-05', '2026-01-12', '2026-01-19']);
   });
 
   it('collapses to a single occurrence when DaysBetween <= 0 (guards against an infinite schedule)', () => {
     expect(
-      projectDueDates({ daysFromStart: 10, daysBetween: 0, nrOfTimes: 5, weekends: true }, { start: '2026-01-01', ...WIDE }),
+      projectDueDates({ daysFromStart: 10, daysBetween: 0, nrOfTimes: 5, weekends: 'ignore' }, { start: '2026-01-01', ...WIDE }),
     ).toEqual(['2026-01-11']);
   });
 
