@@ -53,6 +53,24 @@ export interface IngestServiceOrdersResult {
   skipped: number
 }
 
+export interface IngestServiceOrdersOpts {
+  siteNameByDelCode?: Map<string, string>
+}
+
+// DelAddrVc is a code->name lookup, not an entity (no sites table) — build a
+// transient DelCode->Name map from a DelAddrVc pull for ingestServiceOrders
+// to resolve SVOVc.DelAddrCode against. Rows missing either DelCode or Name
+// are skipped; there's nothing usable to key or display.
+export function buildDelAddrSiteMap(rows: Record<string, unknown>[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const row of rows) {
+    if (typeof row.DelCode !== 'string' || !row.DelCode) continue
+    if (typeof row.Name !== 'string' || !row.Name) continue
+    map.set(String(row.DelCode), String(row.Name))
+  }
+  return map
+}
+
 // service_order_rows has no per-row ERP key (no SerNr-equivalent identity on
 // a line), so a re-ingest can't onConflict against anything — delete every
 // existing line for the order and reinsert from the header's current
@@ -110,6 +128,7 @@ export async function ingestServiceOrders(
   db: PostgresJsDatabase<typeof schema>,
   erpCompanyId: string,
   changeSet: ChangeSet<Record<string, unknown>>,
+  opts?: IngestServiceOrdersOpts,
 ): Promise<IngestServiceOrdersResult> {
   const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.id, erpCompanyId))
   if (!company) {
@@ -149,6 +168,7 @@ export async function ingestServiceOrders(
     const requestedAt = parseBooksDate(row.RegDate || row.TransDate)
     const promisedDate = parseBooksDate(row.PlanShipDate)
     const done = isBooksTrue(row.DoneMark)
+    const siteName = opts?.siteNameByDelCode?.get(String(row.DelAddrCode ?? '')) ?? null
 
     const existingId = await findEntityIdByErpRef(db, {
       erpCompanyId,
@@ -162,7 +182,7 @@ export async function ingestServiceOrders(
     if (existingId) {
       await db
         .update(schema.serviceOrders)
-        .set({ customerId, description, contactName, requestedAt, promisedDate })
+        .set({ customerId, description, contactName, requestedAt, promisedDate, siteName })
         .where(
           and(eq(schema.serviceOrders.id, existingId), eq(schema.serviceOrders.tenantId, company.tenantId)),
         )
@@ -180,6 +200,7 @@ export async function ingestServiceOrders(
         orderNumber: erpRef,
         description,
         contactName,
+        siteName: siteName ?? undefined,
         requestedAt: requestedAt ?? undefined,
         promisedDate: promisedDate ?? undefined,
       })
