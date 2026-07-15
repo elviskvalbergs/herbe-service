@@ -28,6 +28,8 @@ import { getServiceItemById, getItemModelsByIds } from '@/lib/domain/stores/serv
 import { mapServiceItemDetail } from '@/lib/api/ext/mappers'
 import { serviceItemDetailSchema } from '@/lib/api/ext/dto'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const verified = await verifyExtRequest(db, req)
   if (!verified.ok) {
@@ -40,6 +42,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const { id } = await params
+  // A malformed id would throw binding against the uuid column (500) —
+  // treat it the same as "not found" rather than surfacing that, which also
+  // preserves the no-enumeration-oracle behavior below.
+  if (!UUID_RE.test(id)) {
+    return Response.json({ error: 'not_found', code: 'not_found' }, { status: 404 })
+  }
   const item = await getServiceItemById(db, verified.tenantId, id)
   const customerIds = await resolveCustomerIdsByCodes(
     db,

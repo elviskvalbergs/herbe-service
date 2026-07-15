@@ -22,6 +22,8 @@ import { getHistoryForItem } from '@/lib/domain/stores/history'
 import { mapHistoryEvent } from '@/lib/api/ext/mappers'
 import { historyEventSchema } from '@/lib/api/ext/dto'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const verified = await verifyExtRequest(db, req)
   if (!verified.ok) {
@@ -34,6 +36,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const { id } = await params
+  // Same malformed-id → 404 handling as ../route.ts (avoids a uuid-column
+  // bind error surfacing as a 500, and preserves the not-found-vs-out-of-scope
+  // parity between detail and history).
+  if (!UUID_RE.test(id)) {
+    return Response.json({ error: 'not_found', code: 'not_found' }, { status: 404 })
+  }
   const item = await getServiceItemById(db, verified.tenantId, id)
   const customerIds = await resolveCustomerIdsByCodes(
     db,

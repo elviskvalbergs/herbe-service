@@ -174,6 +174,17 @@ describe('GET /api/ext/v1/service-items', () => {
     expect(res.status).toBe(200)
     expect(body.data).toEqual([])
   })
+
+  it('returns 400 for a malformed after cursor', async () => {
+    const { GET } = await import('@/app/api/ext/v1/service-items/route')
+    const res = await GET(
+      new Request(`http://x/api/ext/v1/service-items?customerCodes=${SEED_CUSTOMER_CODE}&after=abc`, { headers: authed(rawToken) }),
+    )
+    const body = await res.json()
+
+    expect(res.status).toBe(400)
+    expect(body.code).toBe('invalid_cursor')
+  })
 })
 
 describe('GET /api/ext/v1/service-items/[id]', () => {
@@ -215,6 +226,16 @@ describe('GET /api/ext/v1/service-items/[id]', () => {
       params: Promise.resolve({ id: missingId }),
     })
     expect(res.status).toBe(404)
+  })
+
+  it('returns 404 (not 500) for a malformed, non-UUID id', async () => {
+    const { GET } = await import('@/app/api/ext/v1/service-items/[id]/route')
+    const res = await GET(new Request('http://x/api/ext/v1/service-items/not-a-uuid', { headers: authed(rawToken) }), {
+      params: Promise.resolve({ id: 'not-a-uuid' }),
+    })
+    expect(res.status).toBe(404)
+    const body = await res.json()
+    expect(body.code).toBe('not_found')
   })
 })
 

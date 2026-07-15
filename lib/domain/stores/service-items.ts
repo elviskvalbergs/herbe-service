@@ -169,5 +169,11 @@ export async function getItemModelsByIds(db: Db, tenantId: string, ids: string[]
   return db
     .select()
     .from(schema.itemModels)
-    .where(and(eq(schema.itemModels.tenantId, tenantId), inArray(schema.itemModels.id, ids)))
+    .where(
+      and(
+        eq(schema.itemModels.tenantId, tenantId),
+        inArray(schema.itemModels.id, ids),
+        isNull(schema.itemModels.deletedAt),
+      ),
+    )
 }

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
-import { getChildren, getServiceItemById, insertServiceItem, scanServiceItemsForTenant } from '@/lib/domain/stores/service-items'
+import { getChildren, getItemModelsByIds, getServiceItemById, insertServiceItem, scanServiceItemsForTenant } from '@/lib/domain/stores/service-items'
 
 let testDb: TestDatabase
 let sql: ReturnType<typeof postgres>
@@ -110,5 +110,19 @@ describe('service-items store', () => {
 
     const got = await getServiceItemById(db, tenantId, unit.id)
     expect(got?.customerId).toBe(customer.id)
+  })
+
+  it('getItemModelsByIds excludes soft-deleted models', async () => {
+    const [activeModel] = await db
+      .insert(schema.itemModels)
+      .values({ tenantId, make: 'Acme', model: 'X100', changeSeq: BigInt(0) })
+      .returning()
+    const [deletedModel] = await db
+      .insert(schema.itemModels)
+      .values({ tenantId, make: 'Acme', model: 'X200', changeSeq: BigInt(0), deletedAt: new Date() })
+      .returning()
+
+    const rows = await getItemModelsByIds(db, tenantId, [activeModel.id, deletedModel.id])
+    expect(rows.map((r) => r.id)).toEqual([activeModel.id])
   })
 })

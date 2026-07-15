@@ -58,6 +58,9 @@ export async function GET(req: Request) {
     : undefined
   const labelId = url.searchParams.get('labelId')
   const afterParam = url.searchParams.get('after')
+  if (afterParam !== null && !/^\d+$/.test(afterParam)) {
+    return Response.json({ error: 'invalid_cursor', code: 'invalid_cursor' }, { status: 400 })
+  }
   const after = afterParam ? BigInt(afterParam) : undefined
   const limit = parseLimit(url.searchParams.get('limit'))
 
