@@ -11,7 +11,7 @@
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
-import type { ServiceItemRow } from '@/drizzle/schema'
+import type { ServiceItemRow, ItemModelRow } from '@/drizzle/schema'
 import type { NodeKind } from '@/lib/domain/types'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -136,4 +136,38 @@ export async function getChildren(db: Db, tenantId: string, parentId: string): P
         isNull(schema.serviceItems.deletedAt),
       ),
     )
+}
+
+// Task 8 (docs/08-suite-integration.md §4a, "labelId= QR resolution"): the
+// route.ts's labelId= lookup path is a QR-driven single-item resolve, so it
+// looks up by the unique labelId (unique().on(t.labelId) above) rather than
+// by primary key — same tenant/deletedAt scoping as getServiceItemById.
+export async function getServiceItemByLabelId(db: Db, tenantId: string, labelId: string): Promise<ServiceItemRow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.serviceItems)
+    .where(
+      and(
+        eq(schema.serviceItems.labelId, labelId),
+        eq(schema.serviceItems.tenantId, tenantId),
+        isNull(schema.serviceItems.deletedAt),
+      ),
+    )
+
+  return row ?? null
+}
+
+// Task 8: batch model lookup for the /api/ext/v1/service-items routes'
+// `itemModels` join (lib/api/ext/mappers.ts's `mapServiceItemSummary`/
+// `mapServiceItemDetail` take an optional model row). Callers collect the
+// distinct, non-null `modelId`s off however many ServiceItemRows they have
+// (one for a detail route, many for a list) and pass them here in one call
+// rather than round-tripping per row.
+export async function getItemModelsByIds(db: Db, tenantId: string, ids: string[]): Promise<ItemModelRow[]> {
+  if (ids.length === 0) return []
+
+  return db
+    .select()
+    .from(schema.itemModels)
+    .where(and(eq(schema.itemModels.tenantId, tenantId), inArray(schema.itemModels.id, ids)))
 }

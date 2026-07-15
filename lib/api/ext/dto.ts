@@ -62,6 +62,17 @@ export const serviceItemDetailSchema = serviceItemSummarySchema.extend({
 }).strip();
 export type ServiceItemDetail = z.infer<typeof serviceItemDetailSchema>;
 
+// Task 8 (herbe-portal `lib/service/dto.ts`'s `serviceItemListSchema`): the
+// list route's envelope. Deferred out of Task 7's transcription on purpose
+// (its brief scoped Task 7 to the per-entity schemas only) — added now that
+// the list route needs to validate its own `{ data, nextCursor }` shape
+// against exactly what `lib/service/client.ts`'s `listServiceItems` parses.
+export const serviceItemListSchema = z.object({
+  data: z.array(serviceItemSummarySchema),
+  nextCursor: z.string().optional(),
+}).strip();
+export type ServiceItemList = z.infer<typeof serviceItemListSchema>;
+
 export const historyEventSchema = z.object({
   id: z.string(),
   at: z.string(),
