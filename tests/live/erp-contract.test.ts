@@ -26,6 +26,7 @@ import { ingestCustomers } from '@/lib/sync/ingest/customers'
 import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
 import { ingestServiceOrders } from '@/lib/sync/ingest/service-orders'
 import { ingestWorksheets } from '@/lib/sync/ingest/worksheets'
+import { syncConnection } from '@/lib/sync/sync-connection'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -273,5 +274,48 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     // the demo data, so logged only, never asserted on.
     const resolvedItemCount = worksheetLineRows.filter((r) => !!r.serviceItemId).length
     console.log(`live WSVc lines: ${resolvedItemCount}/${worksheetLineRows.length} rows resolved a serviceItemId`)
+  })
+
+  // Runs last: proves the actual production entrypoint — syncConnection
+  // driving every register for one connection in one call — end-to-end
+  // against the real ERP, not just the individual ingest functions exercised
+  // above. Reuses the suite's adapter/companyId built via
+  // buildAdapterForConnection in beforeAll.
+  it('runs syncConnection end-to-end against the real ERP and populates every register', async () => {
+    const summary = await syncConnection(db, adapter, companyId)
+
+    // Counts/shape only — never log row contents.
+    for (const [register, regSummary] of Object.entries(summary.perRegister)) {
+      console.log(`live syncConnection ${register}: ${JSON.stringify(regSummary)}`)
+      expect(regSummary.error).toBeUndefined()
+    }
+
+    const [orders, items, worksheetRows, custs] = await Promise.all([
+      db.select().from(schema.serviceOrders).where(eq(schema.serviceOrders.erpCompanyId, companyId)),
+      db.select().from(schema.serviceItems).where(eq(schema.serviceItems.erpCompanyId, companyId)),
+      db.select().from(schema.worksheets).where(eq(schema.worksheets.erpCompanyId, companyId)),
+      db.select().from(schema.customers).where(eq(schema.customers.erpCompanyId, companyId)),
+    ])
+
+    console.log(
+      `live syncConnection counts: service_orders=${orders.length}, service_items=${items.length}, worksheets=${worksheetRows.length}, customers=${custs.length}`,
+    )
+    expect(orders.length).toBeGreaterThan(0)
+    expect(items.length).toBeGreaterThan(0)
+    expect(worksheetRows.length).toBeGreaterThan(0)
+    expect(custs.length).toBeGreaterThan(0)
+
+    const states = await db.select().from(schema.erpSyncState).where(eq(schema.erpSyncState.erpCompanyId, companyId))
+    expect(states.length).toBe(Object.keys(summary.perRegister).length)
+    for (const state of states) {
+      expect(state.syncStatus).toBe('idle')
+    }
+
+    // Soft observation only: real demo DelAddrCode<->DelCode overlap is
+    // data-dependent, and lib/sync/sync-connection.test.ts (fake ERP) already
+    // proves the DelAddrVc -> SVOVc siteName resolution mechanism itself. Do
+    // NOT hard-fail here if this is 0.
+    const withSiteName = orders.filter((o) => !!o.siteName).length
+    console.log(`live syncConnection: ${withSiteName}/${orders.length} service_orders have a resolved siteName`)
   })
 })
