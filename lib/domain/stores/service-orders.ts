@@ -16,7 +16,7 @@
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
-import type { ServiceOrderRow } from '@/drizzle/schema'
+import type { ServiceOrderRow, ServiceOrderLineRow } from '@/drizzle/schema'
 import type { ChargeType, OrderStatus } from '@/lib/domain/types'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -120,6 +120,23 @@ export async function scanServiceOrdersForCustomer(
     .where(and(...conditions))
     .orderBy(schema.serviceOrders.changeSeq)
     .limit(limit)
+}
+
+// Task 9 (docs/08-suite-integration.md §4): batch fetch of service_order_rows
+// across one or more orders, for the /api/ext/v1/orders routes'
+// serviceItems[] join (mapOrderSummary/mapOrderDetail). Batches across every
+// order on a list page — or the single order on a detail page — in one
+// query rather than round-tripping per order, same batch idiom as
+// getItemModelsByIds (service-items.ts). No tenant filter here: orderId
+// itself is already tenant-scoped by the caller (scanServiceOrdersForCustomer
+// / getServiceOrderById), same as worksheet rows below.
+export async function getServiceOrderRowsForOrders(db: Db, orderIds: string[]): Promise<ServiceOrderLineRow[]> {
+  if (orderIds.length === 0) return []
+
+  return db
+    .select()
+    .from(schema.serviceOrderRows)
+    .where(inArray(schema.serviceOrderRows.orderId, orderIds))
 }
 
 export async function setOrderStatus(

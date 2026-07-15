@@ -147,3 +147,12 @@ export const orderDetailSchema = orderSummarySchema.extend({
   invoices: z.array(z.object({ invoiceNumber: z.string(), erpCompanyId: z.string() })),
 }).strip();
 export type OrderDetail = z.infer<typeof orderDetailSchema>;
+
+// Task 9 (mirrors serviceItemListSchema above): the orders list route's
+// envelope, validated against exactly what the portal's `listOrders` client
+// call parses.
+export const orderListSchema = z.object({
+  data: z.array(orderSummarySchema),
+  nextCursor: z.string().optional(),
+}).strip();
+export type OrderList = z.infer<typeof orderListSchema>;

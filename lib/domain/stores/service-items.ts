@@ -177,3 +177,23 @@ export async function getItemModelsByIds(db: Db, tenantId: string, ids: string[]
       ),
     )
 }
+
+// Task 9: batch id lookup, same batch idiom as getItemModelsByIds above —
+// the /api/ext/v1/orders routes collect the distinct serviceItemIds off a
+// service_order_rows batch (getServiceOrderRowsForOrders,
+// lib/domain/stores/service-orders.ts) and resolve their names/serials here
+// in one query rather than per-row.
+export async function getServiceItemsByIds(db: Db, tenantId: string, ids: string[]): Promise<ServiceItemRow[]> {
+  if (ids.length === 0) return []
+
+  return db
+    .select()
+    .from(schema.serviceItems)
+    .where(
+      and(
+        eq(schema.serviceItems.tenantId, tenantId),
+        inArray(schema.serviceItems.id, ids),
+        isNull(schema.serviceItems.deletedAt),
+      ),
+    )
+}

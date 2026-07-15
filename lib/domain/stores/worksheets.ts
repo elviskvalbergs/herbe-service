@@ -16,10 +16,10 @@
 // a second insert for the same pair raises a unique_violation (Postgres
 // error 23505), which this store does not catch or translate; the caller
 // decides how to surface it.
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
-import type { WorksheetRow } from '@/drizzle/schema'
+import type { WorksheetRow, WorksheetLineRow } from '@/drizzle/schema'
 import type { WorksheetStatus } from '@/lib/domain/types'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -82,6 +82,21 @@ export async function getWorksheetsForOrder(db: Db, tenantId: string, orderId: s
         isNull(schema.worksheets.deletedAt),
       ),
     )
+}
+
+// Task 9 (docs/08-suite-integration.md §4): batch fetch of worksheet_rows
+// across one or more worksheets, for the /api/ext/v1/orders/{id} detail
+// route's mapWorksheetSummary join — a detail page's order can have several
+// worksheets (crew jobs), so this resolves all of their rows in one query
+// rather than per-worksheet. No tenant filter: worksheetId is already
+// tenant-scoped by the caller (getWorksheetsForOrder).
+export async function getWorksheetRowsForWorksheets(db: Db, worksheetIds: string[]): Promise<WorksheetLineRow[]> {
+  if (worksheetIds.length === 0) return []
+
+  return db
+    .select()
+    .from(schema.worksheetRows)
+    .where(inArray(schema.worksheetRows.worksheetId, worksheetIds))
 }
 
 export async function setWorksheetStatus(
