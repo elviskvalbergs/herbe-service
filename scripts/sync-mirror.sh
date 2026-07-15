@@ -4,16 +4,17 @@
 #
 # Why this exists
 # ---------------
-# herbe-service has two remotes: Bitbucket `burti/herbe-service` (canonical —
-# PRs merge here) and a GitHub fork `elviskvalbergs/herbe-service` (Vercel
-# deploys from it). The local `origin` dual-pushes to both, but a PR merged in
-# the Bitbucket UI is a SERVER-SIDE commit the local never sees, so it never
-# reaches GitHub — the fork (and thus Vercel) silently falls behind. (Observed
-# 2026-07-15: GitHub `preview` was 17 commits behind; `main` was missing.)
+# Bitbucket `burti/herbe-service` is canonical (PRs merge here; Vercel deploys
+# from it). GitHub `elviskvalbergs/herbe-service` is a read-only mirror (AI/tool
+# access). A PR merged in the Bitbucket UI is a SERVER-SIDE commit the local
+# never sees, so the GitHub mirror drifts. (Observed 2026-07-15: GitHub `preview`
+# was 17 commits behind; `main` was missing entirely.)
 #
-# This force-updates the named GitHub branches to match Bitbucket. Run it after
-# any Bitbucket-side merge — or adopt a permanent fix (point Vercel at Bitbucket
-# directly, or a CI auto-mirror; see docs / the handoff notes).
+# Local remotes are now: `origin` = Bitbucket (canonical, fetch+push),
+# `github` = the mirror. This force-updates the named branches on GitHub to match
+# Bitbucket. Run it after any Bitbucket-side merge — or set up a CI auto-mirror
+# for full automation. (Vercel deploys from Bitbucket, so the mirror never blocks
+# deploys; this just keeps the read-only fork current.)
 #
 # Usage:
 #   scripts/sync-mirror.sh                # mirrors: preview
