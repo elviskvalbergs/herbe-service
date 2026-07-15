@@ -15,7 +15,9 @@ export async function fetchRegisterJson(
 
   let res: Response
   try {
-    res = await fetch(url, { headers: { Authorization: authHeader } })
+    res = await fetch(url, {
+      headers: { Authorization: authHeader, Accept: 'application/json' },
+    })
   } catch (err) {
     throw new ErpTransientError(`Network error calling ${register}`, err)
   }

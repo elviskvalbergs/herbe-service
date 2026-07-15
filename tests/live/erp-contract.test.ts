@@ -74,12 +74,13 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
         displayName: 'Live ERP Contract Co',
         adapterType: 'standard_books',
         adapterConfigJson: {
-          baseUrl: process.env.ERP_BASE_URL,
-          companyNumber: process.env.ERP_COMPANY_NUMBER,
+          baseUrl: process.env.ERP_DEMO_BASE_URL ?? process.env.ERP_BASE_URL,
+          companyNumber:
+            process.env.ERP_DEMO_COMPANY ?? process.env.ERP_COMPANY_NUMBER,
         },
         apiCredsEncrypted: encryptErpCredentials({
-          username: process.env.ERP_USER,
-          password: process.env.ERP_PASSWORD,
+          username: process.env.ERP_DEMO_USER ?? process.env.ERP_USER,
+          password: process.env.ERP_DEMO_PASSWORD ?? process.env.ERP_PASSWORD,
         }).toString('base64'),
       })
       .returning()

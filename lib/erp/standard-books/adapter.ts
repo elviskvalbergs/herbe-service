@@ -23,7 +23,16 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
         )
       }
 
-      const rows = (body?.data as Record<string, unknown>[]) ?? []
+      // Standard Books nests rows under `data.<Register>` (verified live) —
+      // NOT a flat `data` array. Mirror the portal's extractRegisterRows,
+      // with a `data.rows` fallback.
+      const container = (body?.data ?? {}) as Record<string, unknown>
+      const direct = container[register]
+      const rows: Record<string, unknown>[] = Array.isArray(direct)
+        ? (direct as Record<string, unknown>[])
+        : Array.isArray((container as { rows?: unknown }).rows)
+          ? ((container as { rows: Record<string, unknown>[] }).rows)
+          : []
       const cursor = String(body?.['@sequence'] ?? sinceCursor)
 
       return { upserts: rows, deletedRefs: [], cursor }
