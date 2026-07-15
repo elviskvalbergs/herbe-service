@@ -22,5 +22,7 @@ export function handleRegisterGet(c: Context<Record<string, never>, '/api/:compa
   const rows = FIXTURES[register] ?? []
   const sequence = rows.length ? Math.max(...rows.map((r) => r.ServerSequence)) : 0
 
-  return c.json({ data: rows, '@sequence': sequence })
+  // Match the real Standard Books envelope (verified live): rows are nested
+  // under data.<Register>, not a flat data array.
+  return c.json({ data: { [register]: rows }, '@sequence': sequence })
 }

@@ -17,7 +17,7 @@ describe('fake ERP server', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.data.length).toBe(2)
+    expect(body.data.CUVc.length).toBe(2)
     expect(body['@sequence']).toBe(1002)
   })
 

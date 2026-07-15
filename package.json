@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:live": "RUN_LIVE_ERP_TESTS=1 vitest run tests/live",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs"
   },

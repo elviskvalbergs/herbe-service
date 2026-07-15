@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import path from 'node:path'
 
 export default defineConfig({
@@ -18,6 +18,20 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
+    // Gated live-ERP contract suite (tests/live/**) hits a real ERP over the
+    // network and is only meant to run via `pnpm test:live`. Excluded from
+    // the default run so `pnpm test`/CI never touches the network — on top
+    // of the describe.skipIf inside the file itself. The exclude is
+    // conditional on RUN_LIVE_ERP_TESTS rather than a plain static entry:
+    // Vitest applies `exclude` even to an explicit CLI path argument, so a
+    // hard-coded 'tests/live/**' here would also make `pnpm test:live`
+    // (which sets RUN_LIVE_ERP_TESTS=1 before invoking `vitest run
+    // tests/live`) collect zero files. Gating the exclude on the same env
+    // var keeps both commands working: unset -> excluded/never collected;
+    // set -> collected, then the file's own describe.skipIf decides.
+    exclude: process.env.RUN_LIVE_ERP_TESTS
+      ? configDefaults.exclude
+      : [...configDefaults.exclude, 'tests/live/**'],
     // Vitest externalizes node_modules by default and loads them via Node's
     // native resolver, which ignores the `resolve.conditions` above. Inlining
     // next-intl routes it through Vite's resolver instead, so the
@@ -40,6 +54,7 @@ export default defineConfig({
         'drizzle/**',
         'scripts/**',
         'lib/test-support/**',
+        'tests/live/**',
         '**/.next/**',
         'coverage/**',
       ],

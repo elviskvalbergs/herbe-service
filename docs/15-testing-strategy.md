@@ -20,6 +20,8 @@ Three pieces of test infrastructure are Phase 0 deliverables, built before the f
 2. **Sync simulation harness** — N virtual devices (in-process clients with their own local store + outbox) against a real server + Postgres. Scenarios are scripts: work offline for a day, replay; two technicians on one crew job work their own worksheets offline (`crewGroupId` grouping stays consistent, no cross-worksheet interference); office edits a worksheet's order while its technician is offline; a job reassigned away while the old device is offline (scope-exit purge applied on reconnect — access instructions gone); manager rejects while technician is offline; duplicate merge while a device holds the old UUID; sequence reset mid-poll; push-group partial failure with DLQ retry. This harness is how every conflict/idempotency rule in `03`/`04` is proven, and it runs in CI on every PR touching sync.
 3. **Golden-fixture library** — anonymized recorded ERP payloads per register (see §5.1 data rules) used by mapper tests portal-style (`tests/unit/erp/.../mappers`), plus DOCX template fixtures and expected merge outputs for the document engine.
 
+The nightly live-contract job's suite lives at `tests/live/` (currently `erp-contract.test.ts`, proving `buildAdapterForConnection` end-to-end). It runs via `pnpm test:live`, reading connection details from a worktree-local `.env.vars` (git-ignored, never committed — see `.env.test.example` for the five-var contract). The suite is gated on `RUN_LIVE_ERP_TESTS` and skipped by default; `vitest.config.ts` also excludes `tests/live/**` from `pnpm test` and the coverage gate. It only ever runs against the dedicated test ERP and never blocks a PR.
+
 ## 3. Traceability: spec rule → suite
 
 | Spec source | Suite (examples of cases) |
