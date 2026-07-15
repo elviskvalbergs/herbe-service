@@ -41,6 +41,18 @@ function isBooksTrue(value: unknown): boolean {
   return value === '1' || value === 1
 }
 
+// Standard Books returns numeric fields as strings, and an UNSET numeric comes
+// back as an empty string '' (verified live), not null — which a Postgres
+// numeric column rejects (22P02 invalid input syntax). Coerce empty/whitespace/
+// non-numeric to null; otherwise pass the trimmed string through (drizzle
+// numeric mode is string). Preserves '0'/'0.00'.
+function booksNumeric(value: unknown): string | null {
+  if (value == null) return null
+  const s = String(value).trim()
+  if (s === '' || Number.isNaN(Number(s))) return null
+  return s
+}
+
 /**
  * Maps WSVc's status flags to a WorksheetStatus, precedence highest first:
  * Invalid (rejected by ERP) > OKFlag (synced/approved) > PrelOK (done,
@@ -99,13 +111,13 @@ async function reconcileWorksheetRows(
       worksheetId,
       serviceItemId,
       description: String(line.Spec || '') || null,
-      quantity: line.Quant != null ? String(line.Quant) : null,
+      quantity: booksNumeric(line.Quant),
       unit: String(line.UsageUnit || '') || null,
       serial: serialNr || null,
       chargeType: charge,
       stockLocation: String(line.PosCode || headerLocation || '') || null,
-      price: line.Price != null ? String(line.Price) : null,
-      sum: line.Sum != null ? String(line.Sum) : null,
+      price: booksNumeric(line.Price),
+      sum: booksNumeric(line.Sum),
     })
   }
 }

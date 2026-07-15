@@ -251,6 +251,28 @@ describe('ingestWorksheets', () => {
       expect(rows[0].sum).toBe('21')
     })
 
+    it('coerces empty-string numeric fields (Books unset numerics) to null, not a crash on the numeric column', async () => {
+      // Standard Books returns an unset numeric as '' (verified live) — a
+      // Postgres numeric column rejects that (22P02). booksNumeric() must
+      // null it out rather than bind ''.
+      await ingestWorksheets(
+        db,
+        erpCompanyId,
+        changeSetOf([
+          row({
+            SerNr: 8023,
+            rows: [{ ArtCode: 'ART-5', SerialNr: '', ItemType: 'Invoiceable', Quant: '', Price: '', Sum: '' }],
+          }),
+        ]),
+      )
+      const ws = await findWorksheet('8023')
+      const rows = await rowsForWorksheet(ws!.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].quantity).toBeNull()
+      expect(rows[0].price).toBeNull()
+      expect(rows[0].sum).toBeNull()
+    })
+
     it('falls back to the header Location when a line has no PosCode', async () => {
       await ingestWorksheets(
         db,

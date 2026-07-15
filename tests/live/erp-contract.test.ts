@@ -25,6 +25,7 @@ import { buildAdapterForConnection } from '@/lib/erp/connection'
 import { ingestCustomers } from '@/lib/sync/ingest/customers'
 import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
 import { ingestServiceOrders } from '@/lib/sync/ingest/service-orders'
+import { ingestWorksheets } from '@/lib/sync/ingest/worksheets'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -207,5 +208,70 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     // the demo data, so logged only, never asserted on.
     const resolvedItemCount = lineRows.filter((r) => !!r.serviceItemId).length
     console.log(`live SVOVc lines: ${resolvedItemCount}/${lineRows.length} rows resolved a serviceItemId`)
+  })
+
+  // Runs last: worksheets need orders present first (orderId is NOT NULL,
+  // resolved via SVONr against the order's own primary/SVOVc erp_ref). Not
+  // dependent on the previous test having run — re-runs the full
+  // customers -> service items -> orders chain itself (all ingests are
+  // idempotent) so this test is self-contained about ordering.
+  it('pulls WSVc and ingests worksheets + line rows end-to-end into worksheets/worksheet_rows', async () => {
+    const custs = await adapter.pullFullList('CUVc')
+    await ingestCustomers(db, companyId, { upserts: custs, deletedRefs: [], cursor: '0' })
+
+    const units = await adapter.pullFullList('SVOSerVc')
+    await ingestServiceItems(db, companyId, { upserts: units, deletedRefs: [], cursor: '0' })
+
+    const orders = await adapter.pullFullList('SVOVc')
+    await ingestServiceOrders(db, companyId, { upserts: orders, deletedRefs: [], cursor: '0' })
+
+    const ws = await adapter.pullFullList('WSVc')
+    const result = await ingestWorksheets(db, companyId, { upserts: ws, deletedRefs: [], cursor: '0' })
+
+    // Never log row contents — counts only, same discipline as the other tests here.
+    console.log(`live WSVc: pulled ${ws.length}, ingested ${result.ingested}, skipped ${result.skipped}`)
+
+    // If this is 0 with a high skipped count, SVONr didn't resolve to
+    // ingested orders — a real finding, not something to relax the
+    // assertion around.
+    expect(result.ingested).toBeGreaterThanOrEqual(1)
+
+    const ingestedOrders = await db
+      .select({ id: schema.serviceOrders.id })
+      .from(schema.serviceOrders)
+      .where(eq(schema.serviceOrders.erpCompanyId, companyId))
+    const orderIds = ingestedOrders.map((o) => o.id)
+
+    const ingestedWorksheets = orderIds.length
+      ? await db.select().from(schema.worksheets).where(inArray(schema.worksheets.orderId, orderIds))
+      : []
+    const worksheetIds = ingestedWorksheets.map((w) => w.id)
+
+    const worksheetLineRows = worksheetIds.length
+      ? await db.select().from(schema.worksheetRows).where(inArray(schema.worksheetRows.worksheetId, worksheetIds))
+      : []
+
+    console.log(
+      `live WSVc ingest: ${ingestedWorksheets.length} worksheets rows, ${worksheetLineRows.length} worksheet_rows rows`,
+    )
+    expect(ingestedWorksheets.length).toBeGreaterThanOrEqual(1)
+
+    const refs = await db
+      .select()
+      .from(schema.erpRefs)
+      .where(
+        and(
+          eq(schema.erpRefs.erpCompanyId, companyId),
+          eq(schema.erpRefs.entityType, 'worksheet'),
+          eq(schema.erpRefs.purpose, 'primary'),
+          eq(schema.erpRefs.register, 'WSVc'),
+        ),
+      )
+    expect(refs.length).toBeGreaterThanOrEqual(1)
+
+    // Soft: depends on serial overlap between SVOSerVc and WSVc lines in
+    // the demo data, so logged only, never asserted on.
+    const resolvedItemCount = worksheetLineRows.filter((r) => !!r.serviceItemId).length
+    console.log(`live WSVc lines: ${resolvedItemCount}/${worksheetLineRows.length} rows resolved a serviceItemId`)
   })
 })
