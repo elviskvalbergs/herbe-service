@@ -87,6 +87,21 @@ describe('TOTP enrollment + verification', () => {
     expect(await verifyTotp(db, user.id, code, { bumpSession: false })).toBe(false)
   })
 
+  it('verifyTotp rejects one of two truly concurrent submissions of the identical valid code', async () => {
+    const user = await makeAdminUser()
+    const enrolled = await enrollTotp(db, user.id, user.email)
+    await confirmTotpEnrollment(db, user.id, currentCodeFor(enrolled.secretBase32, user.email))
+
+    const code = currentCodeFor(enrolled.secretBase32, user.email)
+    const [first, second] = await Promise.all([
+      verifyTotp(db, user.id, code, { bumpSession: false }),
+      verifyTotp(db, user.id, code, { bumpSession: false }),
+    ])
+
+    // Order isn't guaranteed under real concurrency — only that exactly one wins.
+    expect([first, second].filter(Boolean)).toHaveLength(1)
+  })
+
   it('verifyTotp bumps session_version by default, but not when bumpSession:false', async () => {
     const user = await makeAdminUser()
     const enrolled = await enrollTotp(db, user.id, user.email)
@@ -112,6 +127,21 @@ describe('TOTP enrollment + verification', () => {
     const [code] = enrolled.recoveryCodes
     expect(await consumeRecoveryCode(db, user.id, code)).toBe(true)
     expect(await consumeRecoveryCode(db, user.id, code)).toBe(false)
+  })
+
+  it('consumeRecoveryCode rejects one of two truly concurrent consumptions of the identical code', async () => {
+    const user = await makeAdminUser()
+    const enrolled = await enrollTotp(db, user.id, user.email)
+    await confirmTotpEnrollment(db, user.id, currentCodeFor(enrolled.secretBase32, user.email))
+
+    const [code] = enrolled.recoveryCodes
+    const [first, second] = await Promise.all([
+      consumeRecoveryCode(db, user.id, code),
+      consumeRecoveryCode(db, user.id, code),
+    ])
+
+    // Order isn't guaranteed under real concurrency — only that exactly one wins.
+    expect([first, second].filter(Boolean)).toHaveLength(1)
   })
 
   it('disableTotp clears the secret, flips mfaEnabled false, and bumps session_version', async () => {
