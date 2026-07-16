@@ -1,6 +1,6 @@
 import { registerAdapter, ErpPermanentError, type ChangeSet, type ErpAdapter } from '@herbe/erp-core'
 import { standardBooksConfigSchema } from './config-schema'
-import { fetchRegisterJson } from './fetch-json'
+import { fetchRegisterJson, postRegisterJson } from './fetch-json'
 
 // Standard Books nests rows under `data.<Register>` (verified live) — NOT a
 // flat `data` array. Mirrors the portal's extractRegisterRows, with a
@@ -20,6 +20,16 @@ const REF_FIELD: Record<string, string> = {
   CUVc: 'Code',
   INVc: 'Code',
   SVOSerVc: 'SerialNr',
+}
+
+// Registers the outbound write surface supports (Decision 8, WS4 Task 3).
+// Anything else is a caller bug, not an ERP-side error.
+const WRITABLE_REGISTERS = new Set(['SVOVc', 'WSVc'])
+
+function assertWritableRegister(method: string, register: string): void {
+  if (!WRITABLE_REGISTERS.has(register)) {
+    throw new Error(`${method} not supported for register ${register} (only SVOVc, WSVc)`)
+  }
 }
 
 export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
@@ -73,26 +83,48 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     },
 
     async pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }> {
-      if (register !== 'SVOVc') {
-        throw new Error(`pushCreate not implemented for ${register} in Phase 0`)
-      }
+      assertWritableRegister('pushCreate', register)
 
-      const authHeader = `Basic ${Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64')}`
-      const url = `${config.baseUrl}/api/${config.companyNumber}/SVOVc`
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const body = await res.json().catch(() => null)
+      const { body } = await postRegisterJson(config, register, payload)
       // Per the demo-probe caveat (docs/19-demo-probe-results.md §10): a 200
       // with an echoed, unassigned payload is NOT a success signal — only a
-      // non-empty SerNr/@url proves the record persisted.
+      // non-empty SerNr/@url proves the record persisted. Empty is returned
+      // as data, not thrown — the caller (push saga) decides how to react
+      // (Decision 3's persistence-verification rule).
       const erpRef = body?.SerNr ?? body?.['@url'] ?? ''
 
       return { erpRef: String(erpRef) }
+    },
+
+    async pushUpdate(register: string, recordRef: string, payload: Record<string, unknown>): Promise<void> {
+      assertWritableRegister('pushUpdate', register)
+
+      // recordRef wins over any SerNr the caller's payload happens to carry.
+      const { status, body } = await postRegisterJson(config, register, { ...payload, SerNr: recordRef })
+
+      if (status >= 400) {
+        throw new ErpPermanentError(`pushUpdate ${register} returned ${status}`)
+      }
+
+      const returnedSerNr = body?.SerNr
+      if (returnedSerNr !== undefined && returnedSerNr !== null && String(returnedSerNr) !== recordRef) {
+        // Wrong-record safety check: an update-by-key POST that echoes back
+        // a different record is never a successful update, whatever the
+        // HTTP status said.
+        throw new ErpPermanentError(
+          `pushUpdate ${register} echoed SerNr ${String(returnedSerNr)}, expected ${recordRef} — refusing to treat as success`,
+        )
+      }
+    },
+
+    async fetchRecords(register: string, params: Record<string, string>): Promise<Record<string, unknown>[]> {
+      const { status, body } = await fetchRegisterJson(config, register, params)
+
+      if (status >= 400) {
+        throw new ErpPermanentError(`fetchRecords ${register} returned ${status}`)
+      }
+
+      return extractRows(body, register)
     },
 
     async probeIncrementalSupport(register: string): Promise<boolean> {

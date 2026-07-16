@@ -17,6 +17,12 @@ export interface ErpAdapter {
   capabilities(): AdapterCapabilities
   pullChanges(register: string, sinceCursor: string): Promise<ChangeSet<Record<string, unknown>>>
   pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }>
+  // Update-by-key: recordRef wins over any SerNr in payload. No persistence
+  // read-back here — the saga (WS4 Decision 3) does that separately.
+  pushUpdate(register: string, recordRef: string, payload: Record<string, unknown>): Promise<void>
+  // Exposes the filter./fields/limit REST read surface for arbitrary
+  // registers (natural-key lookups, saga read-backs).
+  fetchRecords(register: string, params: Record<string, string>): Promise<Record<string, unknown>[]>
   probeIncrementalSupport(register: string): Promise<boolean>
   // No-delta full pull: GET the register with no updates_after, for registers
   // that don't support incremental sync (e.g. SVOSerVc).

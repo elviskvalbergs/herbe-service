@@ -57,14 +57,16 @@ describe('Standard Books adapter — capabilities and pushCreate stub', () => {
     })
   })
 
-  it('pushCreate stays unimplemented for registers other than SVOVc in Phase 0', async () => {
+  it('pushCreate stays unsupported for registers outside the SVOVc/WSVc allowlist', async () => {
     const adapter = createStandardBooksAdapter({
       baseUrl: server.url,
       companyNumber: '1',
       auth: { kind: 'basic', username: 'test', password: 'test' },
     })
 
-    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow('pushCreate not implemented for CUVc in Phase 0')
+    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow(
+      'pushCreate not supported for register CUVc (only SVOVc, WSVc)',
+    )
   })
 })
 
@@ -138,6 +140,140 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
     const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
 
     expect(result).toEqual({ erpRef: '' })
+  })
+})
+
+describe('Standard Books adapter — write surface (WS4 Task 3: pushCreate WSVc, pushUpdate, fetchRecords)', () => {
+  let writeServer: Awaited<ReturnType<typeof startFakeErpServer>> | undefined
+
+  afterEach(async () => {
+    await writeServer?.close()
+    writeServer = undefined
+    vi.unstubAllGlobals()
+  })
+
+  function adapterFor(url: string) {
+    return createStandardBooksAdapter({
+      baseUrl: url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+  }
+
+  it('pushCreate assigns a SerNr for WSVc — the allowlist now covers both write registers', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const result = await adapter.pushCreate('WSVc', { SVONr: 5001, EMCode: 'TECH1' })
+
+    expect(result.erpRef).toBe('9004') // max fixture WSVc SerNr (9003) + 1
+  })
+
+  it('pushCreate under noop-create mode returns an empty erpRef, not a throw', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'noop-create' })
+    const adapter = adapterFor(writeServer.url)
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
+  })
+
+  it('pushCreate under http-500 mode throws ErpTransientError', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'http-500' })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })).rejects.toMatchObject({
+      name: 'ErpTransientError',
+    })
+  })
+
+  it('pushUpdate round-trips a field change, readable back via the numeric SerNr filter', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'Updated via pushUpdate' })
+
+    const rows = await adapter.fetchRecords('SVOVc', { 'filter.SerNr': '5001' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].CustComplaint2).toBe('Updated via pushUpdate')
+  })
+
+  it('pushUpdate rejects an unsupported register before making any request', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('CUVc', '1', {})).rejects.toThrow(
+      'pushUpdate not supported for register CUVc (only SVOVc, WSVc)',
+    )
+  })
+
+  it('pushUpdate under http-500 mode throws ErpTransientError', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'http-500' })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpTransientError',
+    })
+  })
+
+  it('pushUpdate throws ErpPermanentError on a 4xx response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })),
+    )
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+    })
+  })
+
+  it('pushUpdate throws ErpPermanentError when the ERP echoes back a different record than requested', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ SerNr: 9999 }), { status: 200 })))
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+    })
+  })
+
+  it('fetchRecords returns matching rows for a filter', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const rows = await adapter.fetchRecords('CUVc', { 'filter.Code': 'CUST001' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].Code).toBe('CUST001')
+  })
+
+  it('fetchRecords returns an empty array when the filter matches nothing', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const rows = await adapter.fetchRecords('CUVc', { 'filter.Code': 'NOPE' })
+
+    expect(rows).toEqual([])
+  })
+
+  it('fetchRecords returns an empty array on a 204 response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    const adapter = adapterFor('http://localhost:9999')
+
+    const rows = await adapter.fetchRecords('CUVc', {})
+
+    expect(rows).toEqual([])
+  })
+
+  it('fetchRecords throws ErpPermanentError on a 4xx response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })),
+    )
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.fetchRecords('CUVc', {})).rejects.toMatchObject({ name: 'ErpPermanentError' })
   })
 })
 

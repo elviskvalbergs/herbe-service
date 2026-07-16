@@ -53,6 +53,12 @@ beforeAll(async () => {
       okPushCalls += 1
       return { erpRef: 'SVO-000123' }
     },
+    pushUpdate: async () => {
+      throw new Error('pushUpdate must not be called by the outbox route')
+    },
+    fetchRecords: async () => {
+      throw new Error('fetchRecords must not be called by the outbox route')
+    },
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
@@ -72,6 +78,12 @@ beforeAll(async () => {
       throw new Error('pullChanges must not be called by the outbox route')
     },
     pushCreate: async () => ({ erpRef: '' }),
+    pushUpdate: async () => {
+      throw new Error('pushUpdate must not be called by the outbox route')
+    },
+    fetchRecords: async () => {
+      throw new Error('fetchRecords must not be called by the outbox route')
+    },
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
@@ -92,6 +104,12 @@ beforeAll(async () => {
       throw new Error('pullChanges must not be called by the outbox route')
     },
     pushCreate: async () => {
+      throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
+    },
+    pushUpdate: async () => {
+      throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
+    },
+    fetchRecords: async () => {
       throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
     },
     probeIncrementalSupport: async () => false,
