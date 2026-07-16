@@ -8,7 +8,7 @@
 // would never trip: it gets bumped to "now" on every request, not just at
 // sign-in. These tests pin down the custom `authTime` claim jwtCallback uses
 // instead, which Auth.js's encoder never touches.
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { JWT } from 'next-auth/jwt'
 
 // `./config` transitively imports `@/lib/db`, which reads DATABASE_URL at
@@ -16,6 +16,15 @@ import type { JWT } from 'next-auth/jwt'
 // __tests__/lib/db.test.ts. A dummy, unreachable URL is fine here: these
 // tests only exercise the pure jwtCallback/sessionCallback functions, which
 // never touch the database.
+//
+// Since Task 3, `./config` also transitively imports credentials-provider.ts
+// -> totp.ts -> session-guard.ts, which imports `auth` from '@/lib/auth' at
+// module scope — whose real implementation transitively requires
+// `next/server`, unresolvable under Vitest (same workaround as
+// totp.test.ts / session-guard.test.ts). Nothing under test here calls
+// auth() either.
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
+
 let jwtCallback: typeof import('./config').jwtCallback
 let sessionCallback: typeof import('./config').sessionCallback
 

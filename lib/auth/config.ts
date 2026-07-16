@@ -3,6 +3,7 @@ import type { DefaultSession, NextAuthConfig, Session } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
+import { authorizeCredentials } from './credentials-provider'
 import { authorizeMagicLink } from './magic-link-provider'
 
 // The default Session["user"] shape has no `id` — augment it so
@@ -96,6 +97,24 @@ export const authConfig: NextAuthConfig = {
       authorize: async (credentials) => {
         const user = await authorizeMagicLink(db, { token: credentials.token as string })
         return user ? { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion } : null
+      },
+    }),
+    Credentials({
+      id: 'credentials',
+      name: 'Email + Password',
+      credentials: {
+        tenantId: { type: 'text' },
+        email: { type: 'email' },
+        password: { type: 'password' },
+        totp: { type: 'text' },
+      },
+      authorize: async (credentials) => {
+        return authorizeCredentials(db, {
+          tenantId: credentials.tenantId as string,
+          email: credentials.email as string,
+          password: credentials.password as string,
+          totp: credentials.totp as string | undefined,
+        })
       },
     }),
   ],
