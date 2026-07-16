@@ -165,6 +165,7 @@ export const users = pgTable(
     tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
     email: text('email').notNull(),
     role: text('role').notNull().default('technician'),
+    sessionVersion: integer('session_version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.tenantId, t.email)],
