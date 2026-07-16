@@ -12,8 +12,22 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
+import type { CustomerRow } from '@/drizzle/schema'
 
 type Db = PostgresJsDatabase<typeof schema>
+
+// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 5): the push saga (lib/sync/push/gather.ts) resolves a service
+// order's customerId to its erpRef (CustCode) to build the SVOVc create
+// payload. Same tenant/deletedAt scoping idiom as the other domain stores.
+export async function getCustomerById(db: Db, tenantId: string, id: string): Promise<CustomerRow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.customers)
+    .where(and(eq(schema.customers.id, id), eq(schema.customers.tenantId, tenantId), isNull(schema.customers.deletedAt)))
+
+  return row ?? null
+}
 
 export async function resolveCustomerIdsByCodes(
   db: Db,

@@ -54,6 +54,8 @@ export const customers = pgTable(
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_customers_change_seq').on(t.changeSeq)],
 )
 
+export type CustomerRow = InferSelectModel<typeof customers>
+
 // The Phase-0 outbound round-trip (04-erp-sync.md outbox). id is the
 // CLIENT-generated UUID, not server-assigned — it's the idempotency key a
 // device replays a queued op under, so a retried POST never double-pushes.
