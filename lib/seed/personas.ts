@@ -1,8 +1,10 @@
 // lib/seed/personas.ts
+import type { Role } from '@/lib/auth/roles'
+
 export interface Persona {
   id: string
   email: string
-  role: 'technician' | 'team_lead' | 'dispatcher' | 'back_office' | 'admin'
+  role: Role
 }
 
 export const PERSONAS = {

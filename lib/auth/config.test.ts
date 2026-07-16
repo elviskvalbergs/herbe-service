@@ -41,6 +41,12 @@ describe('jwtCallback', () => {
     expect(token?.tenantId).toBe('tenant-1')
   })
 
+  it('stamps role onto the token on trigger "signIn"', () => {
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1', role: 'technician' }, trigger: 'signIn' })
+
+    expect(token?.role).toBe('technician')
+  })
+
   it('preserves the original tenantId across a later call with no trigger (rolling refresh)', () => {
     const existingToken: JWT = { userId: 'user-1', sessionVersion: 1, authTime: Math.floor(Date.now() / 1000), tenantId: 'tenant-1' }
 
@@ -84,6 +90,7 @@ describe('jwtCallback', () => {
     const token = jwtCallback({ token: {} })
 
     expect(token?.userId).toBeUndefined()
+    expect(token?.role).toBeUndefined()
     expect(token?.authTime).toBeGreaterThanOrEqual(nowSecs - 1)
   })
 })
@@ -91,7 +98,7 @@ describe('jwtCallback', () => {
 describe('sessionCallback', () => {
   it('copies token.userId onto session.user.id', () => {
     const session = sessionCallback({
-      session: { user: { id: '', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: '', tenantId: '', role: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: { userId: 'user-1' },
     })
 
@@ -100,7 +107,7 @@ describe('sessionCallback', () => {
 
   it('leaves session.user.id untouched when the token has no userId', () => {
     const session = sessionCallback({
-      session: { user: { id: 'unchanged', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'unchanged', tenantId: '', role: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: {},
     })
 
@@ -109,7 +116,7 @@ describe('sessionCallback', () => {
 
   it('copies token.tenantId onto session.user.tenantId (Task 16b: the claim the sync routes trust)', () => {
     const session = sessionCallback({
-      session: { user: { id: 'user-1', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'user-1', tenantId: '', role: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: { userId: 'user-1', tenantId: 'tenant-1' },
     })
 
@@ -118,10 +125,28 @@ describe('sessionCallback', () => {
 
   it('leaves session.user.tenantId untouched when the token has no tenantId', () => {
     const session = sessionCallback({
-      session: { user: { id: 'user-1', tenantId: 'unchanged' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'user-1', tenantId: 'unchanged', role: '' }, expires: '2099-01-01T00:00:00.000Z' },
       token: {},
     })
 
     expect(session.user.tenantId).toBe('unchanged')
+  })
+
+  it('copies token.role onto session.user.role', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      token: { userId: 'user-1', role: 'technician' },
+    })
+
+    expect(session.user.role).toBe('technician')
+  })
+
+  it('leaves session.user.role untouched when the token has no role', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: 'unchanged' }, expires: '2099-01-01T00:00:00.000Z' },
+      token: {},
+    })
+
+    expect(session.user.role).toBe('unchanged')
   })
 })

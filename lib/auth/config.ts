@@ -13,12 +13,14 @@ import { authorizeMagicLink } from './magic-link-provider'
 declare module 'next-auth' {
   interface User {
     tenantId?: string
+    role?: string
   }
 
   interface Session {
     user: {
       id: string
       tenantId: string
+      role: string
     } & DefaultSession['user']
   }
 }
@@ -35,7 +37,7 @@ const THIRTY_DAYS_SECS = 30 * 24 * 60 * 60
 // only manages iat/exp/jti at encode time, so custom claims pass through as-is.
 export function jwtCallback(params: {
   token: JWT
-  user?: { id?: string; tenantId?: string } | null
+  user?: { id?: string; tenantId?: string; role?: string } | null
   trigger?: 'signIn' | 'signUp' | 'update'
 }): JWT | null {
   const { token, user, trigger } = params
@@ -44,6 +46,7 @@ export function jwtCallback(params: {
   if (trigger === 'signIn' && user?.id) {
     token.userId = user.id
     token.tenantId = user.tenantId
+    token.role = user.role
     // Placeholder for Phase 1: bump a per-user counter in the `users` table
     // to force-invalidate all of that user's live sessions (role change /
     // offboarding). Not enforced against anything yet in Phase 0.
@@ -68,6 +71,9 @@ export function sessionCallback(params: { session: Session; token: JWT }): Sessi
   if (typeof token.tenantId === 'string') {
     session.user.tenantId = token.tenantId
   }
+  if (typeof token.role === 'string') {
+    session.user.role = token.role
+  }
   return session
 }
 
@@ -87,7 +93,7 @@ export const authConfig: NextAuthConfig = {
       credentials: { token: { type: 'text' } },
       authorize: async (credentials) => {
         const user = await authorizeMagicLink(db, { token: credentials.token as string })
-        return user ? { id: user.id, email: user.email, tenantId: user.tenantId } : null
+        return user ? { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role } : null
       },
     }),
   ],
