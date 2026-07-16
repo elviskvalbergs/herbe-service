@@ -56,6 +56,15 @@ export async function POST(request: Request) {
     return Response.json({ status: 'already_applied', erpRef: existing.erpRef })
   }
 
+  // Review (WS4 task 6): a missing/non-string payload.orderId used to fall
+  // through to the enqueue/push try-block below and surface as a generic 502
+  // (op marked failed) only after a DB write. Reject it up front instead —
+  // same "no work done" posture as the 401 guard above.
+  const orderId = body.payload?.orderId
+  if (typeof orderId !== 'string') {
+    return new Response('Bad Request', { status: 400 })
+  }
+
   await db.insert(schema.outboxOps).values({
     id: body.id,
     tenantId,
@@ -71,7 +80,6 @@ export async function POST(request: Request) {
     const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
     const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
 
-    const orderId: string = body.payload.orderId
     const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId })
     await processPushQueue(db, adapter, company.id)
 

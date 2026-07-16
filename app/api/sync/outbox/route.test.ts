@@ -302,6 +302,86 @@ describe('POST /api/sync/outbox', () => {
     expect(rows[0].tenantId).toBe(tenantB.tenantId)
   })
 
+  it('IDOR regression (review): a tenant-A session cannot push tenant B\'s real service order via payload.orderId', async () => {
+    const tenantA = await makeCompanyWithOrder('ok_push_adapter', 'idor-order-tenant-a')
+    const tenantB = await makeCompanyWithOrder('must_not_be_called_adapter', 'idor-order-tenant-b')
+    const opId = '22222222-0000-0000-0000-000000000030'
+    const callsBefore = okPushCalls
+
+    // Session belongs to tenant A; payload.orderId names tenant B's real
+    // service_orders row (not an attacker-supplied tenantId this time — the
+    // id itself points cross-tenant). getServiceOrderById(db, tenantId, id)
+    // (lib/domain/stores/service-orders.ts) filters on tenantId, so gathering
+    // the SVOVc payload for A's session against B's orderId must find
+    // nothing and dead-letter the step — never reach ANY adapter's pushCreate.
+    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: tenantA.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const body = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId: tenantB.orderId } }
+
+    const { POST } = await import('./route')
+    const res = await POST(new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(body) }))
+    const resBody = await res.json()
+
+    expect(res.status).toBe(502)
+    expect(resBody.status).toBe('failed')
+    expect(resBody.error).toContain('not found')
+    // Fails closed before any ERP push — tenant A's own adapter (the only one
+    // that could have been reached from A's session) was never called.
+    expect(okPushCalls).toBe(callsBefore)
+
+    const rows = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('failed')
+    expect(rows[0].erpRef).toBeNull()
+
+    // No erp_ref was written for tenant B's order by this request.
+    const refs = await db.select().from(schema.erpRefs).where(eq(schema.erpRefs.entityId, tenantB.orderId))
+    expect(refs).toHaveLength(0)
+
+    // The enqueued group (created under A's tenantId, lane keyed by B's
+    // orderId) dead-lettered rather than silently disappearing.
+    const groups = await db.select().from(schema.erpPushGroups).where(eq(schema.erpPushGroups.lane, `order:${tenantB.orderId}`))
+    expect(groups).toHaveLength(1)
+    expect(groups[0].status).toBe('dead')
+  })
+
+  it('rejects a payload with a missing or non-string orderId with 400, before writing any outbox row (review)', async () => {
+    const { tenantId } = await makeCompanyWithOrder('ok_push_adapter', 'bad-orderid-tenant')
+    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const callsBefore = okPushCalls
+    const { POST } = await import('./route')
+
+    const missingId = '22222222-0000-0000-0000-000000000040'
+    const missing = await POST(
+      new Request('http://x/api/sync/outbox', {
+        method: 'POST',
+        body: JSON.stringify({ id: missingId, entity: 'serviceOrder', op: 'create', payload: {} }),
+      }),
+    )
+    expect(missing.status).toBe(400)
+
+    const nonStringId = '22222222-0000-0000-0000-000000000041'
+    const nonString = await POST(
+      new Request('http://x/api/sync/outbox', {
+        method: 'POST',
+        body: JSON.stringify({ id: nonStringId, entity: 'serviceOrder', op: 'create', payload: { orderId: 12345 } }),
+      }),
+    )
+    expect(nonString.status).toBe(400)
+
+    // The guard runs before the outboxOps insert and before any push attempt.
+    expect(okPushCalls).toBe(callsBefore)
+    const rows = await db
+      .select()
+      .from(schema.outboxOps)
+      .where(eq(schema.outboxOps.id, missingId))
+    expect(rows).toHaveLength(0)
+    const rows2 = await db
+      .select()
+      .from(schema.outboxOps)
+      .where(eq(schema.outboxOps.id, nonStringId))
+    expect(rows2).toHaveLength(0)
+  })
+
   it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
     const { tenantId, orderId } = await makeCompanyWithOrder('silent_noop_adapter', 'noop-tenant')
     authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
