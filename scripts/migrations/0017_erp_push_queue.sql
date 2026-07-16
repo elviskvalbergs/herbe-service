@@ -11,8 +11,8 @@
 -- groups/steps are kept, not deleted.
 CREATE TABLE IF NOT EXISTS "erp_push_groups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"),
-  "erp_company_id" uuid NOT NULL REFERENCES "erp_companies"("id"),
+  "tenant_id" uuid NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "erp_company_id" uuid NOT NULL REFERENCES "erp_companies"("id") ON DELETE CASCADE,
   "lane" text NOT NULL,
   "kind" text NOT NULL,          -- 'order_create' | 'worksheet_push'
   "status" text NOT NULL DEFAULT 'pending',  -- pending|running|succeeded|failed|dead

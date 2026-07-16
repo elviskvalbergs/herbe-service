@@ -490,8 +490,8 @@ export const erpPushGroups = pgTable(
   'erp_push_groups',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
-    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id, { onDelete: 'cascade' }),
     lane: text('lane').notNull(),
     kind: text('kind').notNull(), // 'order_create' | 'worksheet_push'
     status: text('status').notNull().default('pending'), // PushStatus
