@@ -152,10 +152,13 @@ describe('gatherWsCreateInput', () => {
     // Seed a MainStockBlock record directly against the fake ERP (its POST
     // handler is register-agnostic — only the standard-books adapter
     // restricts pushCreate to SVOVc/WSVc, so this goes over plain fetch).
+    // Form-urlencoded set_field.<Field>=<value> is the real wire format
+    // (docs/09-REST-API-REFERENCE.md, confirmed live in Task 7) — the fake
+    // ERP's POST handler now expects this, not a JSON body.
     await fetch(`${server.url}/api/1/MainStockBlock`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ MainStock: 'VAN-MAIN' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'set_field.MainStock=VAN-MAIN',
     })
 
     const withFallback = await gatherWsCreateInput(db, adapter, tenantId, erpCompanyId, worksheet.id)
@@ -187,7 +190,7 @@ describe('gatherWsCreateInput', () => {
       kind: 'unit',
       name: 'Linked Unit',
       labelId: `lbl-${randomUUID()}`,
-      attributes: { ItemCode: 'PART1' },
+      attributes: { itemCode: 'PART1' }, // lowercase — matches ingestServiceItems' actual attribute key
     })
 
     await db.insert(schema.worksheetRows).values([

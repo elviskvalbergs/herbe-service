@@ -76,7 +76,12 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   })
 
   it('returns the erpRef from a real assigned SerNr', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ SerNr: '230022' }), { status: 200 }))
+    // Found live in Task 7: a successful create's response is enveloped
+    // exactly like a GET (data.<Register>: [record]), not a flat top-level
+    // record.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ SerNr: '230022' }] } }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const adapter = createStandardBooksAdapter({
@@ -97,7 +102,9 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   it('falls back to @url when SerNr is absent', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '/api/1/SVOVc/230022' }), { status: 200 })),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: { SVOVc: [{ '@url': '/api/1/SVOVc/230022' }] } }), { status: 200 }),
+      ),
     )
 
     const adapter = createStandardBooksAdapter({
@@ -112,7 +119,27 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   })
 
   it('returns an empty erpRef (not an error) when the ERP echoes back a 200 with neither SerNr nor @url — the confirmed silent-no-op case', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '' }), { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ '@url': '' }] } }), { status: 200 })),
+    )
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
+  })
+
+  it('returns an empty erpRef when the ERP responds 200 with no data envelope at all (e.g. an error body)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { '@code': '1071' } }), { status: 200 })),
+    )
 
     const adapter = createStandardBooksAdapter({
       baseUrl: 'http://localhost:9999',
@@ -230,7 +257,12 @@ describe('Standard Books adapter — write surface (WS4 Task 3: pushCreate WSVc,
   })
 
   it('pushUpdate throws ErpPermanentError when the ERP echoes back a different record than requested', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ SerNr: 9999 }), { status: 200 })))
+    // Same data.<Register> envelope as a create response (see pushCreate
+    // tests above) — confirmed live in Task 7.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ SerNr: 9999 }] } }), { status: 200 })),
+    )
     const adapter = adapterFor('http://localhost:9999')
 
     await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({

@@ -55,6 +55,46 @@ export function handleRegisterGet(
   return c.json({ data: { [register]: rows }, '@sequence': sequence })
 }
 
+// Standard Books REST write convention (docs/09-REST-API-REFERENCE.md,
+// confirmed live in WS4 Task 7): writes are form-urlencoded, never JSON —
+// header fields as `set_field.<Field>=<value>`, row fields as
+// `set_row_field.<rowIndex>.<Field>=<value>`. This reconstructs the flat
+// {..., rows: [...]} shape the rest of this module (createRecord/
+// updateRecord, the fixtures) already expects.
+const SET_FIELD_PREFIX = 'set_field.'
+const SET_ROW_FIELD_PATTERN = /^set_row_field\.(\d+)\.(.+)$/
+
+function parseWriteBody(form: Record<string, string | File>): FakeErpRecord {
+  const record: FakeErpRecord = {}
+  const rows: Record<number, FakeErpRecord> = {}
+
+  for (const [key, value] of Object.entries(form)) {
+    if (typeof value !== 'string') continue
+
+    const rowMatch = key.match(SET_ROW_FIELD_PATTERN)
+    if (rowMatch) {
+      const index = Number(rowMatch[1])
+      const field = rowMatch[2]
+      rows[index] ??= {}
+      rows[index][field] = value
+      continue
+    }
+
+    if (key.startsWith(SET_FIELD_PREFIX)) {
+      record[key.slice(SET_FIELD_PREFIX.length)] = value
+    }
+  }
+
+  const rowIndices = Object.keys(rows)
+    .map(Number)
+    .sort((a, b) => a - b)
+  if (rowIndices.length > 0) {
+    record.rows = rowIndices.map((i) => rows[i])
+  }
+
+  return record
+}
+
 export async function handleRegisterPost(
   c: Context<Record<string, never>, '/api/:company/:register'>,
   store: RecordStore,
@@ -67,22 +107,45 @@ export async function handleRegisterPost(
   }
 
   const register = c.req.param('register')
-  const payload = await c.req.json<FakeErpRecord>()
-  const hasSerNr = payload.SerNr !== undefined && payload.SerNr !== null && payload.SerNr !== ''
+  const payload = parseWriteBody(await c.req.parseBody())
 
-  if (mode === 'noop-create' && !hasSerNr) {
+  if (mode === 'noop-create') {
     // The "number-series trap" (verified live, docs/04 + docs/19): HTTP 200,
     // payload echoed verbatim, no SerNr assigned, nothing persisted.
     return c.json(payload, 200)
   }
 
   const fixtureRows = FIXTURES[register] ?? []
+  const record = createRecord(store, register, fixtureRows, payload)
+  // Match the real Standard Books envelope for a successful create
+  // (verified live, WS4 Task 7): the created record comes back nested under
+  // data.<Register>, same shape as a GET — never a flat top-level object.
+  return c.json({ data: { [register]: [record] } }, 200)
+}
 
-  if (hasSerNr) {
-    const { record } = updateRecord(store, register, fixtureRows, payload)
-    return c.json(record, 200)
+// PATCH /api/:company/:register/:sernr — update-by-key (docs/09-REST-API-
+// REFERENCE.md "PATCH - Update Records"): the record id is the URL segment,
+// never part of the body. An unknown SerNr is the real ERP's silent no-op —
+// echo the payload back (with the requested SerNr) and store nothing.
+export async function handleRegisterPatch(
+  c: Context<Record<string, never>, '/api/:company/:register/:sernr'>,
+  store: RecordStore,
+  serverMode?: FakeErpMode,
+) {
+  const mode = (c.req.header('x-fake-erp-mode') as FakeErpMode | undefined) ?? serverMode
+
+  if (mode === 'http-500') {
+    return c.json({ error: 'internal server error' }, 500)
   }
 
-  const record = createRecord(store, register, fixtureRows, payload)
-  return c.json(record, 200)
+  const register = c.req.param('register')
+  const sernr = Number(c.req.param('sernr'))
+  const payload = { ...parseWriteBody(await c.req.parseBody()), SerNr: sernr }
+
+  const fixtureRows = FIXTURES[register] ?? []
+  const { record } = updateRecord(store, register, fixtureRows, payload)
+  // Same envelope as a successful create (see handleRegisterPost) — applied
+  // uniformly here too, matched or not, so callers always extract via the
+  // same data.<Register> shape.
+  return c.json({ data: { [register]: [record] } }, 200)
 }

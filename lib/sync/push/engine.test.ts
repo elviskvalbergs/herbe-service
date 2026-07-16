@@ -592,7 +592,7 @@ describe('processPushQueue — empty-serial natural-key guard', () => {
       kind: 'unit',
       name: 'Non-serialized part',
       labelId: `lbl-${randomUUID()}`,
-      attributes: { ItemCode: 'PART-X' },
+      attributes: { itemCode: 'PART-X' }, // lowercase — matches ingestServiceItems' actual attribute key
       // no serialNr — this order's row has an itemCode but no serial.
     })
 

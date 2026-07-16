@@ -59,7 +59,12 @@ export async function getPushConfig(db: Db, erpCompanyId: string): Promise<PushC
 function readItemCode(item: ServiceItemRow | undefined): string | null {
   if (!item) return null
   const attrs = (item.attributes ?? {}) as Record<string, unknown>
-  const code = attrs.ItemCode
+  // ingestServiceItems (lib/sync/ingest/service-items.ts) stores the ERP's
+  // ItemCode field as attributes.itemCode (lowercase camelCase, verified by
+  // its own DB-backed test) — NOT the PascalCase `ItemCode` the raw ERP row
+  // uses. Found live in Task 7: reading the wrong casing here silently
+  // nulled ArtCode for every real ERP-ingested service item.
+  const code = attrs.itemCode
   return typeof code === 'string' && code ? code : null
 }
 

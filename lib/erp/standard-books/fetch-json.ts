@@ -50,9 +50,53 @@ export async function fetchRegisterJson(
   return { status: res.status, body: await res.json() }
 }
 
-// POST layer for pushCreate/pushUpdate — same auth/URL/error mapping as
-// fetchRegisterJson, verbatim payload, no register-specific shaping (that's
-// the adapter's job).
+// Standard Books REST write convention (confirmed against the official REST
+// API reference, docs/09-REST-API-REFERENCE.md "POST - Create Records" /
+// "PATCH - Update Records" — NOT a JSON body): header fields are posted as
+// `set_field.<Field>=<value>`, row fields as
+// `set_row_field.<rowIndex>.<Field>=<value>`, form-urlencoded and joined
+// with `&`. Found live in Task 7 (WS4 outbound slice): pushCreate previously
+// sent a flat JSON body, which the real ERP never actually parsed as field
+// data — every create landed with no fields set, so CustCode read back
+// blank and failed the M4Code "Kods nav reģistrēts" (code not registered)
+// check on save (HTTP 200, XML error body, error code 1120) even for a
+// customer code proven to exist via a live GET. The fake-ERP mock passed
+// throughout WS4 tasks 2-6 because it simply echoed back whatever shape it
+// was sent — it was never checked against the real wire contract until this
+// task's live run.
+const SET_FIELD_PREFIX = 'set_field'
+const SET_ROW_FIELD_PREFIX = 'set_row_field'
+
+function buildFormBody(payload: Record<string, unknown>): string {
+  const pairs: string[] = []
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (key === 'rows' || value === undefined || value === null) continue
+    pairs.push(`${SET_FIELD_PREFIX}.${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+  }
+
+  const rows = Array.isArray(payload.rows) ? (payload.rows as Record<string, unknown>[]) : []
+  rows.forEach((row, index) => {
+    for (const [key, value] of Object.entries(row)) {
+      if (value === undefined || value === null) continue
+      pairs.push(`${SET_ROW_FIELD_PREFIX}.${index}.${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    }
+  })
+
+  return pairs.join('&')
+}
+
+function writeHeaders(config: StandardBooksConfig): HeadersInit {
+  return {
+    Authorization: authHeader(config),
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+  }
+}
+
+// POST layer for pushCreate — create only (no SerNr; the REST create
+// auto-assigns via NextSerNr, docs/19-demo-probe-results.md §10). Same
+// auth/error mapping as fetchRegisterJson.
 export async function postRegisterJson(
   config: StandardBooksConfig,
   register: string,
@@ -60,11 +104,26 @@ export async function postRegisterJson(
 ): Promise<{ status: number; body: Record<string, unknown> | null }> {
   const res = await requestJson(
     registerUrl(config, register),
-    {
-      method: 'POST',
-      headers: { Authorization: authHeader(config), 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
+    { method: 'POST', headers: writeHeaders(config), body: buildFormBody(payload) },
+    register,
+  )
+
+  return { status: res.status, body: await res.json().catch(() => null) }
+}
+
+// PATCH layer for pushUpdate — update-by-key: recordRef is the URL segment
+// identifying the record (docs/09-REST-API-REFERENCE.md "PATCH - Update
+// Records": `PATCH /api/<company>/<Register>/<SerNr>`), never embedded in
+// the body.
+export async function patchRegisterJson(
+  config: StandardBooksConfig,
+  register: string,
+  recordRef: string,
+  payload: Record<string, unknown>,
+): Promise<{ status: number; body: Record<string, unknown> | null }> {
+  const res = await requestJson(
+    `${registerUrl(config, register)}/${recordRef}`,
+    { method: 'PATCH', headers: writeHeaders(config), body: buildFormBody(payload) },
     register,
   )
 

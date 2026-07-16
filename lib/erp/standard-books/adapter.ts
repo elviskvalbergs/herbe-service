@@ -1,6 +1,6 @@
 import { registerAdapter, ErpPermanentError, type ChangeSet, type ErpAdapter } from '@herbe/erp-core'
 import { standardBooksConfigSchema } from './config-schema'
-import { fetchRegisterJson, postRegisterJson } from './fetch-json'
+import { fetchRegisterJson, postRegisterJson, patchRegisterJson } from './fetch-json'
 
 // Standard Books nests rows under `data.<Register>` (verified live) — NOT a
 // flat `data` array. Mirrors the portal's extractRegisterRows, with a
@@ -86,12 +86,16 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
       assertWritableRegister('pushCreate', register)
 
       const { body } = await postRegisterJson(config, register, payload)
+      // Found live in Task 7: a successful create's response is enveloped
+      // exactly like a GET (`data.<Register>: [record]`), NOT a flat
+      // top-level record — reuse the same extraction as every read path.
       // Per the demo-probe caveat (docs/19-demo-probe-results.md §10): a 200
       // with an echoed, unassigned payload is NOT a success signal — only a
       // non-empty SerNr/@url proves the record persisted. Empty is returned
       // as data, not thrown — the caller (push saga) decides how to react
       // (Decision 3's persistence-verification rule).
-      const erpRef = body?.SerNr ?? body?.['@url'] ?? ''
+      const [created] = extractRows(body, register)
+      const erpRef = created?.SerNr ?? created?.['@url'] ?? ''
 
       return { erpRef: String(erpRef) }
     },
@@ -99,14 +103,19 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     async pushUpdate(register: string, recordRef: string, payload: Record<string, unknown>): Promise<void> {
       assertWritableRegister('pushUpdate', register)
 
-      // recordRef wins over any SerNr the caller's payload happens to carry.
-      const { status, body } = await postRegisterJson(config, register, { ...payload, SerNr: recordRef })
+      // recordRef is the URL segment identifying the record to update
+      // (PATCH /api/<company>/<Register>/<recordRef>) — never embedded in
+      // the body, so any SerNr the caller's payload happens to carry is
+      // simply ignored (buildFormBody drops nothing, but the URL wins).
+      const { status, body } = await patchRegisterJson(config, register, recordRef, payload)
 
       if (status >= 400) {
         throw new ErpPermanentError(`pushUpdate ${register} returned ${status}`)
       }
 
-      const returnedSerNr = body?.SerNr
+      // Same envelope as pushCreate (data.<Register>: [record]) — see above.
+      const [updated] = extractRows(body, register)
+      const returnedSerNr = updated?.SerNr
       if (returnedSerNr !== undefined && returnedSerNr !== null && String(returnedSerNr) !== recordRef) {
         // Wrong-record safety check: an update-by-key POST that echoes back
         // a different record is never a successful update, whatever the

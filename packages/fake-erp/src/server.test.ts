@@ -67,6 +67,15 @@ describe('fake ERP server', () => {
   })
 })
 
+// Standard Books REST write convention (docs/09-REST-API-REFERENCE.md,
+// confirmed live in WS4 Task 7): writes are form-urlencoded
+// `set_field.<Field>=<value>` pairs, never a JSON body.
+function formBody(fields: Record<string, string>): string {
+  return Object.entries(fields)
+    .map(([k, v]) => `set_field.${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&')
+}
+
 describe('fake ERP server — POST writes', () => {
   let writeServer: Awaited<ReturnType<typeof startFakeErpServer>>
 
@@ -81,14 +90,16 @@ describe('fake ERP server — POST writes', () => {
   it('create assigns an incrementing SerNr and the record appears on a later GET', async () => {
     const res = await fetch(`${writeServer.url}/api/1/SVOVc`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CustCode: 'CUST003' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody({ CustCode: 'CUST003' }),
     })
     const body = await res.json()
 
+    // Same data.<Register> envelope as a GET response (confirmed live, Task 7).
     expect(res.status).toBe(200)
-    expect(body.SerNr).toBe(5005) // max fixture SerNr (5004) + 1
-    expect(body.CustCode).toBe('CUST003')
+    expect(body.data.SVOVc).toHaveLength(1)
+    expect(body.data.SVOVc[0].SerNr).toBe(5005) // max fixture SerNr (5004) + 1
+    expect(body.data.SVOVc[0].CustCode).toBe('CUST003')
 
     const getRes = await fetch(`${writeServer.url}/api/1/SVOVc`)
     const getBody = await getRes.json()
@@ -100,31 +111,56 @@ describe('fake ERP server — POST writes', () => {
   it('a second create increments from the first created record, not just the fixtures', async () => {
     await fetch(`${writeServer.url}/api/1/SVOVc`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CustCode: 'CUST003' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody({ CustCode: 'CUST003' }),
     })
     const res = await fetch(`${writeServer.url}/api/1/SVOVc`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CustCode: 'CUST004' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody({ CustCode: 'CUST004' }),
     })
     const body = await res.json()
 
-    expect(body.SerNr).toBe(5006)
+    expect(body.data.SVOVc[0].SerNr).toBe(5006)
   })
 
-  it('update-by-key merges the payload into the existing record', async () => {
+  it('create reconstructs row fields from set_row_field.<n>.<Field> pairs', async () => {
     const res = await fetch(`${writeServer.url}/api/1/SVOVc`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ SerNr: 5001, DoneMark: '0' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'set_field.CustCode=CUST003&set_row_field.0.ArtCode=VIJ1&set_row_field.0.SerialNr=1111',
     })
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body.SerNr).toBe(5001)
-    expect(body.DoneMark).toBe('0')
-    expect(body.CustCode).toBe('CUST001') // untouched fields survive the merge
+    expect(body.data.SVOVc[0].rows).toEqual([{ ArtCode: 'VIJ1', SerialNr: '1111' }])
+  })
+})
+
+describe('fake ERP server — PATCH updates', () => {
+  let writeServer: Awaited<ReturnType<typeof startFakeErpServer>>
+
+  beforeEach(async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+  })
+
+  afterEach(async () => {
+    await writeServer.close()
+  })
+
+  it('update-by-key merges the payload into the existing record', async () => {
+    const res = await fetch(`${writeServer.url}/api/1/SVOVc/5001`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody({ DoneMark: '0' }),
+    })
+    const body = await res.json()
+
+    // Same data.<Register> envelope as a create response (confirmed live, Task 7).
+    expect(res.status).toBe(200)
+    expect(body.data.SVOVc[0].SerNr).toBe(5001)
+    expect(body.data.SVOVc[0].DoneMark).toBe('0')
+    expect(body.data.SVOVc[0].CustCode).toBe('CUST001') // untouched fields survive the merge
 
     const getRes = await fetch(`${writeServer.url}/api/1/SVOVc`)
     const getBody = await getRes.json()
@@ -133,15 +169,15 @@ describe('fake ERP server — POST writes', () => {
   })
 
   it('update with an unknown SerNr echoes the payload back and stores nothing', async () => {
-    const res = await fetch(`${writeServer.url}/api/1/SVOVc`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ SerNr: 99999, CustCode: 'GHOST' }),
+    const res = await fetch(`${writeServer.url}/api/1/SVOVc/99999`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody({ CustCode: 'GHOST' }),
     })
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(body).toEqual({ SerNr: 99999, CustCode: 'GHOST' })
+    expect(body.data.SVOVc).toEqual([{ SerNr: 99999, CustCode: 'GHOST' }])
 
     const getRes = await fetch(`${writeServer.url}/api/1/SVOVc`)
     const getBody = await getRes.json()
@@ -155,8 +191,8 @@ describe('fake ERP server — failure modes', () => {
     try {
       const res = await fetch(`${modeServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ CustCode: 'CUST999' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody({ CustCode: 'CUST999' }),
       })
       const body = await res.json()
 
@@ -177,8 +213,8 @@ describe('fake ERP server — failure modes', () => {
     try {
       const res = await fetch(`${normalServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-fake-erp-mode': 'noop-create' },
-        body: JSON.stringify({ CustCode: 'CUST999' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-fake-erp-mode': 'noop-create' },
+        body: formBody({ CustCode: 'CUST999' }),
       })
       const body = await res.json()
 
@@ -194,8 +230,8 @@ describe('fake ERP server — failure modes', () => {
     try {
       const res = await fetch(`${errorServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ CustCode: 'CUST999' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody({ CustCode: 'CUST999' }),
       })
       expect(res.status).toBe(500)
     } finally {
@@ -208,12 +244,26 @@ describe('fake ERP server — failure modes', () => {
     try {
       const res = await fetch(`${normalServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-fake-erp-mode': 'http-500' },
-        body: JSON.stringify({ CustCode: 'CUST999' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-fake-erp-mode': 'http-500' },
+        body: formBody({ CustCode: 'CUST999' }),
       })
       expect(res.status).toBe(500)
     } finally {
       await normalServer.close()
+    }
+  })
+
+  it('http-500 mode also fails PATCH updates', async () => {
+    const errorServer = await startFakeErpServer({ port: 0, mode: 'http-500' })
+    try {
+      const res = await fetch(`${errorServer.url}/api/1/SVOVc/5001`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody({ DoneMark: '1' }),
+      })
+      expect(res.status).toBe(500)
+    } finally {
+      await errorServer.close()
     }
   })
 
@@ -223,19 +273,19 @@ describe('fake ERP server — failure modes', () => {
     try {
       const errorRes = await fetch(`${errorServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ CustCode: 'A' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody({ CustCode: 'A' }),
       })
       const normalRes = await fetch(`${normalServer.url}/api/1/SVOVc`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ CustCode: 'B' }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody({ CustCode: 'B' }),
       })
       const normalBody = await normalRes.json()
 
       expect(errorRes.status).toBe(500)
       expect(normalRes.status).toBe(200)
-      expect(normalBody.SerNr).toBe(5005) // unaffected by the error server's mode or requests
+      expect(normalBody.data.SVOVc[0].SerNr).toBe(5005) // unaffected by the error server's mode or requests
     } finally {
       await errorServer.close()
       await normalServer.close()
