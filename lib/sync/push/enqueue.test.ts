@@ -196,4 +196,27 @@ describe('approveWorksheet', () => {
       approveWorksheet(db, { tenantId, erpCompanyId, worksheetId: '00000000-0000-0000-0000-000000000000' }),
     ).rejects.toThrow(/not found/)
   })
+
+  it('leaves the worksheet status unchanged when createPushGroup fails inside the same transaction', async () => {
+    const orderId = await makeOrder()
+    const technicianUserId = await makeTechnician(true)
+    const worksheetId = await makeDoneWorksheet(orderId, technicianUserId)
+
+    // An erpCompanyId that doesn't exist trips the erp_push_groups.erp_company_id
+    // foreign key inside createPushGroup's insert — a genuine DB failure, not a
+    // mock. Before the fix (setWorksheetStatus and createPushGroup as separate
+    // writes), this would leave the worksheet stranded at Approved with no
+    // group. With both in one db.transaction, the whole thing rolls back.
+    const bogusErpCompanyId = '00000000-0000-0000-0000-000000000000'
+
+    await expect(
+      approveWorksheet(db, { tenantId, erpCompanyId: bogusErpCompanyId, worksheetId }),
+    ).rejects.toThrow()
+
+    const worksheet = await getWorksheetById(db, tenantId, worksheetId)
+    expect(worksheet!.status).toBe('Done')
+
+    const groups = await db.select().from(schema.erpPushGroups).where(eq(schema.erpPushGroups.lane, `order:${orderId}`))
+    expect(groups).toHaveLength(0)
+  })
 })

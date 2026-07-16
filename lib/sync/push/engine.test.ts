@@ -575,6 +575,52 @@ describe('processPushQueue — natural-key adoption', () => {
   })
 })
 
+describe('processPushQueue — empty-serial natural-key guard', () => {
+  let server: Awaited<ReturnType<typeof startFakeErpServer>> | undefined
+  afterEach(async () => {
+    await server?.close()
+    server = undefined
+  })
+
+  it('two same-customer, same-day orders with only non-serialized rows both create distinct SVOVc records (no false adoption)', async () => {
+    server = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(server.url)
+
+    const item = await insertServiceItem(db, {
+      tenantId,
+      erpCompanyId,
+      kind: 'unit',
+      name: 'Non-serialized part',
+      labelId: `lbl-${randomUUID()}`,
+      attributes: { ItemCode: 'PART-X' },
+      // no serialNr — this order's row has an itemCode but no serial.
+    })
+
+    const sameDay = new Date('2026-07-02T10:00:00Z')
+    const orderAId = await makeOrder(erpCompanyId, customerId, { requestedAt: sameDay })
+    await db.insert(schema.serviceOrderRows).values({ orderId: orderAId, serviceItemId: item.id, chargeType: 'invoiceable' })
+    const orderBId = await makeOrder(erpCompanyId, customerId, { requestedAt: sameDay })
+    await db.insert(schema.serviceOrderRows).values({ orderId: orderBId, serviceItemId: item.id, chargeType: 'invoiceable' })
+
+    await enqueueOrderCreatePush(db, { tenantId, erpCompanyId, orderId: orderAId })
+    await enqueueOrderCreatePush(db, { tenantId, erpCompanyId, orderId: orderBId })
+
+    const summary = await processPushQueue(db, adapter, erpCompanyId)
+    expect(summary).toMatchObject({ groupsProcessed: 2, groupsSucceeded: 2, stepsSucceeded: 2 })
+
+    const refsA = await getErpRefs(db, tenantId, 'service_order', orderAId)
+    const refsB = await getErpRefs(db, tenantId, 'service_order', orderBId)
+    expect(refsA).toHaveLength(1)
+    expect(refsB).toHaveLength(1)
+    expect(refsA[0].recordRef).not.toBe(refsB[0].recordRef) // two distinct SVOVc records, not a false adoption
+
+    const orderA = await getServiceOrderById(db, tenantId, orderAId)
+    const orderB = await getServiceOrderById(db, tenantId, orderBId)
+    expect(orderA!.orderNumber).toBe(refsA[0].recordRef)
+    expect(orderB!.orderNumber).toBe(refsB[0].recordRef)
+  })
+})
+
 describe('processPushQueue — worksheet stored-ref adoption', () => {
   let server: Awaited<ReturnType<typeof startFakeErpServer>> | undefined
   afterEach(async () => {

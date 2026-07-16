@@ -125,7 +125,7 @@ async function runStep(
   try {
     await markStep(db, step.id, { status: 'running' })
     const erpRef = await executeStep(db, adapter, tenantId, erpCompanyId, group, step)
-    await markStep(db, step.id, { status: 'succeeded', erpRef, errorMessage: null })
+    await markStep(db, step.id, { status: 'succeeded', erpRef, errorMessage: null, nextAttemptAt: null })
     return 'succeeded'
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -199,24 +199,36 @@ async function executeServiceOrderCreate(
   const payload = buildSvoCreatePayload(input)
 
   const payloadSerials = collectSerials(input.rows)
-  const existingRecords = await adapter.fetchRecords('SVOVc', {
-    'filter.CustCode': String(payload.CustCode),
-    'filter.TransDate': String(payload.TransDate),
-  })
-  const match = existingRecords.find((rec) => setsEqual(recordSerialSet(rec), payloadSerials))
-  if (match) {
-    const erpRef = String(match.SerNr)
-    await putErpRef(db, {
-      tenantId,
-      entityType: 'service_order',
-      entityId: orderId,
-      purpose: 'primary',
-      register: 'SVOVc',
-      recordRef: erpRef,
-      erpCompanyId,
+  // Natural-key adoption only fires when the candidate has at least one
+  // serial number. Two empty sets always compare equal, so with no serials
+  // this stage would trivially match the FIRST same-customer, same-day
+  // order it finds in the ERP — silently adopting its SVOVc and losing this
+  // order's own data. Skipping the stage entirely for an empty serial set
+  // is an accepted, documented tradeoff: a same-customer/same-day retry of
+  // an ambiguous (non-serialized) create can still double-create on the ERP
+  // side if the engine crashes between pushCreate succeeding and putErpRef
+  // persisting — the stored-ref check above still gives retry idempotency
+  // for the ordinary (non-crashing) case.
+  if (payloadSerials.size > 0) {
+    const existingRecords = await adapter.fetchRecords('SVOVc', {
+      'filter.CustCode': String(payload.CustCode),
+      'filter.TransDate': String(payload.TransDate),
     })
-    await setOrderNumber(db, tenantId, orderId, erpRef)
-    return erpRef
+    const match = existingRecords.find((rec) => setsEqual(recordSerialSet(rec), payloadSerials))
+    if (match) {
+      const erpRef = String(match.SerNr)
+      await putErpRef(db, {
+        tenantId,
+        entityType: 'service_order',
+        entityId: orderId,
+        purpose: 'primary',
+        register: 'SVOVc',
+        recordRef: erpRef,
+        erpCompanyId,
+      })
+      await setOrderNumber(db, tenantId, orderId, erpRef)
+      return erpRef
+    }
   }
 
   // 3. create.

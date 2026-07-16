@@ -72,23 +72,34 @@ export async function approveWorksheet(
     )
   }
 
-  await setWorksheetStatus(db, tenantId, worksheetId, 'Approved')
+  // setWorksheetStatus and createPushGroup must commit atomically: a crash
+  // between the two would otherwise strand the worksheet at Approved with
+  // no push group and no recovery path (re-approving throws
+  // DomainTransitionError, since Approved isn't a valid `from` for another
+  // Approved transition). createPushGroup already wraps its own writes in
+  // db.transaction — drizzle-orm/postgres-js nests transactions as
+  // SAVEPOINTs (PostgresJsTransaction#transaction), so calling it with the
+  // outer `tx` here composes rather than opening a second top-level
+  // transaction.
+  return db.transaction(async (tx) => {
+    await setWorksheetStatus(tx, tenantId, worksheetId, 'Approved')
 
-  const orderRefs = await getErpRefs(db, tenantId, 'service_order', worksheet.orderId)
-  const hasOrderPrimary = orderRefs.some((r) => r.purpose === 'primary')
+    const orderRefs = await getErpRefs(tx, tenantId, 'service_order', worksheet.orderId)
+    const hasOrderPrimary = orderRefs.some((r) => r.purpose === 'primary')
 
-  const steps: CreatePushGroupStepInput[] = []
-  let seq = 1
-  if (!hasOrderPrimary) {
-    steps.push({ seq: seq++, entityType: 'serviceOrder', entityId: worksheet.orderId, register: 'SVOVc', op: 'create' })
-  }
-  steps.push({ seq: seq++, entityType: 'worksheet', entityId: worksheetId, register: 'WSVc', op: 'create' })
+    const steps: CreatePushGroupStepInput[] = []
+    let seq = 1
+    if (!hasOrderPrimary) {
+      steps.push({ seq: seq++, entityType: 'serviceOrder', entityId: worksheet.orderId, register: 'SVOVc', op: 'create' })
+    }
+    steps.push({ seq: seq++, entityType: 'worksheet', entityId: worksheetId, register: 'WSVc', op: 'create' })
 
-  return createPushGroup(db, {
-    tenantId,
-    erpCompanyId,
-    lane: `order:${worksheet.orderId}`,
-    kind: 'worksheet_push',
-    steps,
+    return createPushGroup(tx, {
+      tenantId,
+      erpCompanyId,
+      lane: `order:${worksheet.orderId}`,
+      kind: 'worksheet_push',
+      steps,
+    })
   })
 }
