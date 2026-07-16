@@ -107,7 +107,7 @@ You are implementing ONE calendar-side change request for the herbe suite.
 Repo: /Users/elviskvalbergs/AI/herbe-calendar   (work on `preview`)
 Request: <CAL-ID>          # e.g. CAL-10, CAL-9
 
-1. Read the spec: /Users/elviskvalbergs/AI/herbe-service/docs/24-calendar-team-phase2-handoff.md (the <CAL-ID> section)
+1. Read the spec: /Users/elviskvalbergs/AI/herbe-service/docs/26-calendar-team-phase2-handoff.md (the <CAL-ID> section)
    + its cross-refs (13-suite-change-requests.md, 08-suite-integration.md).
 2. Confirm the "Current calendar state" facts against the live code (paths may have shifted since 2026-07-15).
 3. Brainstorm the endpoint/component shape (superpowers:brainstorming), then implement TDD against the acceptance criteria.
