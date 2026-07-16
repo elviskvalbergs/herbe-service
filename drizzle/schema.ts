@@ -171,6 +171,25 @@ export const users = pgTable(
   (t) => [unique().on(t.tenantId, t.email)],
 )
 
+export const identityLinks = pgTable(
+  'identity_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    provider: text('provider').notNull(), // 'erp' | future: 'entra-id' | 'eid'
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id),
+    externalId: text('external_id').notNull(), // UserVc.Code for provider = 'erp'
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+    linkedBy: text('linked_by').notNull(), // 'auto-match:email' | admin user id
+  },
+  (t) => [
+    unique().on(t.userId, t.provider, t.erpCompanyId),
+    index('identity_links_erp_lookup_idx').on(t.erpCompanyId, t.externalId),
+  ],
+)
+export type IdentityLinkRow = InferSelectModel<typeof identityLinks>
+
 // Service orders (docs/02-data-model.md, 11-service-items-and-parts.md): the
 // top-level job entity. orderNumber is the app's OWN number — the ERP
 // register ref lives in erpRefs (below), not a scalar erpRef column here: a
