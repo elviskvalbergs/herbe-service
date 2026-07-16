@@ -1,6 +1,6 @@
 # 24 — Phase 1 status & parallel-session handoff
 
-Last updated: **2026-07-16** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence).
+Last updated: **2026-07-16** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence; this update adds WS2 core via `feature/service-phase1-ws2-roles-identity`, PR into preview pending).
 Purpose: let a fresh Claude/dev session pick up any remaining workstream without re-deriving state.
 Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 
@@ -14,7 +14,7 @@ Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 | WS8 | Orders/worksheets/status machine (domain) | **Done** (order+worksheet stores, `deriveOrderStatus`, worksheet transitions, 9→6 customer projection) |
 | WS13 | HistoryEvent projector | **Done** (`lib/domain/history-projector.ts` + history store + /history endpoint) |
 | WS14 | API shell (read) | **Done** — `/api/ext/v1` read API (service-items, orders, history; token auth + scope + rate limit) matches the frozen portal contract (`herbe-portal/lib/service/dto.ts`). Writes (POST /requests, /confirm, /feedback) NOT built (need Phase-2 entities / WS4) |
-| WS2 | Auth roles, WebAuthn, seat licensing | **Not started** (next-auth session exists from Phase 0; no roles/licensing) |
+| WS2 | Auth roles, WebAuthn, seat licensing | **Core done** — roles/capabilities, session_version revocation, device registry, ERP identity link by email — see §5. WebAuthn, TOTP/password, Baltic eID, Entra ID OIDC, seat/license enforcement **deferred, unclaimed** — see §4 |
 | WS4 | ERP outbound (push-queue saga, approve→invoice) | **Not started** (only the Phase-0 `pushCreate('SVOVc')` spike + outbox table exist) |
 | WS5 | Bookings ↔ ActVc | **Not started** |
 | WS6 | Connection config UI & sync health | **Not started** (backend state exists: `erp_sync_state` per register; no UI) |
@@ -62,12 +62,29 @@ ERP facts (verified live; also in memory + `docs/17/19`):
 
 Independent of each other (safe to run as parallel sessions):
 1. **WS12 Documents** — worksheet/order report PDF+DOCX engine (portal's `/orders/{id}/report` expects it). Touches new `lib/documents/**` + a route; no overlap with sync code.
-2. **WS2 Auth roles + seat licensing (+WebAuthn)** — touches `lib/auth`, users table, middleware. No overlap with WS3/WS12.
+2. **WS2 remainder — WebAuthn, TOTP/password, Baltic eID, Entra ID OIDC, seat/license enforcement** — core (roles/capabilities, session revocation, device registry, ERP identity link) is done, see §5. Touches `lib/auth` only. No overlap with WS3/WS12.
 3. **WS6 Connection config + sync health UI** — admin UI over existing `erp_companies` + `erp_sync_state` + creds encrypt (write side of `encryptErpCredentials`). Reads WS3 but doesn't change it.
 4. **WS10 Dispatch board** (office UI over orders/worksheets/bookings-stub) — UI-heavy, minimal domain writes.
 5. **WS4 ERP outbound** — push-queue saga (outbox exists), WSVc/SVOVc create+update, OK-flag write, read-back verification. **Touches the adapter + outbox**: don't pair with another adapter-touching session at the same time.
 6. **WS9 Field PWA** — biggest; builds on offline sync-client + worksheets domain. Coordinate with WS4 (it produces the writes WS4 pushes) but can start UI-first.
 
-Deferred/blocked bits to fold into whichever session touches the area: SVOVc/WSVc deletion detection (needs an erp_refs-based key-sweep variant), windowed-scan date bounds for full pulls (fine at demo scale), UserVc→technician identity links (WS2/WS9), IVVc invoiced-status readback (WS4, WebExcellentAPI-gated), DelAddrVc siteName re-check on real tenant data (0/43 overlap on demo).
+Deferred/blocked bits to fold into whichever session touches the area: SVOVc/WSVc deletion detection (needs an erp_refs-based key-sweep variant), windowed-scan date bounds for full pulls (fine at demo scale), IVVc invoiced-status readback (WS4, WebExcellentAPI-gated), DelAddrVc siteName re-check on real tenant data (0/43 overlap on demo).
 
 Each new session should read: this doc → `docs/21-phase-1-implementation-plan.md` (its WS section) → the relevant `docs/superpowers/plans/*.md` → then plan its own slice the same way (plan doc → subagent tasks → live proof where ERP-touching).
+
+## 5. WS2 core — what exists (roles, session revocation, device registry, identity link)
+
+Branch `feature/service-phase1-ws2-roles-identity` (PR into preview). Plan: `docs/superpowers/plans/2026-07-16-service-phase1-ws2-roles-identity.md`.
+
+- `lib/auth/roles.ts` — `Role` (the canonical 5-value union, also re-exported by `lib/seed/personas.ts`), `Capability`, `ROLE_CAPABILITIES`, `hasCapability(role, capability)`. Transcribed from `docs/05-users-auth.md` §Roles. Not wired into any route beyond the 3 below — WS8/WS9/WS10/WS12/WS14 wire it in as their routes land. Known footgun: `hasCapability` throws (not `false`) on a role string outside the 5 literals — harmless today (nothing writes an arbitrary role yet) but worth a guard before a user-management UI lands.
+- `session.user.role` and `session.user.sessionVersion` now flow through NextAuth's `jwtCallback`/`sessionCallback` (`lib/auth/config.ts`) — both stamped once at sign-in and forwarded unchanged, matching the existing `authTime` pattern (callbacks stay pure, no DB call inside).
+- `lib/auth/session-guard.ts` — `getVerifiedSession(db)` (use instead of bare `auth()` in any route that must honor revocation — compares the token's stamped `sessionVersion` against the current DB value, returns `null` on mismatch/no-session) and `bumpSessionVersion(db, userId)` (atomic increment; invalidates every live session for that user). `users.session_version` column (migration 0017).
+- Device registry: `GET /api/auth/devices` (self-list only), `POST /api/auth/devices/[id]/revoke` (self, or same-tenant `users:manage`; 403 for anyone else, 404 unknown id), `POST /api/auth/users/[id]/sign-out-everywhere` (self, or same-tenant `users:manage`; bumps `session_version`; 403 non-privileged cross-user, 404 cross-tenant/unknown target). No admin UI yet — API-only; UI is WS9's F11 profile page / WS14's admin surfaces.
+- `identity_links` table (migration 0018) + `lib/auth/identity-link.ts`'s `matchUsersByEmail(db, {tenantId, erpCompanyId, adapter})` — links a `users` row to `UserVc.Code` by matching email (case-insensitive, `LoginEmailAddr` preferred over `emailAddr`, skips `Closed`/`TerminatedFlag` rows, first-come-wins on a duplicate ERP `Code` within one run). **No adapter changes were needed** — `pullFullList`/`pullChanges` in `lib/erp/standard-books/adapter.ts` already accept any register string generically.
+- `app/api/cron/identity-rematch/route.ts` — daily (`0 3 * * *`), re-runs the match for every active `erp_companies` row, mirrors `sync-tick`'s bearer/lock/per-company-isolation pattern (300s lock TTL — sized for a daily sequential multi-company fan-out, not `sync-tick`'s 55s per-minute cadence).
+- **Newly verified ERP fact**: `UserVc` confirmed delta-capable live (`probeIncrementalSupport('UserVc')` → `true`) — matches `docs/17-erp-register-reference.md`'s existing note, now proven against the real dedicated test ERP (`pnpm test:live`, 12/12 passing).
+- WS4's "approval blocked if technician has no ERP person code" check (`docs/21-phase-1-implementation-plan.md` §WS4) should join `identity_links` on `userId` + `provider = 'erp'` + `erpCompanyId` — that's the reference pattern this slice establishes.
+
+Deferred out of this slice (unclaimed, ready to assign): WebAuthn platform-authenticator biometric unlock; TOTP + password + Baltic eID (Smart-ID/Dokobit/eParaksts) + Microsoft Entra ID OIDC login providers (no tenant-config mechanism exists yet to make them "optional per tenant," which those providers would need first); seat/license enforcement (no billing/seat-count concept exists anywhere yet); wiring `hasCapability` into any real route (none need it yet); tenant-configurable capability overrides (e.g. team_lead approving worksheets).
+
+Also flagging, out of this slice's scope but surfaced during its final review: `app/api/auth/magic-link/request/route.ts` logs the raw magic-link token + email to the console — a pre-existing PII/credential-in-logs issue, untouched by this branch, worth a separate cleanup ticket.
