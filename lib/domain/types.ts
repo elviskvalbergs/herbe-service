@@ -19,8 +19,10 @@ export type WorksheetStatus =
 
 export type ChargeType = 'invoiceable' | 'warranty' | 'contract' | 'goodwill';
 
-/** Purpose key for an entity's ERP reference (erpRef is a set, not a scalar). */
-export type ErpRefPurpose = 'primary' | 'worksheetShadow' | 'orderShadow' | 'workSegment';
+/** Purpose key for an entity's ERP reference (erpRef is a set, not a scalar).
+ * 'invoice' (WS4 Decision 10): the linked IVVc a service_order's invoiced
+ * sweep discovered via WebExcellentAPI getrecordlinks. */
+export type ErpRefPurpose = 'primary' | 'worksheetShadow' | 'orderShadow' | 'workSegment' | 'invoice';
 
 export type HistoryEventKind =
   | 'work_done' | 'part_replaced' | 'measurement' | 'status_change'

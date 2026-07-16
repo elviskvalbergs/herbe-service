@@ -1,3 +1,4 @@
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { startFakeErpServer } from '@herbe/fake-erp'
 import { createStandardBooksAdapter } from './adapter'
@@ -423,5 +424,88 @@ describe('Standard Books adapter — capability probe', () => {
 
     const result = await adapter.probeIncrementalSupport('SVOVc')
     expect(result).toBe(false)
+  })
+})
+
+describe('Standard Books adapter — invoiced-status readback capability + getRecordLinks (WS4 Task 8)', () => {
+  it('reports supportsInvoiceStatusReadback true only when features.invoiceReadback is exactly true', () => {
+    const off = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+    expect(off.capabilities().supportsInvoiceStatusReadback).toBe(false)
+
+    const onWithFeature = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+      features: { invoiceReadback: true },
+    })
+    expect(onWithFeature.capabilities().supportsInvoiceStatusReadback).toBe(true)
+
+    const featureExplicitlyFalse = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+      features: { invoiceReadback: false },
+    })
+    expect(featureExplicitlyFalse.capabilities().supportsInvoiceStatusReadback).toBe(false)
+  })
+
+  describe('getRecordLinks delegation', () => {
+    let halServer: Server | undefined
+    let halUrl = ''
+
+    function startHalServer(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<void> {
+      return new Promise((resolve) => {
+        halServer = createServer(handler)
+        halServer.listen(0, '127.0.0.1', () => {
+          const address = halServer!.address()
+          const port = typeof address === 'object' && address ? address.port : 0
+          halUrl = `http://127.0.0.1:${port}`
+          resolve()
+        })
+      })
+    }
+
+    afterEach(async () => {
+      if (halServer) {
+        await new Promise<void>((resolve) => halServer!.close(() => resolve()))
+        halServer = undefined
+      }
+    })
+
+    it('delegates to fetchRecordLinks and returns the parsed LinkVc entries', async () => {
+      await startHalServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/xml' })
+        res.end(`<data><res regname='LinkVc'></res><LinkVc><ID>500123</ID><VcName>IVVc</VcName></LinkVc></data>`)
+      })
+
+      const adapter = createStandardBooksAdapter({
+        baseUrl: halUrl,
+        companyNumber: '1',
+        auth: { kind: 'basic', username: 'test', password: 'test' },
+      })
+
+      const links = await adapter.getRecordLinks('SVOVc', '230015')
+
+      expect(links).toEqual([{ register: 'IVVc', id: '500123' }])
+    })
+
+    it('propagates fetchRecordLinks error mapping (ErpTransientError on 500)', async () => {
+      await startHalServer((_req, res) => {
+        res.writeHead(500)
+        res.end('boom')
+      })
+
+      const adapter = createStandardBooksAdapter({
+        baseUrl: halUrl,
+        companyNumber: '1',
+        auth: { kind: 'basic', username: 'test', password: 'test' },
+      })
+
+      await expect(adapter.getRecordLinks('SVOVc', '1')).rejects.toMatchObject({ name: 'ErpTransientError' })
+    })
   })
 })

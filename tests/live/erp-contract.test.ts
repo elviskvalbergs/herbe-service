@@ -34,6 +34,7 @@ import { putErpRef, getErpRefs } from '@/lib/domain/stores/erp-refs'
 import { enqueueOrderCreatePush, approveWorksheet } from '@/lib/sync/push/enqueue'
 import { processPushQueue } from '@/lib/sync/push/engine'
 import { getStepsForGroup } from '@/lib/sync/push/store'
+import { sweepInvoiceStatus } from '@/lib/sync/invoice-status'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -697,5 +698,65 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
         `live natural-key adoption: erp_ref restored to the same SerNr: true, SerNr-count before/after=1/1, CustCode-count unchanged: true (${beforeByCustomer.length})`,
       )
     }, 30_000)
+  })
+
+  // -------------------------------------------------------------------------
+  // WS4 outbound slice, Task 8 (docs/superpowers/plans/2026-07-16-service-
+  // phase1-erp-outbound.md decisions 9/10): the LIVE proof of the
+  // WebExcellentAPI getrecordlinks client + the invoiced-status sweep. Runs
+  // last, reusing the same db/companyId/tenantId this suite already built —
+  // the syncConnection test above ingested every real SVOVc order this
+  // company has, which is exactly what sweepInvoiceStatus needs a non-empty
+  // candidate set from. Read-only against the real ERP throughout
+  // (getrecordlinks is a GET) — never logs link-target record IDs, only
+  // counts and register names.
+  describe('T8 — live WebExcellentAPI getrecordlinks + invoiced-status sweep', () => {
+    it('T8.1 enables features.invoiceReadback on the connection and confirms the capability flows through buildAdapterForConnection', async () => {
+      const [companyRow] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.id, companyId))
+      const existingConfig = (companyRow.adapterConfigJson ?? {}) as Record<string, unknown>
+      await db
+        .update(schema.erpCompanies)
+        .set({ adapterConfigJson: { ...existingConfig, features: { invoiceReadback: true } } })
+        .where(eq(schema.erpCompanies.id, companyId))
+
+      // Rebuild — capabilities() is fixed at adapter-construction time from
+      // the config buildAdapterForConnection assembles, so the old `adapter`
+      // instance (built in beforeAll, before this update) would still report
+      // the capability off.
+      adapter = await buildAdapterForConnection(db, companyId)
+
+      expect(adapter.capabilities().supportsInvoiceStatusReadback).toBe(true)
+      console.log('live features.invoiceReadback: enabled on connection, capability flows through: true')
+    }, 30_000)
+
+    it('T8.2 getRecordLinks against a real demo WSVc returns the documented array shape', async () => {
+      const wsRows = await adapter.fetchRecords('WSVc', {})
+      expect(wsRows.length, 'at least one real demo WSVc row must exist (from the syncConnection test above)').toBeGreaterThan(0)
+      const wsSerNr = String(wsRows[0].SerNr)
+
+      const links = await adapter.getRecordLinks('WSVc', wsSerNr)
+
+      expect(Array.isArray(links)).toBe(true)
+      for (const link of links) {
+        expect(typeof link.register).toBe('string')
+        expect(typeof link.id).toBe('string')
+      }
+
+      const registersSeen = [...new Set(links.map((l) => l.register))].sort()
+      console.log(`live getRecordLinks(WSVc, <real SerNr>): link count=${links.length}, registers seen=${JSON.stringify(registersSeen)}`)
+    }, 30_000)
+
+    it('T8.3 sweepInvoiceStatus runs to completion over the synced orders', async () => {
+      const result = await sweepInvoiceStatus(db, adapter, companyId)
+
+      // checked>0 depends on real orders existing that aren't already
+      // Invoiced/Closed/Cancelled — the syncConnection test above proved
+      // service_orders is non-empty for this company, so some should qualify.
+      // invoiced is NOT asserted >0 — whether any of them actually carry a
+      // linked IVVc on this demo install is a real-data fact, not something
+      // to force.
+      expect(result.checked).toBeGreaterThan(0)
+      console.log(`live sweepInvoiceStatus: ${JSON.stringify(result)}`)
+    }, 60_000)
   })
 })

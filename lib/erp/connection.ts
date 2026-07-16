@@ -34,11 +34,19 @@ export async function buildAdapterForConnection(
   const blob = row.apiCredsEncrypted ? Buffer.from(row.apiCredsEncrypted, 'base64') : null
   const creds = decryptErpCredentials(blob) as { username: string; password: string }
 
-  const adapterConfig = row.adapterConfigJson as { baseUrl: string; companyNumber: string }
+  const adapterConfig = row.adapterConfigJson as {
+    baseUrl: string
+    companyNumber: string
+    features?: { invoiceReadback?: boolean }
+  }
   const config: StandardBooksConfig = {
     baseUrl: adapterConfig.baseUrl,
     companyNumber: adapterConfig.companyNumber,
     auth: { kind: 'basic', username: creds.username, password: creds.password },
+    // WS4 Decision 9/10: forward the per-connection capability opt-in so
+    // capabilities().supportsInvoiceStatusReadback reflects the stored
+    // connection config, not just literal-config test callers.
+    features: adapterConfig.features,
   }
 
   return getAdapter(row.adapterType, config)

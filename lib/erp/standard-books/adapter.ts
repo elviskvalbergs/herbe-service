@@ -1,6 +1,7 @@
 import { registerAdapter, ErpPermanentError, type ChangeSet, type ErpAdapter } from '@herbe/erp-core'
 import { standardBooksConfigSchema } from './config-schema'
 import { fetchRegisterJson, postRegisterJson, patchRegisterJson } from './fetch-json'
+import { fetchRecordLinks } from './excellent-api'
 
 // Standard Books nests rows under `data.<Register>` (verified live) — NOT a
 // flat `data` array. Mirrors the portal's extractRegisterRows, with a
@@ -45,7 +46,9 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
       supportsIncrementalSync: true,
       supportsDeletesFeed: false, // confirmed unreliable — never advertise this as true
       supportsDocumentFetch: false, // HansaWorld: WebExcellentAPI presence, probed per-connection in Task 21b
-      supportsInvoiceStatusReadback: false,
+      // WS4 Decision 9/10: opt-in per connection, once WebExcellentAPI
+      // presence is confirmed for that tenant (config-schema.ts `features`).
+      supportsInvoiceStatusReadback: config.features?.invoiceReadback === true,
       supportsActivityMirror: false,
     }),
 
@@ -139,6 +142,10 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     async probeIncrementalSupport(register: string): Promise<boolean> {
       const { status } = await fetchRegisterJson(config, register, { updates_after: '0' })
       return status !== 404
+    },
+
+    async getRecordLinks(register: string, serNr: string): Promise<{ register: string; id: string }[]> {
+      return fetchRecordLinks(config, register, serNr)
     },
   }
 }

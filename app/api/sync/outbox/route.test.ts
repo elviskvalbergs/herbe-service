@@ -76,6 +76,9 @@ beforeAll(async () => {
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('getRecordLinks must not be called by the outbox route')
+    },
   }))
 
   // Confirmed real-ERP finding (docs/19-demo-probe-results.md §10): a 200
@@ -101,6 +104,9 @@ beforeAll(async () => {
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('getRecordLinks must not be called by the outbox route')
+    },
   }))
 
   // Task 16b IDOR regression: a tenant this adapter belongs to must never be
@@ -129,6 +135,9 @@ beforeAll(async () => {
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('cross-tenant IDOR: this tenant\'s adapter must never be reached by another tenant\'s session')
+    },
   }))
 }, 60_000)
 
