@@ -51,3 +51,8 @@ ALL 10 SLICE-2 TASKS DONE. Needs: ADMIN_EXT_TOKENS_SECRET env per environment.
 NO Critical/Important merge-blockers. All 3 headline risks CLEAR: auth->ratelimit->scope chain uniform across all 5 routes; DTO mirror matches portal contract field-for-field; migration chain 0014-0015 clean after domain-core 0001-0013 (FK targets exist, idempotent); every unconditional DTO field is NOT NULL. FIX 7dcf85d: getHistoryForItem ORDER BY coalesce(at,created_at) [customer-visible ordering]; admin 500 body static (no err leak). Deferred/noted: enum casts safe until ERP-inbound slice; erpCompany.active undefined in this slice; dangling doc-path comments; orderNumber->UUID fallback for future create-route.
 Full suite 58 files/392 tests PASS vs live PG14; tsc clean; ext modules >=90% coverage.
 SLICE 2 COMPLETE. Branch feature/service-phase1-ext-read (stacks on domain core in preview).
+
+=== SLICE: WS4 ERP OUTBOUND (2026-07-16) ===
+Plan: docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md (commit f830970)
+Branch: feature/service-phase1-erp-outbound (off origin/preview 69c006f). Worktree: .claude/worktrees/erp-outbound
+9 tasks: (1) migration 0017 + push store; (2) fake-ERP writes+modes+filter; (3) adapter write surface; (4) payload builders; (5) saga engine+enqueue; (6) routes+cron; (7) live proof create/update; (8) WebExcellentAPI+invoiced sweep; (9) doc 24 update+final.
