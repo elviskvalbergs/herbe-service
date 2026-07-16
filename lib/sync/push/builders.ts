@@ -12,8 +12,16 @@ import { ErpPermanentError } from '@herbe/erp-core'
 import { chargeTypeToItemType } from '@/lib/domain/charge-type'
 import type { ChargeType } from '@/lib/domain/types'
 
-function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+// Formats the calendar date of `d` as observed in `timeZone`, e.g. 22:30 UTC
+// on 2026-07-15 is already 2026-07-16 in Europe/Riga (UTC+3 in July). en-CA
+// is just a locale whose default numeric-date order happens to be YYYY-MM-DD.
+function formatDateInTimezone(d: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
 }
 
 function round2(n: number): number {
@@ -34,7 +42,20 @@ export interface BuildSvoCreatePayloadInput {
   description: string | null
   defaultChargeType: ChargeType
   rows: SvoCreateRowInput[]
+  /**
+   * Must be a stable instant — the push group's `created_at`, not
+   * `new Date()` at call time — so a retry rebuilds the exact same
+   * TransDate and the natural-key idempotency match on the ERP side holds.
+   */
   now: Date
+  /**
+   * IANA timezone TransDate is computed in (docs/02-data-model.md:118 — the
+   * adapter converts to ERP-local date at the connection's timezone
+   * boundary). Defaults to Europe/Riga, the project's established ERP
+   * timezone. The engine (Task 5) should pass the connection's own
+   * timezone here once per-connection tz config exists.
+   */
+  timezone?: string
 }
 
 export function buildSvoCreatePayload(input: BuildSvoCreatePayloadInput): Record<string, unknown> {
@@ -60,7 +81,7 @@ export function buildSvoCreatePayload(input: BuildSvoCreatePayloadInput): Record
 
   const payload: Record<string, unknown> = {
     CustCode: input.customerErpRef,
-    TransDate: formatDate(input.requestedAt ?? input.now),
+    TransDate: formatDateInTimezone(input.requestedAt ?? input.now, input.timezone ?? 'Europe/Riga'),
     rows,
   }
 
@@ -154,6 +175,18 @@ export function buildWsCreatePayload(input: BuildWsCreatePayloadInput): Record<s
   if (isDoneMarkSet(input.liveSvo.DoneMark)) {
     throw new ErpPermanentError(
       `service order ${input.orderErpRef} is already done in ERP (SVOVc.DoneMark=1) — cannot create a Work Sheet for it`,
+    )
+  }
+
+  if (!input.emCode || !input.emCode.trim()) {
+    throw new ErpPermanentError(
+      'worksheet technician has no ERP person code (UserVc link missing) — cannot build WSVc payload',
+    )
+  }
+
+  if (!input.location || !input.location.trim()) {
+    throw new ErpPermanentError(
+      'worksheet has no service location — configure the push.mainServiceLocation setting to build WSVc payload',
     )
   }
 

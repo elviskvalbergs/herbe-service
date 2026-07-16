@@ -42,6 +42,31 @@ describe('buildSvoCreatePayload', () => {
     expect(payload.TransDate).toBe('2026-07-16')
   })
 
+  it('TransDate uses the Europe/Riga calendar day by default, not the UTC day', () => {
+    // 22:30 UTC on 2026-07-15 is already 01:30 the next day in Europe/Riga (UTC+3 in July).
+    const payload = buildSvoCreatePayload({ ...baseInput, now: new Date('2026-07-15T22:30:00Z'), requestedAt: null })
+    expect(payload.TransDate).toBe('2026-07-16')
+  })
+
+  it('respects an explicit timezone override for TransDate', () => {
+    const payload = buildSvoCreatePayload({
+      ...baseInput,
+      now: new Date('2026-07-15T22:30:00Z'),
+      requestedAt: null,
+      timezone: 'UTC',
+    })
+    expect(payload.TransDate).toBe('2026-07-15')
+  })
+
+  it('applies the timezone to requestedAt too, not just the now fallback', () => {
+    const payload = buildSvoCreatePayload({
+      ...baseInput,
+      requestedAt: new Date('2026-07-15T22:30:00Z'),
+      timezone: 'Europe/Riga',
+    })
+    expect(payload.TransDate).toBe('2026-07-16')
+  })
+
   it('omits CustComplaint1 entirely when there is no description', () => {
     const payload = buildSvoCreatePayload({ ...baseInput, description: null })
     expect('CustComplaint1' in payload).toBe(false)
@@ -169,6 +194,28 @@ describe('buildWsCreatePayload', () => {
     expect(() => buildWsCreatePayload({ ...baseInput, liveSvo: { DoneMark: '0' } })).not.toThrow()
     expect(() => buildWsCreatePayload({ ...baseInput, liveSvo: { DoneMark: 0 } })).not.toThrow()
     expect(() => buildWsCreatePayload({ ...baseInput, liveSvo: {} })).not.toThrow()
+  })
+
+  it('throws an actionable ErpPermanentError when emCode is null', () => {
+    expect(() => buildWsCreatePayload({ ...baseInput, emCode: null as unknown as string })).toThrow(ErpPermanentError)
+    expect(() => buildWsCreatePayload({ ...baseInput, emCode: null as unknown as string })).toThrow(/ERP person code/)
+  })
+
+  it('throws the same error when emCode is an empty or whitespace-only string', () => {
+    expect(() => buildWsCreatePayload({ ...baseInput, emCode: '' })).toThrow(ErpPermanentError)
+    expect(() => buildWsCreatePayload({ ...baseInput, emCode: '   ' })).toThrow(ErpPermanentError)
+  })
+
+  it('throws an actionable ErpPermanentError naming push.mainServiceLocation when location is null', () => {
+    expect(() => buildWsCreatePayload({ ...baseInput, location: null as unknown as string })).toThrow(ErpPermanentError)
+    expect(() => buildWsCreatePayload({ ...baseInput, location: null as unknown as string })).toThrow(
+      /push\.mainServiceLocation/,
+    )
+  })
+
+  it('throws the same error when location is an empty or whitespace-only string', () => {
+    expect(() => buildWsCreatePayload({ ...baseInput, location: '' })).toThrow(ErpPermanentError)
+    expect(() => buildWsCreatePayload({ ...baseInput, location: '   ' })).toThrow(ErpPermanentError)
   })
 
   it('always sets SVONr, WONr:-1, EMCode, Location and UpdStockFlag:1', () => {
