@@ -12,7 +12,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { ErpPermanentError, type ErpAdapter } from '@herbe/erp-core'
 import * as schema from '@/drizzle/schema'
 import type { PushGroupRow, PushStepRow } from '@/drizzle/schema'
-import { getRunnableGroups, markGroup, markStep } from './store'
+import { claimGroup, getRunnableGroups, markGroup, markStep } from './store'
 import { gatherSvoCreateInput, gatherWsCreateInput } from './gather'
 import { buildSvoCreatePayload, buildWsCreatePayload, type SvoCreateRowInput } from './builders'
 import { getErpRefs, putErpRef } from '@/lib/domain/stores/erp-refs'
@@ -58,6 +58,15 @@ export async function processPushQueue(
   }
 
   for (const { group, steps } of runnable) {
+    // Single-flight guard (final review): getRunnableGroups is a plain read,
+    // so a concurrent caller (a second outbox POST, or the push-tick cron
+    // racing this drain) may have already claimed — or still be running —
+    // this same group. claimGroup is the only atomic gate; if it fails,
+    // another caller owns this group this tick, so skip it silently (no
+    // work was done, so it isn't counted in the summary).
+    const claimed = await claimGroup(db, group.id, now)
+    if (!claimed) continue
+
     summary.groupsProcessed++
     try {
       await runGroup(db, adapter, erpCompanyId, group, steps, now, summary)
@@ -83,7 +92,8 @@ async function runGroup(
   now: Date,
   summary: PushSummary,
 ): Promise<void> {
-  await markGroup(db, group.id, 'running')
+  // group.status is already 'running' here — claimGroup (the caller,
+  // processPushQueue) set it atomically before this function was invoked.
 
   let outcome: 'succeeded' | 'pending' | 'dead' = 'succeeded'
 

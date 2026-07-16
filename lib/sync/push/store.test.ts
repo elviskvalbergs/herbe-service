@@ -19,6 +19,7 @@ import * as schema from '@/drizzle/schema'
 import { runMigrations, splitSqlStatements } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import {
+  claimGroup,
   createPushGroup,
   getRunnableGroups,
   getStepsForGroup,
@@ -249,6 +250,55 @@ describe('getRunnableGroups', () => {
 
     const runnable = await getRunnableGroups(db, erpCompanyId, new Date())
     expect(runnable.some((r) => r.group.lane === lane)).toBe(false)
+  })
+})
+
+describe('claimGroup', () => {
+  it('claims a pending group (sets it running); an immediate second claim on the same group returns false', async () => {
+    const { groupId } = await makeGroup(`order:${randomUUID()}`)
+    const now = new Date('2026-01-01T00:00:00Z')
+
+    const first = await claimGroup(db, groupId, now)
+    expect(first).toBe(true)
+    expect((await getGroup(groupId)).status).toBe('running')
+
+    const second = await claimGroup(db, groupId, new Date(now.getTime() + 1))
+    expect(second).toBe(false)
+  })
+
+  it('claims a failed group', async () => {
+    const { groupId } = await makeGroup(`order:${randomUUID()}`)
+    await setGroupStatus(groupId, 'failed')
+
+    const claimed = await claimGroup(db, groupId, new Date('2026-01-01T00:00:00Z'))
+    expect(claimed).toBe(true)
+    expect((await getGroup(groupId)).status).toBe('running')
+  })
+
+  it('refuses a fresh running group (updated_at within the 10-minute reclaim window)', async () => {
+    const { groupId } = await makeGroup(`order:${randomUUID()}`)
+    await setGroupStatus(groupId, 'running')
+    await db
+      .update(schema.erpPushGroups)
+      .set({ updatedAt: new Date('2026-01-01T00:09:00Z') })
+      .where(eq(schema.erpPushGroups.id, groupId))
+
+    const claimed = await claimGroup(db, groupId, new Date('2026-01-01T00:10:00Z')) // only 1 minute stale
+    expect(claimed).toBe(false)
+    expect((await getGroup(groupId)).status).toBe('running')
+  })
+
+  it("reclaims a running group whose updated_at is more than 10 minutes older than `now` (crash recovery)", async () => {
+    const { groupId } = await makeGroup(`order:${randomUUID()}`)
+    await setGroupStatus(groupId, 'running')
+    await db
+      .update(schema.erpPushGroups)
+      .set({ updatedAt: new Date('2026-01-01T00:00:00Z') })
+      .where(eq(schema.erpPushGroups.id, groupId))
+
+    const claimed = await claimGroup(db, groupId, new Date('2026-01-01T00:10:01Z')) // 10:01 stale
+    expect(claimed).toBe(true)
+    expect((await getGroup(groupId)).status).toBe('running')
   })
 })
 

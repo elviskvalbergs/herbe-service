@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterEach, afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startFakeErpServer } from '@herbe/fake-erp'
+import type { ErpAdapter } from '@herbe/erp-core'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
@@ -44,6 +45,35 @@ function adapterFor(url: string) {
     companyNumber: '1',
     auth: { kind: 'basic', username: 'test', password: 'test' },
   })
+}
+
+// Test-only wrapper (concurrency regression below): makes pushCreate('SVOVc')
+// block until `arrivals` concurrent calls have started, or `timeoutMs`
+// elapses — whichever first. This forces two racing processPushQueue calls
+// to genuinely overlap inside the create step, instead of leaving the
+// overlap to unpredictable I/O timing (which let the old, unclaimed code
+// sometimes "get lucky" and only create once). Under the single-flight fix
+// only one of the two calls ever reaches pushCreate at all, so the timeout
+// is what lets that lone call proceed without hanging.
+function withCreateBarrier(base: ErpAdapter, arrivals: number, timeoutMs = 150): ErpAdapter {
+  let count = 0
+  let release: (() => void) | undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+    setTimeout(resolve, timeoutMs)
+  })
+
+  return {
+    ...base,
+    async pushCreate(register: string, payload: Record<string, unknown>) {
+      if (register === 'SVOVc') {
+        count++
+        if (count >= arrivals) release?.()
+        await gate
+      }
+      return base.pushCreate(register, payload)
+    },
+  }
 }
 
 async function makeOrder(
@@ -154,6 +184,51 @@ describe('processPushQueue — order_create happy path', () => {
 
     const rows = await adapter.fetchRecords('SVOVc', { 'filter.SerNr': refs[0].recordRef })
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('processPushQueue — concurrent single-flight claim (final review)', () => {
+  let server: Awaited<ReturnType<typeof startFakeErpServer>> | undefined
+  afterEach(async () => {
+    await server?.close()
+    server = undefined
+  })
+
+  it('two concurrent processPushQueue calls racing the same pending group create the SVOVc exactly once', async () => {
+    server = await startFakeErpServer({ port: 0 })
+    const baseAdapter = adapterFor(server.url)
+    // Forces both calls to genuinely overlap inside pushCreate if they both
+    // get that far (old, unclaimed code) — see withCreateBarrier comment.
+    const adapter = withCreateBarrier(baseAdapter, 2)
+
+    const orderId = await makeOrder(erpCompanyId, customerId)
+    const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId, orderId })
+
+    const before = await baseAdapter.fetchRecords('SVOVc', {})
+
+    // Two entry points (an outbox POST's inline drain and the push-tick
+    // cron, or two concurrent outbox POSTs) can both call processPushQueue
+    // for the same erpCompanyId at once. Without a single-flight claim on
+    // the group, both would find no erp_ref yet and both POST a create —
+    // this must never double-create the ERP record.
+    const [summaryA, summaryB] = await Promise.all([
+      processPushQueue(db, adapter, erpCompanyId),
+      processPushQueue(db, adapter, erpCompanyId),
+    ])
+
+    const after = await baseAdapter.fetchRecords('SVOVc', {})
+    expect(after).toHaveLength(before.length + 1) // exactly one SVOVc created, not two
+
+    const refs = await getErpRefs(db, tenantId, 'service_order', orderId)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ purpose: 'primary', register: 'SVOVc' })
+
+    const [group] = await db.select().from(schema.erpPushGroups).where(eq(schema.erpPushGroups.id, groupId))
+    expect(group.status).toBe('succeeded')
+
+    // Exactly one of the two racing calls actually claimed and ran the
+    // group; the other's claim failed and it skipped the group silently.
+    expect(summaryA.groupsProcessed + summaryB.groupsProcessed).toBe(1)
   })
 })
 

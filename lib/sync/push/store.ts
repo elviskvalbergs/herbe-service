@@ -7,7 +7,7 @@
 // and reads state — saga semantics (idempotency, retry backoff, DLQ
 // transitions) live in the engine (Task 5), which is the sole consumer of
 // this surface.
-import { and, asc, eq, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, lt, ne, or } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import type { PushGroupRow, PushStepRow } from '@/drizzle/schema'
@@ -87,7 +87,11 @@ export interface RunnableGroup {
 // until an operator calls resetDeadStep). Otherwise the gate group runs only
 // if none of its steps have next_attempt_at in the future — this never
 // skips ahead to a newer group in the same lane; a not-yet-ready gate group
-// simply means the lane yields nothing this tick.
+// simply means the lane yields nothing this tick. A 'running' group is
+// deliberately still returned here (only 'dead' is excluded) — claimGroup's
+// stale-reclaim path needs an orphaned 'running' group to keep surfacing so
+// a later tick can reclaim it; the engine's atomic claim (not this read) is
+// what prevents two callers from actually running it at once.
 export async function getRunnableGroups(db: Db, erpCompanyId: string, now: Date): Promise<RunnableGroup[]> {
   const activeGroups = await db
     .select()
@@ -114,6 +118,42 @@ export async function getRunnableGroups(db: Db, erpCompanyId: string, now: Date)
   }
 
   return runnable
+}
+
+// How long a group may sit at status='running' before it's considered
+// orphaned by a crash mid-run and eligible for reclaim by claimGroup below.
+// Chosen to comfortably exceed one group's normal run time (a handful of ERP
+// calls) while staying well under the push-tick cron's own cadence.
+const STALE_RUNNING_MS = 10 * 60 * 1000
+
+// Atomic single-flight claim (final review): getRunnableGroups above is a
+// plain read, so two concurrent callers (the outbox route's inline drain and
+// the push-tick cron, or two outbox POSTs) can both see the same runnable
+// group before either has written anything. This UPDATE is the only place a
+// group actually transitions into 'running', and it only affects a row that
+// is still claimable — pending/failed, or a 'running' group stale enough to
+// have been orphaned by a crash — so at most one caller ever proceeds to run
+// a given group's steps. Postgres's row lock plus WHERE re-check on a
+// concurrent UPDATE guarantees the second caller sees the first's committed
+// status/updated_at before deciding whether it still matches.
+export async function claimGroup(db: Db, groupId: string, now: Date): Promise<boolean> {
+  const staleBefore = new Date(now.getTime() - STALE_RUNNING_MS)
+
+  const claimed = await db
+    .update(schema.erpPushGroups)
+    .set({ status: 'running', updatedAt: now })
+    .where(
+      and(
+        eq(schema.erpPushGroups.id, groupId),
+        or(
+          inArray(schema.erpPushGroups.status, ['pending', 'failed']),
+          and(eq(schema.erpPushGroups.status, 'running'), lt(schema.erpPushGroups.updatedAt, staleBefore)),
+        ),
+      ),
+    )
+    .returning({ id: schema.erpPushGroups.id })
+
+  return claimed.length > 0
 }
 
 export interface MarkStepPatch {
