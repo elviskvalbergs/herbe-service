@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const gotLock = await acquireCronLock('identity-rematch', 55)
+  const gotLock = await acquireCronLock('identity-rematch', 300)
   if (!gotLock) {
     return Response.json({ status: 'skipped', reason: 'lock held' })
   }

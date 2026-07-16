@@ -130,7 +130,7 @@ describe('GET /api/cron/identity-rematch', () => {
 
   it('returns {status: "skipped", reason: "lock held"} when the lock is already held', async () => {
     const { acquireCronLock, releaseCronLock } = await import('@/lib/cronLock')
-    expect(await acquireCronLock('identity-rematch', 55)).toBe(true)
+    expect(await acquireCronLock('identity-rematch', 300)).toBe(true)
 
     const { GET } = await import('./route')
     const res = await GET(
