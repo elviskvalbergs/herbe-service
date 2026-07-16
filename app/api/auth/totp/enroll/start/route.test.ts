@@ -118,4 +118,16 @@ describe('POST /api/auth/totp/enroll/start', () => {
     expect(withCode.status).toBe(200)
     expect(body.secretBase32).not.toBe(firstEnrollment.secretBase32)
   })
+
+  it('rejects an invalid currentCode on re-enrollment with 403', async () => {
+    const user = await makeUser('totp-start-invalid-code', 'admin-invalid-code@herbe-service.test', 'admin')
+    const firstEnrollment = await enrollTotp(db, user.id, user.email)
+    await confirmTotpEnrollment(db, user.id, currentCodeFor(firstEnrollment.secretBase32, user.email))
+    authMock.mockResolvedValue(sessionFor(user))
+
+    const { POST } = await import('./route')
+    const res = await POST(makeRequest({ currentCode: '000000' }))
+
+    expect(res.status).toBe(403)
+  })
 })
