@@ -92,4 +92,29 @@ describe('matchUsersByEmail', () => {
     const result = await matchUsersByEmail(db, { tenantId, erpCompanyId, adapter })
     expect(result).toEqual({ linked: 0, alreadyLinked: 0, noMatch: 1 })
   })
+
+  it('links only one user when two different emails map to the same ERP code (within-run dedup)', async () => {
+    const { tenantId, erpCompanyId } = await makeTenantAndCompany()
+    await db.insert(schema.users).values([
+      { tenantId, email: 'user-a@example.test' },
+      { tenantId, email: 'user-b@example.test' },
+    ])
+    // Two UserVc rows with the SAME Code but different emails — causes both users to map to 'EMP001'
+    const adapter = fakeAdapter([
+      { Code: 'EMP001', emailAddr: 'user-a@example.test', Closed: 0, TerminatedFlag: 0 },
+      { Code: 'EMP001', emailAddr: 'user-b@example.test', Closed: 0, TerminatedFlag: 0 },
+    ])
+
+    const result = await matchUsersByEmail(db, { tenantId, erpCompanyId, adapter })
+
+    // Exactly one linked, one no-match; no double-link
+    expect(result.linked).toBe(1)
+    expect(result.noMatch).toBe(1)
+    expect(result.alreadyLinked).toBe(0)
+
+    // Only one identity link row exists, and it references 'EMP001'
+    const links = await db.select().from(schema.identityLinks).where(eq(schema.identityLinks.tenantId, tenantId))
+    expect(links).toHaveLength(1)
+    expect(links[0].externalId).toBe('EMP001')
+  })
 })
