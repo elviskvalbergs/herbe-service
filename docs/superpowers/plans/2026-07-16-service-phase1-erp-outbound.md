@@ -46,23 +46,41 @@ Builds the app→ERP write path per `docs/04-erp-sync.md` §"Outbound" + creatio
 
 ## Tasks
 
-**Task 1 — Migration 0017 + push store.** `scripts/migrations/0017_erp_push_queue.sql` (decision 1, idempotent), drizzle schema entries, `lib/sync/push/store.ts`: `createPushGroup(db, {tenantId, erpCompanyId, lane, kind, steps: [{seq, entityType, entityId, register, op}]})`, `getRunnableGroups(db, erpCompanyId, now)` (oldest non-terminal per lane, honoring `next_attempt_at`), `markStep`/`markGroup` updaters, `resetDeadStep(db, stepId)`. DB-backed tests incl. lane FIFO pick and next_attempt gating. Gates + commit.
+### Task 1 — Migration 0017 + push store
 
-**Task 2 — Fake-ERP write support.** POST route `/api/:company/:register` on the Hono server: in-memory per-instance record store, assigns `SerNr` = max(fixtures∪created)+1, echoes the stored record JSON (top-level `SerNr`, real-envelope shapes preserved on GET: created records appear in subsequent GETs); `SerNr` present in payload → update-by-key (404-equivalent empty behavior if unknown: echo without storing). Modes via `x-fake-erp-mode` header or server option: `noop-create` (200 + echoed payload, **no** SerNr — the "200-but-empty" persistence trap), `http-500`. GET gains `filter.<Field>` param support (exact string match) so natural-key/read-back paths are testable. Unit tests. Gates + commit.
+`scripts/migrations/0017_erp_push_queue.sql` (decision 1, idempotent), drizzle schema entries, `lib/sync/push/store.ts`: `createPushGroup(db, {tenantId, erpCompanyId, lane, kind, steps: [{seq, entityType, entityId, register, op}]})`, `getRunnableGroups(db, erpCompanyId, now)` (oldest non-terminal per lane, honoring `next_attempt_at`), `markStep`/`markGroup` updaters, `resetDeadStep(db, stepId)`. DB-backed tests incl. lane FIFO pick and next_attempt gating. Gates + commit.
 
-**Task 3 — Adapter write surface.** Decision 8 minus getRecordLinks: `pushCreate` (SVOVc+WSVc), `pushUpdate`, `fetchRecords` in `lib/erp/standard-books/adapter.ts` + `ErpAdapter` type. Tests against fake-ERP: create happy path, noop-create returns `''` erpRef, update round-trip, fetchRecords filter. Gates + commit.
+### Task 2 — Fake-ERP write support
 
-**Task 4 — Payload builders.** Decisions 5/7 in `lib/sync/push/builders.ts` (+ `wsSumup(rows): {Sum1, Sum3, Sum4}`). Pure where possible (the SVOVc live-read is passed in). Exhaustive unit tests: charge-type ints, marker field, missing customer ref, DoneMark≠0, EMCode missing, Location chain incl. both-missing error, ArtCode chain, time/distance gating, totals. Gates + commit.
+POST route `/api/:company/:register` on the Hono server: in-memory per-instance record store, assigns `SerNr` = max(fixtures∪created)+1, echoes the stored record JSON (top-level `SerNr`, real-envelope shapes preserved on GET: created records appear in subsequent GETs); `SerNr` present in payload → update-by-key (404-equivalent empty behavior if unknown: echo without storing). Modes via `x-fake-erp-mode` header or server option: `noop-create` (200 + echoed payload, **no** SerNr — the "200-but-empty" persistence trap), `http-500`. GET gains `filter.<Field>` param support (exact string match) so natural-key/read-back paths are testable. Unit tests. Gates + commit.
 
-**Task 5 — Saga engine + enqueue.** Decisions 3/4 in `lib/sync/push/engine.ts` + `enqueue.ts`. DB+fake-ERP tests: happy order_create; worksheet_push group where order step runs first then worksheet (erp_ref written, statuses flip, `order_number` set, worksheet → Synced); noop-create mode → step dead with number-series message, lane blocked; transient 500 → failed with backoff then succeeds on retry; resume-from-failed-step never re-posts the succeeded order step (fake-ERP records only one SVOVc); natural-key adoption (pre-created record in fake ERP + no erp_ref → adopted, no duplicate); `approveWorksheet` blocks without UserVc link and from non-`Done` status; re-ingest of a pushed worksheet matches via erp_ref (decision 12). Gates + commit.
+### Task 3 — Adapter write surface
 
-**Task 6 — Routes + cron.** Decision 11: push-tick route (+`vercel.json`), push-retry admin route, outbox route refactor keeping its contract tests green. Route tests: 401s, lock skip, retry resets dead step and next tick completes the group. Update `scripts/CRON-HANDOFF`-equivalent if present (none in this repo — vercel.json only). Gates + commit.
+Decision 8 minus getRecordLinks: `pushCreate` (SVOVc+WSVc), `pushUpdate`, `fetchRecords` in `lib/erp/standard-books/adapter.ts` + `ErpAdapter` type. Tests against fake-ERP: create happy path, noop-create returns `''` erpRef, update round-trip, fetchRecords filter. Gates + commit.
 
-**Task 7 — Live proof (create/update path).** Extend `tests/live/erp-contract.test.ts`: seed an order (customer + service item from a prior live ingest) → `enqueueOrderCreatePush` + `processPushQueue` against the demo ERP → assert non-empty numeric erpRef, read-back via `fetchRecords` `filter.SerNr` (1 record, our CustCode, marker present); `pushUpdate` on that same record (change `CustComplaint2`) → read-back confirms; seed+approve a worksheet (EMCode taken from an existing demo WSVc's `EMCode`; `push.mainServiceLocation` from `MainStockBlock` read or first existing WSVc `Location`) → saga pushes WSVc → assert SerNr, read-back `SVONr`/`EMCode`/`WONr=-1`/row count, log which totals/VAT fields the ERP derived (counts/field-presence only, never values beyond our own markers). `pnpm test:live` green. Record any real-data mismatch as a code fix, never a weakened assertion. Gates + commit.
+### Task 4 — Payload builders
 
-**Task 8 — WebExcellentAPI + invoiced readback.** Decisions 9/10: client, adapter `getRecordLinks`, capability wiring, `sweepInvoiceStatus`, `syncConnection` integration, `'invoice'` purpose. Unit tests with a stubbed XML server (Hono test route or fetch mock): LinkVc parsing incl. binary ID, capability-off skips sweep, IVVc link flips exactly matching orders, non-IVVc links ignored. Live: enable `features.invoiceReadback` on the test connection, `getRecordLinks` against a real demo WSVc/SVOVc (log link count + registers seen), run `sweepInvoiceStatus` (log flipped count ≥ 0). Gates + `pnpm test:live` + commit.
+Decisions 5/7 in `lib/sync/push/builders.ts` (+ `wsSumup(rows): {Sum1, Sum3, Sum4}`). Pure where possible (the SVOVc live-read is passed in). Exhaustive unit tests: charge-type ints, marker field, missing customer ref, DoneMark≠0, EMCode missing, Location chain incl. both-missing error, ArtCode chain, time/distance gating, totals. Gates + commit.
 
-**Task 9 — Doc 24 update + final sweep.** Flip WS4 in §1, add §2 bullets (push-queue tables/engine, adapter write surface, WebExcellentAPI client, `filter.` read support), record newly-verified ERP facts from Tasks 7/8, list deferred items in §4, refresh "Last updated". Full gates + `pnpm test:live` one last time. Commit + push.
+### Task 5 — Saga engine + enqueue
+
+Decisions 3/4 in `lib/sync/push/engine.ts` + `enqueue.ts`. DB+fake-ERP tests: happy order_create; worksheet_push group where order step runs first then worksheet (erp_ref written, statuses flip, `order_number` set, worksheet → Synced); noop-create mode → step dead with number-series message, lane blocked; transient 500 → failed with backoff then succeeds on retry; resume-from-failed-step never re-posts the succeeded order step (fake-ERP records only one SVOVc); natural-key adoption (pre-created record in fake ERP + no erp_ref → adopted, no duplicate); `approveWorksheet` blocks without UserVc link and from non-`Done` status; re-ingest of a pushed worksheet matches via erp_ref (decision 12). Gates + commit.
+
+### Task 6 — Routes + cron
+
+Decision 11: push-tick route (+`vercel.json`), push-retry admin route, outbox route refactor keeping its contract tests green. Route tests: 401s, lock skip, retry resets dead step and next tick completes the group. Update `scripts/CRON-HANDOFF`-equivalent if present (none in this repo — vercel.json only). Gates + commit.
+
+### Task 7 — Live proof (create/update path)
+
+Extend `tests/live/erp-contract.test.ts`: seed an order (customer + service item from a prior live ingest) → `enqueueOrderCreatePush` + `processPushQueue` against the demo ERP → assert non-empty numeric erpRef, read-back via `fetchRecords` `filter.SerNr` (1 record, our CustCode, marker present); `pushUpdate` on that same record (change `CustComplaint2`) → read-back confirms; seed+approve a worksheet (EMCode taken from an existing demo WSVc's `EMCode`; `push.mainServiceLocation` from `MainStockBlock` read or first existing WSVc `Location`) → saga pushes WSVc → assert SerNr, read-back `SVONr`/`EMCode`/`WONr=-1`/row count, log which totals/VAT fields the ERP derived (counts/field-presence only, never values beyond our own markers). `pnpm test:live` green. Record any real-data mismatch as a code fix, never a weakened assertion. Gates + commit.
+
+### Task 8 — WebExcellentAPI + invoiced readback
+
+Decisions 9/10: client, adapter `getRecordLinks`, capability wiring, `sweepInvoiceStatus`, `syncConnection` integration, `'invoice'` purpose. Unit tests with a stubbed XML server (Hono test route or fetch mock): LinkVc parsing incl. binary ID, capability-off skips sweep, IVVc link flips exactly matching orders, non-IVVc links ignored. Live: enable `features.invoiceReadback` on the test connection, `getRecordLinks` against a real demo WSVc/SVOVc (log link count + registers seen), run `sweepInvoiceStatus` (log flipped count ≥ 0). Gates + `pnpm test:live` + commit.
+
+### Task 9 — Doc 24 update + final sweep
+
+Flip WS4 in §1, add §2 bullets (push-queue tables/engine, adapter write surface, WebExcellentAPI client, `filter.` read support), record newly-verified ERP facts from Tasks 7/8, list deferred items in §4, refresh "Last updated". Full gates + `pnpm test:live` one last time. Commit + push.
 
 ## Deferred (recorded in doc 24 §4 by Task 9)
 - Standalone→ERP initial-load wizard (needs standalone mode + UI; doc 21 WS4 tail).
