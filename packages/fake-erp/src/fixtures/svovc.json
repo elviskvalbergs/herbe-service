@@ -2,6 +2,7 @@
   {
     "SerNr": 5001,
     "CustCode": "CUST001",
+    "DelAddrCode": "DEL001",
     "CustComplaint1": "Unit not cooling",
     "CustComplaint2": "Noise on startup",
     "CustComplaint3": "",

@@ -25,6 +25,8 @@ import { buildAdapterForConnection } from '@/lib/erp/connection'
 import { ingestCustomers } from '@/lib/sync/ingest/customers'
 import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
 import { ingestServiceOrders } from '@/lib/sync/ingest/service-orders'
+import { ingestWorksheets } from '@/lib/sync/ingest/worksheets'
+import { syncConnection } from '@/lib/sync/sync-connection'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -207,5 +209,113 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     // the demo data, so logged only, never asserted on.
     const resolvedItemCount = lineRows.filter((r) => !!r.serviceItemId).length
     console.log(`live SVOVc lines: ${resolvedItemCount}/${lineRows.length} rows resolved a serviceItemId`)
+  })
+
+  // Runs last: worksheets need orders present first (orderId is NOT NULL,
+  // resolved via SVONr against the order's own primary/SVOVc erp_ref). Not
+  // dependent on the previous test having run — re-runs the full
+  // customers -> service items -> orders chain itself (all ingests are
+  // idempotent) so this test is self-contained about ordering.
+  it('pulls WSVc and ingests worksheets + line rows end-to-end into worksheets/worksheet_rows', async () => {
+    const custs = await adapter.pullFullList('CUVc')
+    await ingestCustomers(db, companyId, { upserts: custs, deletedRefs: [], cursor: '0' })
+
+    const units = await adapter.pullFullList('SVOSerVc')
+    await ingestServiceItems(db, companyId, { upserts: units, deletedRefs: [], cursor: '0' })
+
+    const orders = await adapter.pullFullList('SVOVc')
+    await ingestServiceOrders(db, companyId, { upserts: orders, deletedRefs: [], cursor: '0' })
+
+    const ws = await adapter.pullFullList('WSVc')
+    const result = await ingestWorksheets(db, companyId, { upserts: ws, deletedRefs: [], cursor: '0' })
+
+    // Never log row contents — counts only, same discipline as the other tests here.
+    console.log(`live WSVc: pulled ${ws.length}, ingested ${result.ingested}, skipped ${result.skipped}`)
+
+    // If this is 0 with a high skipped count, SVONr didn't resolve to
+    // ingested orders — a real finding, not something to relax the
+    // assertion around.
+    expect(result.ingested).toBeGreaterThanOrEqual(1)
+
+    const ingestedOrders = await db
+      .select({ id: schema.serviceOrders.id })
+      .from(schema.serviceOrders)
+      .where(eq(schema.serviceOrders.erpCompanyId, companyId))
+    const orderIds = ingestedOrders.map((o) => o.id)
+
+    const ingestedWorksheets = orderIds.length
+      ? await db.select().from(schema.worksheets).where(inArray(schema.worksheets.orderId, orderIds))
+      : []
+    const worksheetIds = ingestedWorksheets.map((w) => w.id)
+
+    const worksheetLineRows = worksheetIds.length
+      ? await db.select().from(schema.worksheetRows).where(inArray(schema.worksheetRows.worksheetId, worksheetIds))
+      : []
+
+    console.log(
+      `live WSVc ingest: ${ingestedWorksheets.length} worksheets rows, ${worksheetLineRows.length} worksheet_rows rows`,
+    )
+    expect(ingestedWorksheets.length).toBeGreaterThanOrEqual(1)
+
+    const refs = await db
+      .select()
+      .from(schema.erpRefs)
+      .where(
+        and(
+          eq(schema.erpRefs.erpCompanyId, companyId),
+          eq(schema.erpRefs.entityType, 'worksheet'),
+          eq(schema.erpRefs.purpose, 'primary'),
+          eq(schema.erpRefs.register, 'WSVc'),
+        ),
+      )
+    expect(refs.length).toBeGreaterThanOrEqual(1)
+
+    // Soft: depends on serial overlap between SVOSerVc and WSVc lines in
+    // the demo data, so logged only, never asserted on.
+    const resolvedItemCount = worksheetLineRows.filter((r) => !!r.serviceItemId).length
+    console.log(`live WSVc lines: ${resolvedItemCount}/${worksheetLineRows.length} rows resolved a serviceItemId`)
+  })
+
+  // Runs last: proves the actual production entrypoint — syncConnection
+  // driving every register for one connection in one call — end-to-end
+  // against the real ERP, not just the individual ingest functions exercised
+  // above. Reuses the suite's adapter/companyId built via
+  // buildAdapterForConnection in beforeAll.
+  it('runs syncConnection end-to-end against the real ERP and populates every register', async () => {
+    const summary = await syncConnection(db, adapter, companyId)
+
+    // Counts/shape only — never log row contents.
+    for (const [register, regSummary] of Object.entries(summary.perRegister)) {
+      console.log(`live syncConnection ${register}: ${JSON.stringify(regSummary)}`)
+      expect(regSummary.error).toBeUndefined()
+    }
+
+    const [orders, items, worksheetRows, custs] = await Promise.all([
+      db.select().from(schema.serviceOrders).where(eq(schema.serviceOrders.erpCompanyId, companyId)),
+      db.select().from(schema.serviceItems).where(eq(schema.serviceItems.erpCompanyId, companyId)),
+      db.select().from(schema.worksheets).where(eq(schema.worksheets.erpCompanyId, companyId)),
+      db.select().from(schema.customers).where(eq(schema.customers.erpCompanyId, companyId)),
+    ])
+
+    console.log(
+      `live syncConnection counts: service_orders=${orders.length}, service_items=${items.length}, worksheets=${worksheetRows.length}, customers=${custs.length}`,
+    )
+    expect(orders.length).toBeGreaterThan(0)
+    expect(items.length).toBeGreaterThan(0)
+    expect(worksheetRows.length).toBeGreaterThan(0)
+    expect(custs.length).toBeGreaterThan(0)
+
+    const states = await db.select().from(schema.erpSyncState).where(eq(schema.erpSyncState.erpCompanyId, companyId))
+    expect(states.length).toBe(Object.keys(summary.perRegister).length)
+    for (const state of states) {
+      expect(state.syncStatus).toBe('idle')
+    }
+
+    // Soft observation only: real demo DelAddrCode<->DelCode overlap is
+    // data-dependent, and lib/sync/sync-connection.test.ts (fake ERP) already
+    // proves the DelAddrVc -> SVOVc siteName resolution mechanism itself. Do
+    // NOT hard-fail here if this is 0.
+    const withSiteName = orders.filter((o) => !!o.siteName).length
+    console.log(`live syncConnection: ${withSiteName}/${orders.length} service_orders have a resolved siteName`)
   })
 })

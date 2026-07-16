@@ -1,15 +1,20 @@
 import type { Context } from 'hono'
 import cuvcFixture from '../fixtures/cuvc.json' with { type: 'json' }
+import deladdrvcFixture from '../fixtures/deladdrvc.json' with { type: 'json' }
 import svoservcFixture from '../fixtures/svoservc.json' with { type: 'json' }
 import svovcFixture from '../fixtures/svovc.json' with { type: 'json' }
+import wsvcFixture from '../fixtures/wsvc.json' with { type: 'json' }
 
 // SVOSerVc is a no-delta register (verified live): updates_after -> 404, same
-// as SVOVc/WSVc. Its identity key is SerialNr, not SerNr.
+// as SVOVc/WSVc. Its identity key is SerialNr, not SerNr. DelAddrVc is
+// delta-capable (verified live, same as CUVc) — deliberately absent here.
 const NO_UPDATES_AFTER = new Set(['SVOVc', 'WSVc', 'SVOSerVc'])
 const FIXTURES: Record<string, Array<{ ServerSequence: number }>> = {
   CUVc: cuvcFixture,
+  DelAddrVc: deladdrvcFixture,
   SVOSerVc: svoservcFixture,
   SVOVc: svovcFixture,
+  WSVc: wsvcFixture,
 }
 
 export function handleRegisterGet(c: Context<Record<string, never>, '/api/:company/:register'>) {

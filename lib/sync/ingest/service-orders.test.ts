@@ -16,7 +16,7 @@ import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { setOrderStatus } from '@/lib/domain/stores/service-orders'
 import { insertServiceItem } from '@/lib/domain/stores/service-items'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
-import { ingestServiceOrders } from './service-orders'
+import { buildDelAddrSiteMap, ingestServiceOrders } from './service-orders'
 
 let testDb: TestDatabase
 let sql: ReturnType<typeof postgres>
@@ -236,6 +236,86 @@ describe('ingestServiceOrders', () => {
     await expect(
       ingestServiceOrders(db, '00000000-0000-0000-0000-000000000000', changeSetOf([row({ SerNr: 5006 })])),
     ).rejects.toThrow(/unknown erpCompanyId/)
+  })
+})
+
+describe('buildDelAddrSiteMap', () => {
+  it('builds a DelCode -> Name map from DelAddrVc rows', () => {
+    const map = buildDelAddrSiteMap([
+      { DelCode: 'D1', Name: 'Main Warehouse' },
+      { DelCode: 'D2', Name: 'Site B' },
+    ])
+    expect(map.get('D1')).toBe('Main Warehouse')
+    expect(map.get('D2')).toBe('Site B')
+    expect(map.size).toBe(2)
+  })
+
+  it('skips rows with an empty or missing DelCode', () => {
+    const map = buildDelAddrSiteMap([
+      { DelCode: '', Name: 'No Code' },
+      { Name: 'Missing Code' },
+    ])
+    expect(map.size).toBe(0)
+  })
+
+  it('skips rows with an empty or missing Name', () => {
+    const map = buildDelAddrSiteMap([
+      { DelCode: 'D3', Name: '' },
+      { DelCode: 'D4' },
+    ])
+    expect(map.size).toBe(0)
+  })
+})
+
+describe('ingestServiceOrders — siteName resolution via DelAddrVc (Task A)', () => {
+  it('resolves siteName from opts.siteNameByDelCode via row.DelAddrCode on insert', async () => {
+    const siteNameByDelCode = new Map([['DEL1', 'Customer Site A']])
+
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([row({ SerNr: 8001, DelAddrCode: 'DEL1' })]),
+      { siteNameByDelCode },
+    )
+
+    const order = await orderByNumber('8001')
+    expect(order.siteName).toBe('Customer Site A')
+  })
+
+  it('a DelAddrCode not present in the map resolves to null siteName', async () => {
+    const siteNameByDelCode = new Map([['DEL1', 'Customer Site A']])
+
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([row({ SerNr: 8002, DelAddrCode: 'UNKNOWN' })]),
+      { siteNameByDelCode },
+    )
+
+    const order = await orderByNumber('8002')
+    expect(order.siteName).toBeNull()
+  })
+
+  it('re-ingesting (update path) also resolves siteName from the map', async () => {
+    // First ingest with no opts — siteName stays null.
+    await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 8003, DelAddrCode: 'DEL1' })]))
+    expect((await orderByNumber('8003')).siteName).toBeNull()
+
+    // Re-ingest the same order with a site map — the update path must apply it too.
+    const siteNameByDelCode = new Map([['DEL1', 'Customer Site A']])
+    await ingestServiceOrders(
+      db,
+      erpCompanyId,
+      changeSetOf([row({ SerNr: 8003, DelAddrCode: 'DEL1' })]),
+      { siteNameByDelCode },
+    )
+    expect((await orderByNumber('8003')).siteName).toBe('Customer Site A')
+  })
+
+  it('regression: calling ingestServiceOrders with no opts leaves siteName null', async () => {
+    const result = await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 8004, DelAddrCode: 'DEL1' })]))
+    expect(result).toEqual({ ingested: 1, skipped: 0 })
+    expect((await orderByNumber('8004')).siteName).toBeNull()
   })
 })
 

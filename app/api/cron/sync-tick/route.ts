@@ -3,18 +3,18 @@
 // The single Vercel-cron dispatcher (vercel.json: every minute). Fans out
 // internally to every active erp_companies row instead of registering one
 // cron entry per cadence (Vercel's cron floor is 1 minute, one schedule per
-// route). Phase 0 scope: the CUVc (customers) pull only — the outbox drain
-// is Task 13's own fan-out branch here.
-import { and, eq } from 'drizzle-orm'
+// route). Each company's full register sync is driven by syncConnection —
+// see lib/sync/sync-connection.ts for the per-register sequence and
+// sync_state bookkeeping. buildAdapterForConnection turns the stored,
+// encrypted creds on the erp_companies row into a live adapter.
+import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { acquireCronLock, releaseCronLock } from '@/lib/cronLock'
 import { bearerMatches } from '@/lib/api/cronAuth'
-import { getAdapter } from '@herbe/erp-core'
-import { ingestCustomers } from '@/lib/sync/ingest/customers'
+import { buildAdapterForConnection } from '@/lib/erp/connection'
+import { syncConnection, type SyncSummary } from '@/lib/sync/sync-connection'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
-
-const REGISTER = 'CUVc'
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET
@@ -29,59 +29,13 @@ export async function GET(request: Request) {
 
   try {
     const companies = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.active, true))
-    const results: Array<{ companyId: string; status: string }> = []
+    const results: Array<{ companyId: string; status: string; summary?: SyncSummary }> = []
 
     for (const company of companies) {
       try {
-        const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
-
-        const [state] = await db
-          .select()
-          .from(schema.erpSyncState)
-          .where(and(eq(schema.erpSyncState.erpCompanyId, company.id), eq(schema.erpSyncState.register, REGISTER)))
-
-        if (!state) {
-          // First tick for this company+register: discover whether it
-          // supports updates_after and persist the result so later ticks
-          // don't re-probe on every run (only some registers support it).
-          const supportsIncremental = await adapter.probeIncrementalSupport(REGISTER)
-          await db.insert(schema.erpSyncState).values({
-            erpCompanyId: company.id,
-            register: REGISTER,
-            syncCursor: '0',
-            syncStatus: supportsIncremental ? 'idle' : 'error',
-            errorMessage: supportsIncremental
-              ? null
-              : 'updates_after not supported — needs windowed scan (Phase 1)',
-          })
-          if (!supportsIncremental) {
-            results.push({ companyId: company.id, status: 'skipped: updates_after not supported' })
-            continue
-          }
-        } else if (state.syncStatus === 'error') {
-          // Already known not to support updates_after from a prior probe.
-          results.push({ companyId: company.id, status: 'skipped: updates_after not supported' })
-          continue
-        }
-
-        const cursor = state?.syncCursor ?? '0'
-        const changeSet = await adapter.pullChanges(REGISTER, cursor)
-        await ingestCustomers(db, company.id, changeSet)
-
-        await db
-          .insert(schema.erpSyncState)
-          .values({
-            erpCompanyId: company.id,
-            register: REGISTER,
-            syncCursor: changeSet.cursor,
-            lastSyncAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [schema.erpSyncState.erpCompanyId, schema.erpSyncState.register],
-            set: { syncCursor: changeSet.cursor, lastSyncAt: new Date() },
-          })
-
-        results.push({ companyId: company.id, status: 'ok' })
+        const adapter = await buildAdapterForConnection(db, company.id)
+        const summary = await syncConnection(db, adapter, company.id)
+        results.push({ companyId: company.id, status: 'ok', summary })
       } catch (err) {
         // A single company's failure must not abort the rest of the tick.
         results.push({ companyId: company.id, status: `error: ${String(err)}` })
