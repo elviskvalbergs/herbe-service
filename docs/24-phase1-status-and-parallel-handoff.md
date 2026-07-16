@@ -1,6 +1,6 @@
 # 24 — Phase 1 status & parallel-session handoff
 
-Last updated: **2026-07-16** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence).
+Last updated: **2026-07-16** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence; WS4 ERP outbound landed on `feature/service-phase1-erp-outbound`, pending PR into preview).
 Purpose: let a fresh Claude/dev session pick up any remaining workstream without re-deriving state.
 Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 
@@ -15,7 +15,7 @@ Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 | WS13 | HistoryEvent projector | **Done** (`lib/domain/history-projector.ts` + history store + /history endpoint) |
 | WS14 | API shell (read) | **Done** — `/api/ext/v1` read API (service-items, orders, history; token auth + scope + rate limit) matches the frozen portal contract (`herbe-portal/lib/service/dto.ts`). Writes (POST /requests, /confirm, /feedback) NOT built (need Phase-2 entities / WS4) |
 | WS2 | Auth roles, WebAuthn, seat licensing | **Not started** (next-auth session exists from Phase 0; no roles/licensing) |
-| WS4 | ERP outbound (push-queue saga, approve→invoice) | **Not started** (only the Phase-0 `pushCreate('SVOVc')` spike + outbox table exist) |
+| WS4 | ERP outbound (push-queue saga, approve→invoice) | **Done, proven live** (push-queue saga; SVOVc/WSVc create via saga + update mechanics; persistence verification; IVVc invoiced sweep — see §2; initial-load wizard NOT built — deferred) |
 | WS5 | Bookings ↔ ActVc | **Not started** |
 | WS6 | Connection config UI & sync health | **Not started** (backend state exists: `erp_sync_state` per register; no UI) |
 | WS9 | Field execution UX (technician PWA) | **Not started** (offline sync-client + virtual-device simulation exist from Phase 0) |
@@ -46,6 +46,25 @@ ERP facts (verified live; also in memory + `docs/17/19`):
 - SVOSerVc identity = `SerialNr` (no SerNr). SVOVc has no OKFlag; terminal = `DoneMark`. `InvFlag/InvMark` are NOT invoiced signals (never derive Invoiced from them — needs IVVc link, deferred).
 - Line `ItemType` returns localized label strings ("Invoiceable"/"Warranty"/"Goodwill") → `parseItemTypeLabel` (`lib/domain/charge-type.ts`); unmapped → invoiceable + needsReview.
 - Unset numerics come back as `''` — coerce via `booksNumeric` (worksheets.ts), never bind `''` to a numeric column.
+- **Writes are form-urlencoded** `set_field.<Field>=<value>` / `set_row_field.<n>.<Field>=<value>` pairs — a JSON body is silently ignored (200 OK, nothing set). Write responses are GET-enveloped: `data.<Register>: [record]`, same shape as a read. Update = `PATCH` to the record URL, not POST with `SerNr` in the body (verified live, WS4 Task 7).
+- `WSVc.WONr` reads back blank (`''`) after a `-1` write, never literally `"-1"`. `MainStockBlock` is REST-readable but empty on the demo tenant — `Location` needs the `push.mainServiceLocation` fallback in practice, not just in theory.
+- `WebExcellentAPI` `getrecordlinks` true wire format (verified against HAL source via halocron, not just the portal client): `action=action&register=getrecordlinks&id=<sernr>&regname=<register>&compno=<n>` → repeated `<LinkVc><VcName>/<ID>` blocks; `ID` is sometimes a raw LE-uint32 binary value, not a decimal string.
+- Ingest stores item code as `attributes.itemCode` (camelCase) — a `.ItemCode` casing mismatch silently nulled every `ArtCode` on push until WS4 Task 7 caught it live.
+- One demo customer's `Objects` field trips an unrelated ERP business rule on SVOVc create ("Kods nav reģistrēts" / error 1071) — a demo-data quirk, not a code bug; route around it when picking a live-test customer.
+
+## 2b. WS4 outbound — what exists and is live-proven
+
+`enqueueOrderCreatePush` + `processPushQueue` against the demo ERP creates a real SVOVc (non-empty `SerNr`, read-back verified via `filter.SerNr`, marker-tagged `CustComplaint1`); `pushUpdate` round-trips `CustComplaint2` (PATCH-by-URL); `approveWorksheet` + the saga creates a real WSVc (`SVONr` link, worksheet → `Synced`). A live `DoneMark=1` SVOVc is rejected before any write, and natural-key re-adoption after local `erp_ref` loss produces no duplicate. All proven live, WS4 Task 7/8.
+
+Key modules (all on `feature/service-phase1-erp-outbound`):
+- Migration `0017` (`erp_push_groups`/`erp_push_steps`) — the push-queue tables, independent of `outbox_ops` (client-op journal).
+- `lib/sync/push/{store,engine,gather,builders,enqueue}.ts` — lane-FIFO saga (`processPushQueue`); per-step idempotency ref → natural-key → create; `2^attempts` backoff to DLQ; `approveWorksheet` is the approval entry point (`Done→Approved` + `UserVc`-link guard, atomic status+enqueue in one tx).
+- Adapter write surface (`lib/erp/standard-books/adapter.ts`): `pushCreate` (SVOVc/WSVc), `pushUpdate` (PATCH-by-URL), `fetchRecords` (`filter.` reads), `getRecordLinks`.
+- `lib/erp/standard-books/excellent-api.ts` — the WebExcellentAPI `getrecordlinks` client.
+- Routes: `app/api/cron/push-tick/route.ts` (cron in `vercel.json`), `app/api/admin/push-retry/route.ts` (DLQ re-entry), `app/api/sync/outbox/route.ts` (now saga-only — the push queue is the only ERP writer).
+- `adapterConfigJson` conventions: `push.{mainServiceLocation,laborItemCode,distanceItemCode,fallbackItemCode,timezone}`, `features.invoiceReadback`.
+- `erp_refs` purpose `'invoice'` + `entityType 'user'`/register `'UserVc'` as the technician link convention.
+- `packages/fake-erp` now speaks the real write wire contract (form-urlencoded body, PATCH route, enveloped write responses) — a faithful contract test, not just internally consistent with itself.
 
 ## 3. Conventions a new session must follow
 
@@ -65,9 +84,9 @@ Independent of each other (safe to run as parallel sessions):
 2. **WS2 Auth roles + seat licensing (+WebAuthn)** — touches `lib/auth`, users table, middleware. No overlap with WS3/WS12.
 3. **WS6 Connection config + sync health UI** — admin UI over existing `erp_companies` + `erp_sync_state` + creds encrypt (write side of `encryptErpCredentials`). Reads WS3 but doesn't change it.
 4. **WS10 Dispatch board** (office UI over orders/worksheets/bookings-stub) — UI-heavy, minimal domain writes.
-5. **WS4 ERP outbound** — push-queue saga (outbox exists), WSVc/SVOVc create+update, OK-flag write, read-back verification. **Touches the adapter + outbox**: don't pair with another adapter-touching session at the same time.
-6. **WS9 Field PWA** — biggest; builds on offline sync-client + worksheets domain. Coordinate with WS4 (it produces the writes WS4 pushes) but can start UI-first.
+5. ~~WS4 ERP outbound~~ — **done, see §2b**; no longer open. WS9 can now build directly on `approveWorksheet` (the approval entry point) and the saga-backed `/api/sync/outbox` route.
+6. **WS9 Field PWA** — biggest; builds on offline sync-client + worksheets domain. WS4 now landed (produces the writes WS4 pushes) but can still start UI-first.
 
-Deferred/blocked bits to fold into whichever session touches the area: SVOVc/WSVc deletion detection (needs an erp_refs-based key-sweep variant), windowed-scan date bounds for full pulls (fine at demo scale), UserVc→technician identity links (WS2/WS9), IVVc invoiced-status readback (WS4, WebExcellentAPI-gated), DelAddrVc siteName re-check on real tenant data (0/43 overlap on demo).
+Deferred/blocked bits to fold into whichever session touches the area: SVOVc/WSVc deletion detection (needs an erp_refs-based key-sweep variant), windowed-scan date bounds for full pulls (fine at demo scale), UserVc→technician identity links (WS2/WS9), DelAddrVc siteName re-check on real tenant data (0/43 overlap on demo); from WS4: standalone→ERP initial-load wizard, customer-create push step (saga lane/seq already accommodates it), `UserVc.Location` van-stock tier + identity-link seeding UI (WS2/WS6), VAT-aware `Sum3`/`Sum4`, stock-transaction fallback tier (non-Work-Sheet-OK connections), adapter-side OK write (future per-connection option), REST-only invoiced fallback tiers, update-op domain flows (engine dead-letters them today) + unknown-SerNr PATCH guard, per-candidate isolation in `sweepInvoiceStatus`, `outbox_ops` failed-row reconciliation after DLQ heal.
 
 Each new session should read: this doc → `docs/21-phase-1-implementation-plan.md` (its WS section) → the relevant `docs/superpowers/plans/*.md` → then plan its own slice the same way (plan doc → subagent tasks → live proof where ERP-touching).
