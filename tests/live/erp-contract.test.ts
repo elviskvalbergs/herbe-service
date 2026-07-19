@@ -27,6 +27,7 @@ import { ingestServiceItems } from '@/lib/sync/ingest/service-items'
 import { ingestServiceOrders } from '@/lib/sync/ingest/service-orders'
 import { ingestWorksheets } from '@/lib/sync/ingest/worksheets'
 import { syncConnection } from '@/lib/sync/sync-connection'
+import { matchUsersByEmail } from '@/lib/auth/identity-link'
 import type { ErpAdapter } from '@herbe/erp-core'
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
@@ -58,6 +59,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>
   let adapter: ErpAdapter
   let companyId: string
+  let tenantId: string
 
   beforeAll(async () => {
     // Encryption round-trips locally regardless of which key is used, so a
@@ -93,6 +95,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
       .returning()
 
     companyId = company.id
+    tenantId = tenant.id
     // Exercises the full production path: stored row -> decrypt -> adapter.
     adapter = await buildAdapterForConnection(db, company.id)
   }, 60_000)
@@ -274,6 +277,33 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     // the demo data, so logged only, never asserted on.
     const resolvedItemCount = worksheetLineRows.filter((r) => !!r.serviceItemId).length
     console.log(`live WSVc lines: ${resolvedItemCount}/${worksheetLineRows.length} rows resolved a serviceItemId`)
+  })
+
+  it('pulls UserVc as a full delta-capable list', async () => {
+    const rows = await adapter.pullFullList('UserVc')
+    expect(Array.isArray(rows)).toBe(true)
+    console.log(`live UserVc pullFullList: ${rows.length} rows`)
+    expect(await adapter.probeIncrementalSupport('UserVc')).toBe(true)
+  })
+
+  it('matches a user by email against live UserVc data and links exactly once', async () => {
+    const rows = await adapter.pullFullList('UserVc')
+    const withEmail = rows.find((r) => typeof r.LoginEmailAddr === 'string' && r.LoginEmailAddr) ??
+      rows.find((r) => typeof r.emailAddr === 'string' && r.emailAddr)
+    if (!withEmail) {
+      console.log('live UserVc: no row carries an email address — skipping match assertion')
+      return
+    }
+    const email = String((withEmail as Record<string, unknown>).LoginEmailAddr || (withEmail as Record<string, unknown>).emailAddr)
+
+    const [user] = await db.insert(schema.users).values({ tenantId, email }).returning()
+    const result = await matchUsersByEmail(db, { tenantId, erpCompanyId: companyId, adapter })
+    console.log(`live identity match: linked=${result.linked} alreadyLinked=${result.alreadyLinked} noMatch=${result.noMatch}`)
+    expect(result.linked).toBeGreaterThanOrEqual(1)
+
+    const links = await db.select().from(schema.identityLinks).where(eq(schema.identityLinks.userId, user.id))
+    expect(links).toHaveLength(1)
+    expect(links[0].provider).toBe('erp')
   })
 
   // Runs last: proves the actual production entrypoint — syncConnection

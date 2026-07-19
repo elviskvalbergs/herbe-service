@@ -3,6 +3,7 @@ import type { DefaultSession, NextAuthConfig, Session } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
+import { authorizeCredentials } from './credentials-provider'
 import { authorizeMagicLink } from './magic-link-provider'
 
 // The default Session["user"] shape has no `id` — augment it so
@@ -13,12 +14,16 @@ import { authorizeMagicLink } from './magic-link-provider'
 declare module 'next-auth' {
   interface User {
     tenantId?: string
+    role?: string
+    sessionVersion?: number
   }
 
   interface Session {
     user: {
       id: string
       tenantId: string
+      role: string
+      sessionVersion: number
     } & DefaultSession['user']
   }
 }
@@ -35,7 +40,7 @@ const THIRTY_DAYS_SECS = 30 * 24 * 60 * 60
 // only manages iat/exp/jti at encode time, so custom claims pass through as-is.
 export function jwtCallback(params: {
   token: JWT
-  user?: { id?: string; tenantId?: string } | null
+  user?: { id?: string; tenantId?: string; role?: string; sessionVersion?: number } | null
   trigger?: 'signIn' | 'signUp' | 'update'
 }): JWT | null {
   const { token, user, trigger } = params
@@ -44,10 +49,8 @@ export function jwtCallback(params: {
   if (trigger === 'signIn' && user?.id) {
     token.userId = user.id
     token.tenantId = user.tenantId
-    // Placeholder for Phase 1: bump a per-user counter in the `users` table
-    // to force-invalidate all of that user's live sessions (role change /
-    // offboarding). Not enforced against anything yet in Phase 0.
-    token.sessionVersion = 1
+    token.role = user.role
+    token.sessionVersion = user.sessionVersion ?? 1
     token.authTime = nowSecs
   }
 
@@ -68,6 +71,12 @@ export function sessionCallback(params: { session: Session; token: JWT }): Sessi
   if (typeof token.tenantId === 'string') {
     session.user.tenantId = token.tenantId
   }
+  if (typeof token.role === 'string') {
+    session.user.role = token.role
+  }
+  if (typeof token.sessionVersion === 'number') {
+    session.user.sessionVersion = token.sessionVersion
+  }
   return session
 }
 
@@ -87,7 +96,25 @@ export const authConfig: NextAuthConfig = {
       credentials: { token: { type: 'text' } },
       authorize: async (credentials) => {
         const user = await authorizeMagicLink(db, { token: credentials.token as string })
-        return user ? { id: user.id, email: user.email, tenantId: user.tenantId } : null
+        return user ? { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion } : null
+      },
+    }),
+    Credentials({
+      id: 'credentials',
+      name: 'Email + Password',
+      credentials: {
+        tenantId: { type: 'text' },
+        email: { type: 'email' },
+        password: { type: 'password' },
+        totp: { type: 'text' },
+      },
+      authorize: async (credentials) => {
+        return authorizeCredentials(db, {
+          tenantId: credentials.tenantId as string,
+          email: credentials.email as string,
+          password: credentials.password as string,
+          totp: credentials.totp as string | undefined,
+        })
       },
     }),
   ],

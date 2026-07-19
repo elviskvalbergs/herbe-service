@@ -8,7 +8,7 @@
 // would never trip: it gets bumped to "now" on every request, not just at
 // sign-in. These tests pin down the custom `authTime` claim jwtCallback uses
 // instead, which Auth.js's encoder never touches.
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { JWT } from 'next-auth/jwt'
 
 // `./config` transitively imports `@/lib/db`, which reads DATABASE_URL at
@@ -16,6 +16,15 @@ import type { JWT } from 'next-auth/jwt'
 // __tests__/lib/db.test.ts. A dummy, unreachable URL is fine here: these
 // tests only exercise the pure jwtCallback/sessionCallback functions, which
 // never touch the database.
+//
+// Since Task 3, `./config` also transitively imports credentials-provider.ts
+// -> totp.ts -> session-guard.ts, which imports `auth` from '@/lib/auth' at
+// module scope — whose real implementation transitively requires
+// `next/server`, unresolvable under Vitest (same workaround as
+// totp.test.ts / session-guard.test.ts). Nothing under test here calls
+// auth() either.
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
+
 let jwtCallback: typeof import('./config').jwtCallback
 let sessionCallback: typeof import('./config').sessionCallback
 
@@ -27,7 +36,7 @@ beforeAll(async () => {
 describe('jwtCallback', () => {
   it('sets userId, sessionVersion, and authTime on trigger "signIn"', () => {
     const nowSecs = Math.floor(Date.now() / 1000)
-    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1' }, trigger: 'signIn' })
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1', sessionVersion: 1 }, trigger: 'signIn' })
 
     expect(token?.userId).toBe('user-1')
     expect(token?.sessionVersion).toBe(1)
@@ -39,6 +48,24 @@ describe('jwtCallback', () => {
     const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1' }, trigger: 'signIn' })
 
     expect(token?.tenantId).toBe('tenant-1')
+  })
+
+  it('stamps role onto the token on trigger "signIn"', () => {
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1', role: 'technician' }, trigger: 'signIn' })
+
+    expect(token?.role).toBe('technician')
+  })
+
+  it('stamps sessionVersion onto the token on trigger "signIn"', () => {
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1', sessionVersion: 2 }, trigger: 'signIn' })
+
+    expect(token?.sessionVersion).toBe(2)
+  })
+
+  it('defaults sessionVersion to 1 if not provided on signIn', () => {
+    const token = jwtCallback({ token: {}, user: { id: 'user-1', tenantId: 'tenant-1' }, trigger: 'signIn' })
+
+    expect(token?.sessionVersion).toBe(1)
   })
 
   it('preserves the original tenantId across a later call with no trigger (rolling refresh)', () => {
@@ -84,6 +111,7 @@ describe('jwtCallback', () => {
     const token = jwtCallback({ token: {} })
 
     expect(token?.userId).toBeUndefined()
+    expect(token?.role).toBeUndefined()
     expect(token?.authTime).toBeGreaterThanOrEqual(nowSecs - 1)
   })
 })
@@ -91,7 +119,7 @@ describe('jwtCallback', () => {
 describe('sessionCallback', () => {
   it('copies token.userId onto session.user.id', () => {
     const session = sessionCallback({
-      session: { user: { id: '', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: '', tenantId: '', role: '', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
       token: { userId: 'user-1' },
     })
 
@@ -100,7 +128,7 @@ describe('sessionCallback', () => {
 
   it('leaves session.user.id untouched when the token has no userId', () => {
     const session = sessionCallback({
-      session: { user: { id: 'unchanged', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'unchanged', tenantId: '', role: '', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
       token: {},
     })
 
@@ -109,7 +137,7 @@ describe('sessionCallback', () => {
 
   it('copies token.tenantId onto session.user.tenantId (Task 16b: the claim the sync routes trust)', () => {
     const session = sessionCallback({
-      session: { user: { id: 'user-1', tenantId: '' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'user-1', tenantId: '', role: '', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
       token: { userId: 'user-1', tenantId: 'tenant-1' },
     })
 
@@ -118,10 +146,46 @@ describe('sessionCallback', () => {
 
   it('leaves session.user.tenantId untouched when the token has no tenantId', () => {
     const session = sessionCallback({
-      session: { user: { id: 'user-1', tenantId: 'unchanged' }, expires: '2099-01-01T00:00:00.000Z' },
+      session: { user: { id: 'user-1', tenantId: 'unchanged', role: '', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
       token: {},
     })
 
     expect(session.user.tenantId).toBe('unchanged')
+  })
+
+  it('copies token.role onto session.user.role', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: '', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
+      token: { userId: 'user-1', role: 'technician' },
+    })
+
+    expect(session.user.role).toBe('technician')
+  })
+
+  it('leaves session.user.role untouched when the token has no role', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: 'unchanged', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
+      token: {},
+    })
+
+    expect(session.user.role).toBe('unchanged')
+  })
+
+  it('copies token.sessionVersion onto session.user.sessionVersion', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: 'technician', sessionVersion: 0 }, expires: '2099-01-01T00:00:00.000Z' },
+      token: { userId: 'user-1', sessionVersion: 2 },
+    })
+
+    expect(session.user.sessionVersion).toBe(2)
+  })
+
+  it('leaves session.user.sessionVersion untouched when the token has no sessionVersion', () => {
+    const session = sessionCallback({
+      session: { user: { id: 'user-1', tenantId: 'tenant-1', role: 'technician', sessionVersion: 99 }, expires: '2099-01-01T00:00:00.000Z' },
+      token: {},
+    })
+
+    expect(session.user.sessionVersion).toBe(99)
   })
 })

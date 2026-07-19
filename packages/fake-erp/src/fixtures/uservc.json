@@ -1,0 +1,5 @@
+[
+  { "Code": "EMP001", "Name": "Test Tech One", "emailAddr": "tech.one@example.test", "LoginEmailAddr": "", "Closed": 0, "TerminatedFlag": 0, "UUID": "b1c2d3e4-0001", "ServerSequence": 2001 },
+  { "Code": "EMP002", "Name": "Test Tech Two", "emailAddr": "", "LoginEmailAddr": "tech.two@example.test", "Closed": 0, "TerminatedFlag": 0, "UUID": "b1c2d3e4-0002", "ServerSequence": 2002 },
+  { "Code": "EMP003", "Name": "Former Tech", "emailAddr": "former@example.test", "LoginEmailAddr": "", "Closed": 1, "TerminatedFlag": 1, "UUID": "b1c2d3e4-0003", "ServerSequence": 2003 }
+]

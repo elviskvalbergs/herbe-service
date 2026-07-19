@@ -4,6 +4,7 @@ import deladdrvcFixture from '../fixtures/deladdrvc.json' with { type: 'json' }
 import svoservcFixture from '../fixtures/svoservc.json' with { type: 'json' }
 import svovcFixture from '../fixtures/svovc.json' with { type: 'json' }
 import wsvcFixture from '../fixtures/wsvc.json' with { type: 'json' }
+import uservcFixture from '../fixtures/uservc.json' with { type: 'json' }
 
 // SVOSerVc is a no-delta register (verified live): updates_after -> 404, same
 // as SVOVc/WSVc. Its identity key is SerialNr, not SerNr. DelAddrVc is
@@ -15,6 +16,7 @@ const FIXTURES: Record<string, Array<{ ServerSequence: number }>> = {
   SVOSerVc: svoservcFixture,
   SVOVc: svovcFixture,
   WSVc: wsvcFixture,
+  UserVc: uservcFixture,
 }
 
 export function handleRegisterGet(c: Context<Record<string, never>, '/api/:company/:register'>) {

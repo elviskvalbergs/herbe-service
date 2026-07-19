@@ -39,7 +39,7 @@ export async function issueMagicLinkToken(
 export async function authorizeMagicLink(
   db: Db,
   opts: { token: string },
-): Promise<{ id: string; email: string; tenantId: string } | null> {
+): Promise<{ id: string; email: string; tenantId: string; role: string; sessionVersion: number } | null> {
   const tokenHash = crypto.createHash('sha256').update(opts.token).digest('hex')
 
   // Atomic single-use consume: one UPDATE that only matches an unconsumed,
@@ -72,5 +72,5 @@ export async function authorizeMagicLink(
     })
     .returning()
 
-  return { id: user.id, email: user.email, tenantId: user.tenantId }
+  return { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion }
 }
