@@ -126,7 +126,7 @@ describe('PATCH /api/settings', () => {
     expect(await getRes.json()).toEqual({ locale: 'lv', displayScheme: 'standard' })
   })
 
-  it('rejects an invalid display scheme with 400', async () => {
+  it('rejects an invalid display scheme with 400 and leaves prefs unchanged', async () => {
     const user = await makeUser('settings-patch-bad-scheme', 'patch-bad-scheme@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))
 
@@ -134,5 +134,9 @@ describe('PATCH /api/settings', () => {
     const res = await PATCH(patchRequest({ displayScheme: 'neon' }))
 
     expect(res.status).toBe(400)
+
+    const { GET } = await import('./route')
+    const getRes = await GET()
+    expect(await getRes.json()).toEqual({ locale: 'lv', displayScheme: 'standard' })
   })
 })
