@@ -4,6 +4,7 @@ import deladdrvcFixture from '../fixtures/deladdrvc.json' with { type: 'json' }
 import svoservcFixture from '../fixtures/svoservc.json' with { type: 'json' }
 import svovcFixture from '../fixtures/svovc.json' with { type: 'json' }
 import wsvcFixture from '../fixtures/wsvc.json' with { type: 'json' }
+import uservcFixture from '../fixtures/uservc.json' with { type: 'json' }
 import { createRecord, mergedRows, updateRecord, type FakeErpMode, type FakeErpRecord, type RecordStore } from '../store'
 
 // SVOSerVc is a no-delta register (verified live): updates_after -> 404, same
@@ -16,6 +17,7 @@ const FIXTURES: Record<string, Array<{ ServerSequence: number }>> = {
   SVOSerVc: svoservcFixture,
   SVOVc: svovcFixture,
   WSVc: wsvcFixture,
+  UserVc: uservcFixture,
 }
 
 const FILTER_PREFIX = 'filter.'

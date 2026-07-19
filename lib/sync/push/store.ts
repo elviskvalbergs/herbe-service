@@ -2,7 +2,9 @@
 //
 // Store for the ERP push queue (WS4 outbound slice, docs/superpowers/plans/
 // 2026-07-16-service-phase1-erp-outbound.md decisions 1-3): erp_push_groups
-// is the FIFO saga unit per lane (0017_erp_push_queue.sql); erp_push_steps
+// is the FIFO saga unit per lane (0020_erp_push_queue.sql, renumbered from
+// 0017 — WS2's 0017/0018/0019 landed first and deployed to preview);
+// erp_push_steps
 // are the seq-ordered work items within a group. This module only persists
 // and reads state — saga semantics (idempotency, retry backoff, DLQ
 // transitions) live in the engine (Task 5), which is the sole consumer of

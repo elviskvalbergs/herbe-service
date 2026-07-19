@@ -18,6 +18,7 @@ import { getServiceOrderById, getServiceOrderRowsForOrders } from '@/lib/domain/
 import { getServiceItemsByIds } from '@/lib/domain/stores/service-items'
 import { getCustomerById } from '@/lib/domain/stores/customers'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
+import { getErpIdentityLink } from '@/lib/domain/stores/identity-links'
 import {
   getWorksheetById,
   getWorksheetRowsForWorksheets,
@@ -148,9 +149,8 @@ export async function gatherWsCreateInput(
 
   let emCode = ''
   if (worksheet.technicianUserId) {
-    const techRefs = await getErpRefs(db, tenantId, 'user', worksheet.technicianUserId)
-    const techPrimary = techRefs.find((r) => r.purpose === 'primary' && r.register === 'UserVc')
-    emCode = techPrimary?.recordRef ?? ''
+    const identityLink = await getErpIdentityLink(db, tenantId, worksheet.technicianUserId, erpCompanyId)
+    emCode = identityLink?.externalId ?? ''
   }
 
   const pushConfig = await getPushConfig(db, erpCompanyId)

@@ -40,6 +40,8 @@ describe('magic link auth', () => {
     expect(first?.email).toBe('office.eva@herbe-service.test')
     expect(first?.id).toEqual(expect.any(String))
     expect(first?.tenantId).toBe(tenantId)
+    expect(first?.role).toBe('technician') // default role
+    expect(first?.sessionVersion).toBe(1) // default sessionVersion
 
     const second = await authorizeMagicLink(db, { token })
     expect(second).toBeNull() // single-use
@@ -64,6 +66,8 @@ describe('magic link auth', () => {
     expect(results.filter((r) => r === null)).toHaveLength(19)
     expect(winners[0]?.email).toBe('concurrent@herbe-service.test')
     expect(winners[0]?.tenantId).toBe(tenantId)
+    expect(winners[0]?.role).toBe('technician')
+    expect(winners[0]?.sessionVersion).toBe(1)
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
     const [row] = await db.select().from(schema.magicLinkTokens).where(eq(schema.magicLinkTokens.tokenHash, tokenHash))
@@ -110,6 +114,8 @@ describe('magic link auth', () => {
     const second = await authorizeMagicLink(db, { token: token2 })
 
     expect(second?.id).toBe(first?.id)
+    expect(second?.role).toBe(first?.role)
+    expect(second?.sessionVersion).toBe(first?.sessionVersion)
 
     const rows = await db
       .select()

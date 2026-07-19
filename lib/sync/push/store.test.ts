@@ -65,12 +65,12 @@ async function makeGroup(lane: string, entityId = randomUUID()) {
 beforeAll(async () => {
   testDb = await createTestDatabase()
   await runMigrations(testDb.url)
-  // Idempotency proof (task self-review): re-execute 0017's own raw SQL
+  // Idempotency proof (task self-review): re-execute 0020's own raw SQL
   // statements twice more, straight to Postgres, bypassing the
   // filename-skip in herbe_migrations.applied entirely — same convention as
   // the 0002-0007 blocks in __tests__/db/migrate.test.ts.
   const rawSql = postgres(testDb.url, { max: 1 })
-  const content = fs.readFileSync('scripts/migrations/0017_erp_push_queue.sql', 'utf8')
+  const content = fs.readFileSync('scripts/migrations/0020_erp_push_queue.sql', 'utf8')
   const statements = splitSqlStatements(content)
   for (let pass = 0; pass < 2; pass++) {
     for (const stmt of statements) {

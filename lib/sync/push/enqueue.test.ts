@@ -32,21 +32,20 @@ async function makeOrder() {
   return order.id
 }
 
-async function makeTechnician(withUserVcLink: boolean) {
+async function makeTechnician(withIdentityLink: boolean) {
   const [user] = await db
     .insert(schema.users)
     .values({ tenantId, email: `tech-${Math.random()}@example.com` })
     .returning()
 
-  if (withUserVcLink) {
-    await putErpRef(db, {
+  if (withIdentityLink) {
+    await db.insert(schema.identityLinks).values({
       tenantId,
-      entityType: 'user',
-      entityId: user.id,
-      purpose: 'primary',
-      register: 'UserVc',
-      recordRef: 'TECH1',
+      userId: user.id,
+      provider: 'erp',
       erpCompanyId,
+      externalId: 'TECH1',
+      linkedBy: 'test',
     })
   }
 
@@ -120,12 +119,12 @@ describe('approveWorksheet', () => {
     expect(groups).toHaveLength(0)
   })
 
-  it('blocks approval and creates no group when the technician has no UserVc erp_ref link', async () => {
+  it('blocks approval and creates no group when the technician has no identity_links (erp) entry', async () => {
     const orderId = await makeOrder()
     const technicianUserId = await makeTechnician(false)
     const worksheetId = await makeDoneWorksheet(orderId, technicianUserId)
 
-    await expect(approveWorksheet(db, { tenantId, erpCompanyId, worksheetId })).rejects.toThrow(/UserVc/)
+    await expect(approveWorksheet(db, { tenantId, erpCompanyId, worksheetId })).rejects.toThrow(/identity_links/)
 
     const worksheet = await getWorksheetById(db, tenantId, worksheetId)
     expect(worksheet!.status).toBe('Done')

@@ -3,6 +3,7 @@
   "buildCommand": "pnpm build",
   "crons": [
     { "path": "/api/cron/sync-tick", "schedule": "* * * * *" },
-    { "path": "/api/cron/push-tick", "schedule": "* * * * *" }
+    { "path": "/api/cron/push-tick", "schedule": "* * * * *" },
+    { "path": "/api/cron/identity-rematch", "schedule": "0 3 * * *" }
   ]
 }

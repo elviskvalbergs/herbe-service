@@ -91,14 +91,13 @@ async function makeTechnician(companyId: string, emCode: string): Promise<string
     .values({ tenantId, email: `tech-${randomUUID()}@example.com` })
     .returning()
 
-  await putErpRef(db, {
+  await db.insert(schema.identityLinks).values({
     tenantId,
-    entityType: 'user',
-    entityId: user.id,
-    purpose: 'primary',
-    register: 'UserVc',
-    recordRef: emCode,
+    userId: user.id,
+    provider: 'erp',
     erpCompanyId: companyId,
+    externalId: emCode,
+    linkedBy: 'test',
   })
 
   return user.id

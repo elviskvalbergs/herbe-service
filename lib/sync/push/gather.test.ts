@@ -173,14 +173,13 @@ describe('gatherWsCreateInput', () => {
     const technicianUserId = (
       await db.insert(schema.users).values({ tenantId, email: `tech-${randomUUID()}@example.com` }).returning()
     )[0].id
-    await putErpRef(db, {
+    await db.insert(schema.identityLinks).values({
       tenantId,
-      entityType: 'user',
-      entityId: technicianUserId,
-      purpose: 'primary',
-      register: 'UserVc',
-      recordRef: 'TECH1',
+      userId: technicianUserId,
+      provider: 'erp',
       erpCompanyId,
+      externalId: 'TECH1',
+      linkedBy: 'test',
     })
     const worksheet = await insertWorksheet(db, { tenantId, erpCompanyId, orderId, technicianUserId })
 

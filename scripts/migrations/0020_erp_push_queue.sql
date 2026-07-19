@@ -1,4 +1,4 @@
--- scripts/migrations/0017_erp_push_queue.sql
+-- scripts/migrations/0020_erp_push_queue.sql
 --
 -- WS4 ERP outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
 -- decision 1): outbox_ops (0004) stays a client-op journal; the app->ERP

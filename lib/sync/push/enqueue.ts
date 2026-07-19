@@ -10,6 +10,7 @@ import * as schema from '@/drizzle/schema'
 import { createPushGroup, type CreatePushGroupStepInput } from './store'
 import { getWorksheetById, setWorksheetStatus } from '@/lib/domain/stores/worksheets'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
+import { getErpIdentityLink } from '@/lib/domain/stores/identity-links'
 import { assertWorksheetTransition } from '@/lib/domain/worksheet-status'
 import type { WorksheetStatus } from '@/lib/domain/types'
 
@@ -41,8 +42,8 @@ export interface ApproveWorksheetInput {
 }
 
 // The approval entry point (decision 4): asserts the Done->Approved
-// transition, blocks on a missing technician/UserVc link BEFORE any status
-// change, then enqueues the worksheet_push group — an order-create step
+// transition, blocks on a missing technician/identity_links link BEFORE any
+// status change, then enqueues the worksheet_push group — an order-create step
 // first only when the order doesn't already have a primary SVOVc ref, so a
 // worksheet never races ahead of its own order's push (docs/04-erp-sync.md).
 export async function approveWorksheet(
@@ -60,15 +61,14 @@ export async function approveWorksheet(
 
   if (!worksheet.technicianUserId) {
     throw new Error(
-      `cannot approve worksheet ${worksheetId}: no technician assigned — link a technician with an ERP person code (UserVc erp_ref) before approving`,
+      `cannot approve worksheet ${worksheetId}: no technician assigned — link a technician with an ERP person code (identity_links) before approving`,
     )
   }
 
-  const techRefs = await getErpRefs(db, tenantId, 'user', worksheet.technicianUserId)
-  const hasUserVcLink = techRefs.some((r) => r.purpose === 'primary' && r.register === 'UserVc')
-  if (!hasUserVcLink) {
+  const identityLink = await getErpIdentityLink(db, tenantId, worksheet.technicianUserId, erpCompanyId)
+  if (!identityLink) {
     throw new Error(
-      `cannot approve worksheet ${worksheetId}: technician ${worksheet.technicianUserId} has no UserVc erp_ref link — link the technician to an ERP person code before approving`,
+      `cannot approve worksheet ${worksheetId}: technician ${worksheet.technicianUserId} has no identity_links (provider 'erp') entry for this ERP company — link the technician to an ERP person code before approving`,
     )
   }
 
