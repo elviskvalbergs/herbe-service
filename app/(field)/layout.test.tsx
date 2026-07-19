@@ -23,6 +23,7 @@ vi.mock('lucide-react', () => ({ CloudOff: 'svg', CloudCheck: 'svg' }))
 import FieldLayout from './layout'
 import { FieldTabBar } from '@/components/field-tab-bar'
 import { SyncStatusChip } from '@/components/sync-status-chip'
+import { HerbeServiceLogo } from '@/components/herbe-service-logo'
 
 type El<P = Record<string, unknown>> = { type: unknown; props: P }
 
@@ -39,11 +40,12 @@ describe('FieldLayout', () => {
     expect(tabBar.type).toBe(FieldTabBar)
   })
 
-  it('renders the sync status chip inside the header', () => {
+  it('renders the logo and sync status chip inside the header', () => {
     const element = FieldLayout({ children: null }) as El<{ children: [El<{ children: [El, El] }>, El, El] }>
     const [header] = element.props.children
-    const [, chip] = header.props.children
+    const [logo, chip] = header.props.children
 
+    expect(logo.type).toBe(HerbeServiceLogo)
     expect(chip.type).toBe(SyncStatusChip)
   })
 })

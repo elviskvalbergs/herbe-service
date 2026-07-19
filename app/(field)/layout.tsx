@@ -11,6 +11,7 @@
 // layout only references them as element types, never invokes them.
 import { FieldTabBar } from '@/components/field-tab-bar'
 import { SyncStatusChip } from '@/components/sync-status-chip'
+import { HerbeServiceLogo } from '@/components/herbe-service-logo'
 
 export default function FieldLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,7 +20,7 @@ export default function FieldLayout({ children }: { children: React.ReactNode })
         className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg)] px-4"
         style={{ height: 'var(--ui-field-btn-h-sm)' }}
       >
-        <span className="text-sm font-semibold text-[var(--fg)]">herbe.service</span>
+        <HerbeServiceLogo theme="light" height={24} />
         <SyncStatusChip />
       </header>
       <div className="flex flex-1 flex-col">{children}</div>
