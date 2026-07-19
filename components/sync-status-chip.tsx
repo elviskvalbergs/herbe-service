@@ -12,7 +12,7 @@
 // call to observe. Both are deferred rather than faked — this repo's rule
 // against fake placeholder content (plan §2 decision 5) applies to status
 // chips as much as it does to lists of jobs.
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { CloudCheck, CloudOff } from 'lucide-react'
 
 export type SyncState = 'offline' | 'synced'
@@ -36,26 +36,33 @@ export function deriveSyncStatus(online: boolean): SyncStatusDisplay {
   return { state: 'synced', label: 'Synced', colorVar: 'var(--sync-synced)' }
 }
 
+// navigator.onLine is exactly the "external mutable value" useSyncExternalStore
+// exists for (it's React's own canonical example) — it subscribes to the
+// online/offline events and re-renders on change, with no manual
+// useState+useEffect wiring (which would call setState synchronously inside
+// an effect, flagged by this repo's react-hooks lint rule).
+function subscribe(callback: () => void) {
+  window.addEventListener('online', callback)
+  window.addEventListener('offline', callback)
+  return () => {
+    window.removeEventListener('online', callback)
+    window.removeEventListener('offline', callback)
+  }
+}
+
+function getSnapshot() {
+  return navigator.onLine
+}
+
+// `navigator` doesn't exist during SSR — assume online for the
+// server-rendered / pre-hydration snapshot, corrected on the client's first
+// paint once getSnapshot can actually read navigator.onLine.
+function getServerSnapshot() {
+  return true
+}
+
 export function SyncStatusChip() {
-  // Assume online for the initial (server-rendered + first client paint)
-  // render so hydration has a fixed, predictable value — `navigator` doesn't
-  // exist during SSR, and reading it eagerly here would mismatch whatever
-  // the server rendered. The effect below corrects it immediately after
-  // mount and on every subsequent online/offline transition.
-  const [online, setOnline] = useState(true)
-
-  useEffect(() => {
-    setOnline(navigator.onLine)
-    const goOnline = () => setOnline(true)
-    const goOffline = () => setOnline(false)
-    window.addEventListener('online', goOnline)
-    window.addEventListener('offline', goOffline)
-    return () => {
-      window.removeEventListener('online', goOnline)
-      window.removeEventListener('offline', goOffline)
-    }
-  }, [])
-
+  const online = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
   const { state, label, colorVar } = deriveSyncStatus(online)
   const Icon = state === 'offline' ? CloudOff : CloudCheck
 
