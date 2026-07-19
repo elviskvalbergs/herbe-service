@@ -41,6 +41,18 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     return extractRows(body, register)
   }
 
+  // Shared by fetchRecords and pushUpdate's post-write read-back below —
+  // same GET path, same error taxonomy either way.
+  async function fetchRecordsInternal(register: string, params: Record<string, string>): Promise<Record<string, unknown>[]> {
+    const { status, body } = await fetchRegisterJson(config, register, params)
+
+    if (status >= 400) {
+      throw new ErpPermanentError(`fetchRecords ${register} returned ${status}`)
+    }
+
+    return extractRows(body, register)
+  }
+
   return {
     capabilities: () => ({
       supportsIncrementalSync: true,
@@ -127,17 +139,21 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
           `pushUpdate ${register} echoed SerNr ${String(returnedSerNr)}, expected ${recordRef} — refusing to treat as success`,
         )
       }
-    },
 
-    async fetchRecords(register: string, params: Record<string, string>): Promise<Record<string, unknown>[]> {
-      const { status, body } = await fetchRegisterJson(config, register, params)
-
-      if (status >= 400) {
-        throw new ErpPermanentError(`fetchRecords ${register} returned ${status}`)
+      // Persistence guard (Decision 3): the real ERP answers a PATCH against
+      // an unknown SerNr with HTTP 200, echoing the submitted payload back
+      // with the requested SerNr merged in — indistinguishable from a real
+      // update by status code or echoed SerNr alone. Only a read-back that
+      // actually finds the record proves the write persisted.
+      const readBack = await fetchRecordsInternal(register, { 'filter.SerNr': recordRef, limit: '1' })
+      if (readBack.length === 0) {
+        throw new ErpPermanentError(
+          `pushUpdate ${register} ${recordRef}: record not found on read-back — the ERP accepted the update but stored nothing (unknown SerNr)`,
+        )
       }
-
-      return extractRows(body, register)
     },
+
+    fetchRecords: fetchRecordsInternal,
 
     async probeIncrementalSupport(register: string): Promise<boolean> {
       const { status } = await fetchRegisterJson(config, register, { updates_after: '0' })

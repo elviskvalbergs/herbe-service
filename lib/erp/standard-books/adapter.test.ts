@@ -227,6 +227,23 @@ describe('Standard Books adapter — write surface (WS4 Task 3: pushCreate WSVc,
     expect(rows[0].CustComplaint2).toBe('Updated via pushUpdate')
   })
 
+  it('pushUpdate throws ErpPermanentError on an unknown SerNr — the ERP echoes 200 with the requested SerNr but stores nothing', async () => {
+    // Real-ERP behavior (docs/09, WS4 Task 7 live probe): a PATCH against a
+    // nonexistent record still returns HTTP 200 with the submitted payload
+    // echoed back and the requested SerNr merged in — the pre-existing
+    // echoed-SerNr-mismatch check can't catch this, because the echoed SerNr
+    // *matches* recordRef. Only a read-back GET reveals the no-op. The fake
+    // ERP's updateRecord models this exactly (store.ts: no match -> echo,
+    // stored: false).
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('SVOVc', '999999', { CustComplaint2: 'ghost update' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+      message: expect.stringContaining('record not found on read-back'),
+    })
+  })
+
   it('pushUpdate rejects an unsupported register before making any request', async () => {
     writeServer = await startFakeErpServer({ port: 0 })
     const adapter = adapterFor(writeServer.url)
