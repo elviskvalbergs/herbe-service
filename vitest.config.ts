@@ -45,11 +45,13 @@ export default defineConfig({
         '**/*.config.*',
         '**/*.d.ts',
         'app/layout.tsx',
-        'app/page.tsx',
         // Thin 'use client' + useEffect/Dexie glue, same rationale as
-        // app/layout.tsx/app/page.tsx above — no branch logic worth unit
-        // testing without adding a jsdom + React Testing Library dependency
-        // chain the task didn't otherwise call for (Task 16 self-review).
+        // app/layout.tsx above — no branch logic worth unit testing without
+        // adding a jsdom + React Testing Library dependency chain the task
+        // didn't otherwise call for (Task 16 self-review). app/page.tsx used
+        // to be excluded on the same basis (create-next-app boilerplate) but
+        // Task 4 gave it real branch logic and a real test file, so it was
+        // removed from this list.
         'app/(app)/customers/page.tsx',
         'drizzle/**',
         'scripts/**',
