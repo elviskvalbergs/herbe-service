@@ -51,7 +51,7 @@ function sessionFor(user: { id: string; tenantId: string; role: string; sessionV
   }
 }
 
-describe('TodayPage (field shell placeholder)', () => {
+describe('TodayPage (field shell)', () => {
   beforeEach(() => {
     authMock.mockReset()
     redirectMock.mockClear()

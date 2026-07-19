@@ -1,10 +1,11 @@
 // app/(field)/today/page.tsx
 //
-// PLACEHOLDER for Task 5 (field shell chrome). Task 4 only needs a real
-// route for `/` to redirect technician/team_lead into — this is a working
-// route target, not real chrome. Task 5 replaces this file's content
-// wholesale with the actual field shell; nothing here is meant to survive
-// that beyond the team-lead switch note (see below).
+// Field shell's landing tab (Task 5; doc07 F1 "Today" — an ordered list of
+// today's work: bookings and booking-less worksheets, time/customer/site/
+// status). Real chrome now lives in app/(field)/layout.tsx (tab bar +
+// header); the work-list itself has no data source yet (bookings/worksheet
+// sync is later WS work), so this renders an honest empty state instead of
+// fake job rows (plan §2 decision 5).
 //
 // Gates on session itself (not just via the `/` redirect): this repo has no
 // centralized route-level auth guard (proxy.ts only forwards locale — see
@@ -25,17 +26,19 @@ export default async function TodayPage() {
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
       <h1 className="text-lg font-semibold">Today</h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Field shell placeholder (Task 5 builds the real view).
-      </p>
+      <p className="text-sm text-[var(--fg-muted)]">No jobs scheduled for today yet.</p>
       {isTeamLead ? (
         // docs/07-ui-screens.md: "users with both hats (team lead) can
         // switch". But lib/auth/roles.ts's ROLE_CAPABILITIES gives team_lead
         // none of the dispatcher-only capabilities (order:view_all,
         // dispatch:manage, etc.) — there is no office-side access today for
         // this role to switch into. This note is an honest placeholder, not
-        // a functioning shell-switch; Task 5's More tab is the intended
-        // permanent home for it once there's something real to point at.
+        // a functioning shell-switch. Kept here rather than moved to the new
+        // More tab stub (Task 5): More has no real content yet either, and
+        // bolting one substantive paragraph onto an otherwise "coming soon"
+        // page would blur that page's own honest-placeholder signal. More
+        // is still this note's intended permanent home once it has
+        // something real (an office/company switch) to point at.
         <p data-testid="team-lead-switch-note" className="text-sm">
           You have team lead access. Office-side access for team leads isn&apos;t available yet.
         </p>
