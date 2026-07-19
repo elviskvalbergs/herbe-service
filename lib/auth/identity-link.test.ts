@@ -37,6 +37,11 @@ function fakeAdapter(rows: Record<string, unknown>[]): ErpAdapter {
     pullChanges: async () => ({ upserts: [], deletedRefs: [], cursor: '0' }),
     listLiveRefs: async () => [],
     pushCreate: async () => ({ erpRef: '' }),
+    // Not exercised by matchUsersByEmail — stubbed only to satisfy the
+    // ErpAdapter interface (WS4 outbound slice added these three methods).
+    pushUpdate: async () => {},
+    fetchRecords: async () => [],
+    getRecordLinks: async () => [],
     probeIncrementalSupport: async () => false,
   }
 }

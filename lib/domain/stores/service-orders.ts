@@ -151,6 +151,22 @@ export async function setOrderStatus(
     .where(and(eq(schema.serviceOrders.id, id), eq(schema.serviceOrders.tenantId, tenantId)))
 }
 
+// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 3): the push saga sets the app's own order_number to the SerNr
+// the ERP assigned on SVOVc create/adoption. Thin setter, same idiom as
+// setOrderStatus — no validation here.
+export async function setOrderNumber(
+  db: Db,
+  tenantId: string,
+  id: string,
+  orderNumber: string,
+): Promise<void> {
+  await db
+    .update(schema.serviceOrders)
+    .set({ orderNumber })
+    .where(and(eq(schema.serviceOrders.id, id), eq(schema.serviceOrders.tenantId, tenantId)))
+}
+
 // SEED/TEST-ONLY. In production, 'Invoiced'/'Closed' are ERP-owned states
 // (docs/02-data-model.md:64-72 — Closed via SVOVc.DoneMark, Invoiced via a
 // linked IVVc) that only ever arrive through the real ERP sync pipeline,

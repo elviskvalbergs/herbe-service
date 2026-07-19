@@ -29,11 +29,14 @@ import { ingestServiceItems } from './ingest/service-items'
 import { buildDelAddrSiteMap, ingestServiceOrders } from './ingest/service-orders'
 import { ingestWorksheets } from './ingest/worksheets'
 import { keySweepReconcile } from './ingest/key-sweep'
+import { sweepInvoiceStatus } from './invoice-status'
 
 export interface SyncRegisterSummary {
   ingested?: number
   skipped?: number
   tombstoned?: number
+  checked?: number
+  invoiced?: number
   error?: string
 }
 
@@ -190,6 +193,22 @@ export async function syncConnection(
       stateUpdate: { lastSyncAt: now, lastFullSyncAt: now },
     }
   })
+
+  // Final step, WS4 Decision 10: the WebExcellentAPI-gated invoiced-status
+  // sweep. Only runs (and only gets an erp_sync_state row) when the
+  // connection has the capability — an untouched/REST-only connection must
+  // never see an 'IVVc-links' row at all, not an idle no-op one. Same
+  // withRegisterSync isolation as every other register: a failing sweep
+  // records syncStatus='error' here and never aborts the registers above.
+  if (adapter.capabilities().supportsInvoiceStatusReadback) {
+    perRegister['IVVc-links'] = await withRegisterSync(db, erpCompanyId, 'IVVc-links', async () => {
+      const result = await sweepInvoiceStatus(db, adapter, erpCompanyId)
+      return {
+        summary: { checked: result.checked, invoiced: result.invoiced },
+        stateUpdate: { lastSyncAt: new Date() },
+      }
+    })
+  }
 
   return { perRegister }
 }

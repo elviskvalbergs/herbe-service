@@ -1,3 +1,4 @@
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { startFakeErpServer } from '@herbe/fake-erp'
 import { createStandardBooksAdapter } from './adapter'
@@ -57,14 +58,16 @@ describe('Standard Books adapter — capabilities and pushCreate stub', () => {
     })
   })
 
-  it('pushCreate stays unimplemented for registers other than SVOVc in Phase 0', async () => {
+  it('pushCreate stays unsupported for registers outside the SVOVc/WSVc allowlist', async () => {
     const adapter = createStandardBooksAdapter({
       baseUrl: server.url,
       companyNumber: '1',
       auth: { kind: 'basic', username: 'test', password: 'test' },
     })
 
-    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow('pushCreate not implemented for CUVc in Phase 0')
+    await expect(adapter.pushCreate('CUVc', {})).rejects.toThrow(
+      'pushCreate not supported for register CUVc (only SVOVc, WSVc)',
+    )
   })
 })
 
@@ -74,7 +77,12 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   })
 
   it('returns the erpRef from a real assigned SerNr', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ SerNr: '230022' }), { status: 200 }))
+    // Found live in Task 7: a successful create's response is enveloped
+    // exactly like a GET (data.<Register>: [record]), not a flat top-level
+    // record.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ SerNr: '230022' }] } }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const adapter = createStandardBooksAdapter({
@@ -95,7 +103,9 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   it('falls back to @url when SerNr is absent', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '/api/1/SVOVc/230022' }), { status: 200 })),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: { SVOVc: [{ '@url': '/api/1/SVOVc/230022' }] } }), { status: 200 }),
+      ),
     )
 
     const adapter = createStandardBooksAdapter({
@@ -110,7 +120,27 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
   })
 
   it('returns an empty erpRef (not an error) when the ERP echoes back a 200 with neither SerNr nor @url — the confirmed silent-no-op case', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ '@url': '' }), { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ '@url': '' }] } }), { status: 200 })),
+    )
+
+    const adapter = createStandardBooksAdapter({
+      baseUrl: 'http://localhost:9999',
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
+  })
+
+  it('returns an empty erpRef when the ERP responds 200 with no data envelope at all (e.g. an error body)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { '@code': '1071' } }), { status: 200 })),
+    )
 
     const adapter = createStandardBooksAdapter({
       baseUrl: 'http://localhost:9999',
@@ -138,6 +168,162 @@ describe('Standard Books adapter — pushCreate SVOVc (Task 13)', () => {
     const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
 
     expect(result).toEqual({ erpRef: '' })
+  })
+})
+
+describe('Standard Books adapter — write surface (WS4 Task 3: pushCreate WSVc, pushUpdate, fetchRecords)', () => {
+  let writeServer: Awaited<ReturnType<typeof startFakeErpServer>> | undefined
+
+  afterEach(async () => {
+    await writeServer?.close()
+    writeServer = undefined
+    vi.unstubAllGlobals()
+  })
+
+  function adapterFor(url: string) {
+    return createStandardBooksAdapter({
+      baseUrl: url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+  }
+
+  it('pushCreate assigns a SerNr for WSVc — the allowlist now covers both write registers', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const result = await adapter.pushCreate('WSVc', { SVONr: 5001, EMCode: 'TECH1' })
+
+    expect(result.erpRef).toBe('9004') // max fixture WSVc SerNr (9003) + 1
+  })
+
+  it('pushCreate under noop-create mode returns an empty erpRef, not a throw', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'noop-create' })
+    const adapter = adapterFor(writeServer.url)
+
+    const result = await adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })
+
+    expect(result).toEqual({ erpRef: '' })
+  })
+
+  it('pushCreate under http-500 mode throws ErpTransientError', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'http-500' })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushCreate('SVOVc', { CustCode: 'CUST001' })).rejects.toMatchObject({
+      name: 'ErpTransientError',
+    })
+  })
+
+  it('pushUpdate round-trips a field change, readable back via the numeric SerNr filter', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'Updated via pushUpdate' })
+
+    const rows = await adapter.fetchRecords('SVOVc', { 'filter.SerNr': '5001' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].CustComplaint2).toBe('Updated via pushUpdate')
+  })
+
+  it('pushUpdate throws ErpPermanentError on an unknown SerNr — the ERP echoes 200 with the requested SerNr but stores nothing', async () => {
+    // Real-ERP behavior (docs/09, WS4 Task 7 live probe): a PATCH against a
+    // nonexistent record still returns HTTP 200 with the submitted payload
+    // echoed back and the requested SerNr merged in — the pre-existing
+    // echoed-SerNr-mismatch check can't catch this, because the echoed SerNr
+    // *matches* recordRef. Only a read-back GET reveals the no-op. The fake
+    // ERP's updateRecord models this exactly (store.ts: no match -> echo,
+    // stored: false).
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('SVOVc', '999999', { CustComplaint2: 'ghost update' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+      message: expect.stringContaining('record not found on read-back'),
+    })
+  })
+
+  it('pushUpdate rejects an unsupported register before making any request', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('CUVc', '1', {})).rejects.toThrow(
+      'pushUpdate not supported for register CUVc (only SVOVc, WSVc)',
+    )
+  })
+
+  it('pushUpdate under http-500 mode throws ErpTransientError', async () => {
+    writeServer = await startFakeErpServer({ port: 0, mode: 'http-500' })
+    const adapter = adapterFor(writeServer.url)
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpTransientError',
+    })
+  })
+
+  it('pushUpdate throws ErpPermanentError on a 4xx response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })),
+    )
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+    })
+  })
+
+  it('pushUpdate throws ErpPermanentError when the ERP echoes back a different record than requested', async () => {
+    // Same data.<Register> envelope as a create response (see pushCreate
+    // tests above) — confirmed live in Task 7.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { SVOVc: [{ SerNr: 9999 }] } }), { status: 200 })),
+    )
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.pushUpdate('SVOVc', '5001', { CustComplaint2: 'x' })).rejects.toMatchObject({
+      name: 'ErpPermanentError',
+    })
+  })
+
+  it('fetchRecords returns matching rows for a filter', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const rows = await adapter.fetchRecords('CUVc', { 'filter.Code': 'CUST001' })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].Code).toBe('CUST001')
+  })
+
+  it('fetchRecords returns an empty array when the filter matches nothing', async () => {
+    writeServer = await startFakeErpServer({ port: 0 })
+    const adapter = adapterFor(writeServer.url)
+
+    const rows = await adapter.fetchRecords('CUVc', { 'filter.Code': 'NOPE' })
+
+    expect(rows).toEqual([])
+  })
+
+  it('fetchRecords returns an empty array on a 204 response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })))
+    const adapter = adapterFor('http://localhost:9999')
+
+    const rows = await adapter.fetchRecords('CUVc', {})
+
+    expect(rows).toEqual([])
+  })
+
+  it('fetchRecords throws ErpPermanentError on a 4xx response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'bad request' }), { status: 400 })),
+    )
+    const adapter = adapterFor('http://localhost:9999')
+
+    await expect(adapter.fetchRecords('CUVc', {})).rejects.toMatchObject({ name: 'ErpPermanentError' })
   })
 })
 
@@ -255,5 +441,88 @@ describe('Standard Books adapter — capability probe', () => {
 
     const result = await adapter.probeIncrementalSupport('SVOVc')
     expect(result).toBe(false)
+  })
+})
+
+describe('Standard Books adapter — invoiced-status readback capability + getRecordLinks (WS4 Task 8)', () => {
+  it('reports supportsInvoiceStatusReadback true only when features.invoiceReadback is exactly true', () => {
+    const off = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+    })
+    expect(off.capabilities().supportsInvoiceStatusReadback).toBe(false)
+
+    const onWithFeature = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+      features: { invoiceReadback: true },
+    })
+    expect(onWithFeature.capabilities().supportsInvoiceStatusReadback).toBe(true)
+
+    const featureExplicitlyFalse = createStandardBooksAdapter({
+      baseUrl: server.url,
+      companyNumber: '1',
+      auth: { kind: 'basic', username: 'test', password: 'test' },
+      features: { invoiceReadback: false },
+    })
+    expect(featureExplicitlyFalse.capabilities().supportsInvoiceStatusReadback).toBe(false)
+  })
+
+  describe('getRecordLinks delegation', () => {
+    let halServer: Server | undefined
+    let halUrl = ''
+
+    function startHalServer(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<void> {
+      return new Promise((resolve) => {
+        halServer = createServer(handler)
+        halServer.listen(0, '127.0.0.1', () => {
+          const address = halServer!.address()
+          const port = typeof address === 'object' && address ? address.port : 0
+          halUrl = `http://127.0.0.1:${port}`
+          resolve()
+        })
+      })
+    }
+
+    afterEach(async () => {
+      if (halServer) {
+        await new Promise<void>((resolve) => halServer!.close(() => resolve()))
+        halServer = undefined
+      }
+    })
+
+    it('delegates to fetchRecordLinks and returns the parsed LinkVc entries', async () => {
+      await startHalServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/xml' })
+        res.end(`<data><res regname='LinkVc'></res><LinkVc><ID>500123</ID><VcName>IVVc</VcName></LinkVc></data>`)
+      })
+
+      const adapter = createStandardBooksAdapter({
+        baseUrl: halUrl,
+        companyNumber: '1',
+        auth: { kind: 'basic', username: 'test', password: 'test' },
+      })
+
+      const links = await adapter.getRecordLinks('SVOVc', '230015')
+
+      expect(links).toEqual([{ register: 'IVVc', id: '500123' }])
+    })
+
+    it('propagates fetchRecordLinks error mapping (ErpTransientError on 500)', async () => {
+      await startHalServer((_req, res) => {
+        res.writeHead(500)
+        res.end('boom')
+      })
+
+      const adapter = createStandardBooksAdapter({
+        baseUrl: halUrl,
+        companyNumber: '1',
+        auth: { kind: 'basic', username: 'test', password: 'test' },
+      })
+
+      await expect(adapter.getRecordLinks('SVOVc', '1')).rejects.toMatchObject({ name: 'ErpTransientError' })
+    })
   })
 })

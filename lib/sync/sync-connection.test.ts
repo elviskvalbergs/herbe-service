@@ -63,6 +63,24 @@ function adapterWithFailingRegister(base: ErpAdapter, failingRegister: string): 
   }
 }
 
+// WS4 Task 8: stubs getRecordLinks and forces the capability on, so the
+// IVVc-links sweep step can be exercised without a real WebExcellentAPI
+// endpoint on fake-erp (that wire format is covered end to end by
+// lib/erp/standard-books/excellent-api.test.ts + adapter.test.ts — here the
+// only thing under test is syncConnection's own wiring/gating).
+function adapterWithInvoiceReadback(
+  base: ErpAdapter,
+  linksBySerNr: Map<string, { register: string; id: string }[]>,
+): ErpAdapter {
+  return {
+    ...base,
+    capabilities: () => ({ ...base.capabilities(), supportsInvoiceStatusReadback: true }),
+    async getRecordLinks(register: string, serNr: string) {
+      return linksBySerNr.get(serNr) ?? []
+    },
+  }
+}
+
 async function insertCompany(displayName: string): Promise<string> {
   const [company] = await db
     .insert(schema.erpCompanies)
@@ -183,6 +201,85 @@ describe('syncConnection', () => {
     const counts = await countsFor(erpCompanyId)
     expect(counts.orders).toBeGreaterThan(0)
     expect(counts.worksheets).toBe(0)
+  })
+
+  it('skips the IVVc-links sweep (no summary entry, no sync_state row) when the capability is off', async () => {
+    const erpCompanyId = await insertCompany('Invoice Sweep Off Co')
+    const adapter = buildAdapter()
+
+    const summary = await syncConnection(db, adapter, erpCompanyId)
+
+    expect(summary.perRegister['IVVc-links']).toBeUndefined()
+    const states = await syncStateRows(erpCompanyId)
+    expect(states.find((s) => s.register === 'IVVc-links')).toBeUndefined()
+  })
+
+  it('runs the IVVc-links sweep as a final step and writes its sync_state row when the capability is on', async () => {
+    const erpCompanyId = await insertCompany('Invoice Sweep On Co')
+    const baseAdapter = buildAdapter()
+
+    // Ingest first so there are real orders with primary SVOVc erp_refs to sweep.
+    await syncConnection(db, baseAdapter, erpCompanyId)
+    const orders = await db.select().from(schema.serviceOrders).where(eq(schema.serviceOrders.erpCompanyId, erpCompanyId))
+    expect(orders.length).toBeGreaterThan(0)
+    // svovc.json's SerNr 5001 carries DoneMark=1 -> ingested as 'Closed', which
+    // the sweep's own candidate query excludes — only the non-terminal orders
+    // are eligible, same precedence rule sweepInvoiceStatus documents.
+    const eligibleOrders = orders.filter((o) => !['Invoiced', 'Closed', 'Cancelled'].includes(o.status))
+    expect(eligibleOrders.length).toBeGreaterThan(0)
+    expect(eligibleOrders.length).toBeLessThan(orders.length)
+
+    // Every eligible order's SVOVc SerNr (= orderNumber, per ingestServiceOrders) gets an IVVc link.
+    const linksBySerNr = new Map(
+      eligibleOrders
+        .filter((o) => !!o.orderNumber)
+        .map((o) => [o.orderNumber as string, [{ register: 'IVVc', id: `9${o.orderNumber}` }]]),
+    )
+    const adapter = adapterWithInvoiceReadback(baseAdapter, linksBySerNr)
+
+    const summary = await syncConnection(db, adapter, erpCompanyId)
+
+    expect(summary.perRegister['IVVc-links']).toEqual({ checked: eligibleOrders.length, invoiced: eligibleOrders.length })
+
+    const states = await syncStateRows(erpCompanyId)
+    const ivvcState = states.find((s) => s.register === 'IVVc-links')
+    expect(ivvcState?.syncStatus).toBe('idle')
+    expect(ivvcState?.lastSyncAt).toBeInstanceOf(Date)
+
+    const afterOrders = await db
+      .select()
+      .from(schema.serviceOrders)
+      .where(eq(schema.serviceOrders.erpCompanyId, erpCompanyId))
+    for (const before of orders) {
+      const after = afterOrders.find((o) => o.id === before.id)!
+      const expectedStatus = ['Invoiced', 'Closed', 'Cancelled'].includes(before.status) ? before.status : 'Invoiced'
+      expect(after.status).toBe(expectedStatus)
+    }
+  })
+
+  it('records an IVVc-links error in sync_state without aborting the run, when the sweep itself throws', async () => {
+    const erpCompanyId = await insertCompany('Invoice Sweep Error Co')
+    const baseAdapter = buildAdapter()
+    await syncConnection(db, baseAdapter, erpCompanyId)
+
+    const failingAdapter: ErpAdapter = {
+      ...baseAdapter,
+      capabilities: () => ({ ...baseAdapter.capabilities(), supportsInvoiceStatusReadback: true }),
+      async getRecordLinks() {
+        throw new Error('simulated getRecordLinks failure')
+      },
+    }
+
+    const summary = await syncConnection(db, failingAdapter, erpCompanyId)
+
+    expect(summary.perRegister['IVVc-links']?.error).toMatch(/simulated getRecordLinks failure/)
+    // Every earlier register still succeeded — the sweep's failure didn't abort the run.
+    expect(summary.perRegister.CUVc?.error).toBeUndefined()
+    expect(summary.perRegister.WSVc?.error).toBeUndefined()
+
+    const states = await syncStateRows(erpCompanyId)
+    const ivvcState = states.find((s) => s.register === 'IVVc-links')
+    expect(ivvcState?.syncStatus).toBe('error')
   })
 
   it('throws for an unknown erpCompanyId', async () => {

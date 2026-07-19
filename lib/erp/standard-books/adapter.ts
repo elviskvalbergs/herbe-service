@@ -1,6 +1,7 @@
 import { registerAdapter, ErpPermanentError, type ChangeSet, type ErpAdapter } from '@herbe/erp-core'
 import { standardBooksConfigSchema } from './config-schema'
-import { fetchRegisterJson } from './fetch-json'
+import { fetchRegisterJson, postRegisterJson, patchRegisterJson } from './fetch-json'
+import { fetchRecordLinks } from './excellent-api'
 
 // Standard Books nests rows under `data.<Register>` (verified live) — NOT a
 // flat `data` array. Mirrors the portal's extractRegisterRows, with a
@@ -22,6 +23,16 @@ const REF_FIELD: Record<string, string> = {
   SVOSerVc: 'SerialNr',
 }
 
+// Registers the outbound write surface supports (Decision 8, WS4 Task 3).
+// Anything else is a caller bug, not an ERP-side error.
+const WRITABLE_REGISTERS = new Set(['SVOVc', 'WSVc'])
+
+function assertWritableRegister(method: string, register: string): void {
+  if (!WRITABLE_REGISTERS.has(register)) {
+    throw new Error(`${method} not supported for register ${register} (only SVOVc, WSVc)`)
+  }
+}
+
 export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
   const config = standardBooksConfigSchema.parse(rawConfig)
 
@@ -30,12 +41,26 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     return extractRows(body, register)
   }
 
+  // Shared by fetchRecords and pushUpdate's post-write read-back below —
+  // same GET path, same error taxonomy either way.
+  async function fetchRecordsInternal(register: string, params: Record<string, string>): Promise<Record<string, unknown>[]> {
+    const { status, body } = await fetchRegisterJson(config, register, params)
+
+    if (status >= 400) {
+      throw new ErpPermanentError(`fetchRecords ${register} returned ${status}`)
+    }
+
+    return extractRows(body, register)
+  }
+
   return {
     capabilities: () => ({
       supportsIncrementalSync: true,
       supportsDeletesFeed: false, // confirmed unreliable — never advertise this as true
       supportsDocumentFetch: false, // HansaWorld: WebExcellentAPI presence, probed per-connection in Task 21b
-      supportsInvoiceStatusReadback: false,
+      // WS4 Decision 9/10: opt-in per connection, once WebExcellentAPI
+      // presence is confirmed for that tenant (config-schema.ts `features`).
+      supportsInvoiceStatusReadback: config.features?.invoiceReadback === true,
       supportsActivityMirror: false,
     }),
 
@@ -73,31 +98,70 @@ export function createStandardBooksAdapter(rawConfig: unknown): ErpAdapter {
     },
 
     async pushCreate(register: string, payload: Record<string, unknown>): Promise<{ erpRef: string }> {
-      if (register !== 'SVOVc') {
-        throw new Error(`pushCreate not implemented for ${register} in Phase 0`)
-      }
+      assertWritableRegister('pushCreate', register)
 
-      const authHeader = `Basic ${Buffer.from(`${config.auth.username}:${config.auth.password}`).toString('base64')}`
-      const url = `${config.baseUrl}/api/${config.companyNumber}/SVOVc`
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const body = await res.json().catch(() => null)
+      const { body } = await postRegisterJson(config, register, payload)
+      // Found live in Task 7: a successful create's response is enveloped
+      // exactly like a GET (`data.<Register>: [record]`), NOT a flat
+      // top-level record — reuse the same extraction as every read path.
       // Per the demo-probe caveat (docs/19-demo-probe-results.md §10): a 200
       // with an echoed, unassigned payload is NOT a success signal — only a
-      // non-empty SerNr/@url proves the record persisted.
-      const erpRef = body?.SerNr ?? body?.['@url'] ?? ''
+      // non-empty SerNr/@url proves the record persisted. Empty is returned
+      // as data, not thrown — the caller (push saga) decides how to react
+      // (Decision 3's persistence-verification rule).
+      const [created] = extractRows(body, register)
+      const erpRef = created?.SerNr ?? created?.['@url'] ?? ''
 
       return { erpRef: String(erpRef) }
     },
 
+    async pushUpdate(register: string, recordRef: string, payload: Record<string, unknown>): Promise<void> {
+      assertWritableRegister('pushUpdate', register)
+
+      // recordRef is the URL segment identifying the record to update
+      // (PATCH /api/<company>/<Register>/<recordRef>) — never embedded in
+      // the body, so any SerNr the caller's payload happens to carry is
+      // simply ignored (buildFormBody drops nothing, but the URL wins).
+      const { status, body } = await patchRegisterJson(config, register, recordRef, payload)
+
+      if (status >= 400) {
+        throw new ErpPermanentError(`pushUpdate ${register} returned ${status}`)
+      }
+
+      // Same envelope as pushCreate (data.<Register>: [record]) — see above.
+      const [updated] = extractRows(body, register)
+      const returnedSerNr = updated?.SerNr
+      if (returnedSerNr !== undefined && returnedSerNr !== null && String(returnedSerNr) !== recordRef) {
+        // Wrong-record safety check: an update-by-key POST that echoes back
+        // a different record is never a successful update, whatever the
+        // HTTP status said.
+        throw new ErpPermanentError(
+          `pushUpdate ${register} echoed SerNr ${String(returnedSerNr)}, expected ${recordRef} — refusing to treat as success`,
+        )
+      }
+
+      // Persistence guard (Decision 3): the real ERP answers a PATCH against
+      // an unknown SerNr with HTTP 200, echoing the submitted payload back
+      // with the requested SerNr merged in — indistinguishable from a real
+      // update by status code or echoed SerNr alone. Only a read-back that
+      // actually finds the record proves the write persisted.
+      const readBack = await fetchRecordsInternal(register, { 'filter.SerNr': recordRef, limit: '1' })
+      if (readBack.length === 0) {
+        throw new ErpPermanentError(
+          `pushUpdate ${register} ${recordRef}: record not found on read-back — the ERP accepted the update but stored nothing (unknown SerNr)`,
+        )
+      }
+    },
+
+    fetchRecords: fetchRecordsInternal,
+
     async probeIncrementalSupport(register: string): Promise<boolean> {
       const { status } = await fetchRegisterJson(config, register, { updates_after: '0' })
       return status !== 404
+    },
+
+    async getRecordLinks(register: string, serNr: string): Promise<{ register: string; id: string }[]> {
+      return fetchRecordLinks(config, register, serNr)
     },
   }
 }
