@@ -1,6 +1,6 @@
 # 24 — Phase 1 status & parallel-session handoff
 
-Last updated: **2026-07-16** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence; WS4 ERP outbound landed on `feature/service-phase1-erp-outbound`, pending PR into preview).
+Last updated: **2026-07-17** (preview @ PR #9 sync-runner + PR #10 phase-2-recurrence; WS1 status corrected from "Done" to "substrate only" — verified against the repo; WS4 ERP outbound landed on `feature/service-phase1-erp-outbound`, PR #13 into preview).
 Purpose: let a fresh Claude/dev session pick up any remaining workstream without re-deriving state.
 Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 
@@ -8,7 +8,7 @@ Workstream numbering follows `docs/21-phase-1-implementation-plan.md` §4.
 
 | WS | Scope | Status |
 |---|---|---|
-| WS1 | Platform foundations & app shell | **Done** (Phase 0: migrations runner, tenancy, changeSeq triggers, PWA shell, proxy.ts) |
+| WS1 | Platform foundations & app shell | **Substrate only — NOT done** (corrected 2026-07-16; earlier revision wrongly said Done). Exists from P0: migrations runner, tenancy, changeSeq triggers, offline sync-client + outbox table/route, scoped-replication membership, i18n (7 locales), proxy.ts. **Missing (the actual WS1 deliverables, doc 21 §4):** field shell (Today·Jobs·Scan·Inbox·More), office shell (sidebar + company switcher), field design tokens, briefcase/"download my work" UI, conflict-inbox UI, Web Push infra (VAPID/subscriptions/fan-out), theming+settings model. The whole `app/` UI today is one route (`app/(app)/customers`). |
 | WS3 | **ERP adapter, inbound** | **Done, proven live** — see §2 |
 | WS7 | Master data & service-item tree | **Done** (domain core: types, stores, charge-type, coverage; SVOSerVc tree via MotherNr) |
 | WS8 | Orders/worksheets/status machine (domain) | **Done** (order+worksheet stores, `deriveOrderStatus`, worksheet transitions, 9→6 customer projection) |
@@ -80,8 +80,9 @@ Key modules (all on `feature/service-phase1-erp-outbound`):
 ## 4. Ready-to-assign parallel jobs (conflict map)
 
 Independent of each other (safe to run as parallel sessions):
+0. **WS1 App shells + push** — field shell (Today·Jobs·Scan·Inbox·More), office sidebar shell + company switcher, field design tokens, briefcase/conflict-inbox UI over the existing offline substrate, Web Push infra. UI-layer work; no overlap with sync/adapter code. **Gates the UI parts of WS2/WS9/WS10** — assign early.
 1. **WS12 Documents** — worksheet/order report PDF+DOCX engine (portal's `/orders/{id}/report` expects it). Touches new `lib/documents/**` + a route; no overlap with sync code.
-2. **WS2 Auth roles + seat licensing (+WebAuthn)** — touches `lib/auth`, users table, middleware. No overlap with WS3/WS12.
+2. **WS2 Auth roles + seat licensing (+WebAuthn)** — touches `lib/auth`, users table, middleware. No overlap with WS3/WS12. Its backend (user store, IdentityLink, roles, sessions, seat enforcement) is buildable now; its login/enrolment UI needs WS1's shells — coordinate or build against minimal pages.
 3. **WS6 Connection config + sync health UI** — admin UI over existing `erp_companies` + `erp_sync_state` + creds encrypt (write side of `encryptErpCredentials`). Reads WS3 but doesn't change it.
 4. **WS10 Dispatch board** (office UI over orders/worksheets/bookings-stub) — UI-heavy, minimal domain writes.
 5. ~~WS4 ERP outbound~~ — **done, see §2b**; no longer open. WS9 can now build directly on `approveWorksheet` (the approval entry point) and the saga-backed `/api/sync/outbox` route.

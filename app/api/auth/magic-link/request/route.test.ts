@@ -87,4 +87,34 @@ describe('POST /api/auth/magic-link/request', () => {
       .where(and(eq(schema.magicLinkTokens.tenantId, tenantId), eq(schema.magicLinkTokens.email, 'nobody-at-all@herbe-service.test')))
     expect(rows).toHaveLength(1)
   })
+
+  // The console.log below is a Phase-0 stand-in for real email delivery, but
+  // the token it prints is a live bearer credential — logging it in
+  // production would leak account access through log aggregation. This test
+  // proves the route still issues and persists the token correctly, it just
+  // never prints it once VERCEL_ENV/NODE_ENV says production.
+  it('does not log the token or email in production, but still issues and stores the token', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const originalVercelEnv = process.env.VERCEL_ENV
+    process.env.VERCEL_ENV = 'production'
+
+    try {
+      const { POST } = await import('./route')
+      const res = await POST(makeRequest({ tenantId, email: 'prod-user@herbe-service.test' }))
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body).toEqual({ status: 'ok' })
+      expect(logSpy).not.toHaveBeenCalled()
+
+      const rows = await db
+        .select()
+        .from(schema.magicLinkTokens)
+        .where(and(eq(schema.magicLinkTokens.tenantId, tenantId), eq(schema.magicLinkTokens.email, 'prod-user@herbe-service.test')))
+      expect(rows).toHaveLength(1)
+    } finally {
+      if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV
+      else process.env.VERCEL_ENV = originalVercelEnv
+    }
+  })
 })
