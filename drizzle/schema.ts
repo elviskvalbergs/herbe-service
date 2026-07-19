@@ -170,6 +170,11 @@ export const users = pgTable(
     mfaSecretEncrypted: text('mfa_secret_encrypted'),
     mfaEnabled: boolean('mfa_enabled').notNull().default(false),
     mfaTotpLastUsedEpoch: integer('mfa_totp_last_used_epoch'),
+    // WS1 Task 3 (settings model — user prefs): validated in application code
+    // (lib/settings/user-prefs.ts) against lib/i18n/config.ts's locale list
+    // and the 'standard' | 'sunlight' | 'dark' display-scheme union.
+    locale: text('locale').notNull().default('lv'),
+    displayScheme: text('display_scheme').notNull().default('standard'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.tenantId, t.email)],
