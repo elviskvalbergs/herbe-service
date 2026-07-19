@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as schema from '@/drizzle/schema'
+import { runMigrations } from '@/scripts/migrate'
+import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
+import type { DisplayScheme } from '@/lib/settings/user-prefs'
 
 // `getLocale()`/`getMessages()` (next-intl/server) ultimately read the
 // request locale via `next/headers`' `headers()`, which throws outside a
@@ -8,6 +14,49 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'X-NEXT-INTL-LOCALE': 'en' }),
 }))
+
+// The layout now also resolves the signed-in user's persisted display
+// scheme (getVerifiedSession -> getUserPrefs), both of which go through
+// `@/lib/db`, which reads DATABASE_URL at module-load time. Same convention
+// as app/page.test.tsx / app/api/settings/route.test.ts: mock `@/lib/auth`'s
+// `auth()` seam and point DATABASE_URL at a real harness Postgres before the
+// layout is first dynamically imported.
+const authMock = vi.fn()
+vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
+
+let testDb: TestDatabase
+let sql: ReturnType<typeof postgres>
+let db: ReturnType<typeof drizzle<typeof schema>>
+
+beforeAll(async () => {
+  testDb = await createTestDatabase()
+  await runMigrations(testDb.url)
+  process.env.DATABASE_URL = testDb.url
+
+  sql = postgres(testDb.url)
+  db = drizzle(sql, { schema })
+}, 60_000)
+
+afterAll(async () => {
+  await sql?.end({ timeout: 5 })
+  await testDb?.cleanup()
+})
+
+async function makeUser(tenantSlug: string, email: string, displayScheme?: DisplayScheme) {
+  const [tenant] = await db.insert(schema.tenants).values({ slug: tenantSlug, name: tenantSlug }).returning()
+  const [user] = await db
+    .insert(schema.users)
+    .values({ tenantId: tenant.id, email, role: 'technician', ...(displayScheme ? { displayScheme } : {}) })
+    .returning()
+  return user
+}
+
+function sessionFor(user: { id: string; tenantId: string; role: string; sessionVersion: number }) {
+  return {
+    user: { id: user.id, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion },
+    expires: '2099-01-01T00:00:00.000Z',
+  }
+}
 
 // `next-intl/config` is normally aliased to `./lib/i18n/request.ts` by the
 // webpack plugin (`createNextIntlPlugin` in next.config.ts) — that aliasing
@@ -82,5 +131,66 @@ describe('RootLayout i18n wiring', () => {
     }>
     const provider = element.props.children.props.children
     expect(provider.props.children).toBe(translated)
+  })
+})
+
+describe('RootLayout display scheme wiring', () => {
+  beforeEach(() => {
+    authMock.mockReset()
+  })
+
+  it('sets neither data-theme nor data-scheme when there is no session', async () => {
+    authMock.mockResolvedValue(null)
+    const { default: RootLayout } = await import('./layout')
+
+    const element = (await RootLayout({ children: 'child' })) as El<{
+      'data-theme'?: string
+      'data-scheme'?: string
+    }>
+
+    expect(element.props['data-theme']).toBeUndefined()
+    expect(element.props['data-scheme']).toBeUndefined()
+  })
+
+  it('sets neither attribute for a session with displayScheme "standard"', async () => {
+    const user = await makeUser('layout-standard', 'standard@herbe-service.test', 'standard')
+    authMock.mockResolvedValue(sessionFor(user))
+    const { default: RootLayout } = await import('./layout')
+
+    const element = (await RootLayout({ children: 'child' })) as El<{
+      'data-theme'?: string
+      'data-scheme'?: string
+    }>
+
+    expect(element.props['data-theme']).toBeUndefined()
+    expect(element.props['data-scheme']).toBeUndefined()
+  })
+
+  it('sets data-theme="dark" for a session with displayScheme "dark"', async () => {
+    const user = await makeUser('layout-dark', 'dark@herbe-service.test', 'dark')
+    authMock.mockResolvedValue(sessionFor(user))
+    const { default: RootLayout } = await import('./layout')
+
+    const element = (await RootLayout({ children: 'child' })) as El<{
+      'data-theme'?: string
+      'data-scheme'?: string
+    }>
+
+    expect(element.props['data-theme']).toBe('dark')
+    expect(element.props['data-scheme']).toBeUndefined()
+  })
+
+  it('sets data-scheme="sunlight" for a session with displayScheme "sunlight"', async () => {
+    const user = await makeUser('layout-sunlight', 'sunlight@herbe-service.test', 'sunlight')
+    authMock.mockResolvedValue(sessionFor(user))
+    const { default: RootLayout } = await import('./layout')
+
+    const element = (await RootLayout({ children: 'child' })) as El<{
+      'data-theme'?: string
+      'data-scheme'?: string
+    }>
+
+    expect(element.props['data-scheme']).toBe('sunlight')
+    expect(element.props['data-theme']).toBeUndefined()
   })
 })
