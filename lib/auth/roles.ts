@@ -69,6 +69,11 @@ export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
   ],
 }
 
+// `role` is typed as Role, but callers routinely cast a bare `users.role` text
+// value (`session.user.role as Role`) — an unrecognized string would make the
+// lookup `undefined` and `.includes` throw. Treat any unknown role as
+// capability-less rather than crashing the page/route that asked.
 export function hasCapability(role: Role, capability: Capability): boolean {
-  return ROLE_CAPABILITIES[role].includes(capability)
+  const capabilities = ROLE_CAPABILITIES[role]
+  return capabilities !== undefined && capabilities.includes(capability)
 }

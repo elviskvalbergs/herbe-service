@@ -522,6 +522,21 @@ export const extRateLimit = pgTable(
   (t) => [primaryKey({ columns: [t.tokenId, t.endpoint, t.windowStart] })],
 )
 
+// FIX-7 (docs/27): rate-limit counter for the auth endpoints (login, TOTP,
+// magic-link request). Same fixed-window shape as extRateLimit, but keyed on
+// an opaque text key (IP+tenant+email) — auth requests carry no token uuid.
+// Standalone, no FK. Migration 0025_auth_rate_limit.sql.
+export const authRateLimit = pgTable(
+  'auth_rate_limit',
+  {
+    key: text('key').notNull(),
+    endpoint: text('endpoint').notNull(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.endpoint, t.windowStart] })],
+)
+
 // WS1 Task 9 (push infra, docs/superpowers/sdd/task-9-brief.md): one row per
 // browser/device Push subscription (PushSubscriptionJSON from the client's
 // `PushManager.subscribe()`). endpoint is globally unique per the Push API

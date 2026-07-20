@@ -20,10 +20,13 @@
 import { gt, and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
-import { auth } from '@/lib/auth'
+import { getVerifiedSession } from '@/lib/auth/session-guard'
 
 export async function GET(request: Request) {
-  const session = await auth()
+  // getVerifiedSession (not bare auth()) so a signed-out-everywhere /
+  // session_version-bumped device stops pulling the tenant customer list
+  // immediately, instead of until the JWT ages out.
+  const session = await getVerifiedSession(db)
   const tenantId = session?.user?.tenantId
   if (!tenantId) {
     return new Response('Unauthorized', { status: 401 })
