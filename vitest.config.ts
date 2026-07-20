@@ -29,15 +29,21 @@ export default defineConfig({
     // tests/live`) collect zero files. Gating the exclude on the same env
     // var keeps both commands working: unset -> excluded/never collected;
     // set -> collected, then the file's own describe.skipIf decides.
+    // tests/gotenberg/** uses the identical mechanism, gated on
+    // RUN_GOTENBERG_TESTS (`pnpm test:gotenberg`) — it needs a running
+    // Gotenberg container.
     //
-    // tests/e2e/** is always excluded regardless of that flag — it's
+    // tests/e2e/** is always excluded regardless of those flags — it's
     // Playwright's own suite (playwright.config.ts), not vitest's. Its spec
     // files use @playwright/test's test/expect; vitest's default
     // `**/*.spec.ts` include pattern would otherwise also try to collect and
     // run them, failing immediately on the wrong test API.
-    exclude: process.env.RUN_LIVE_ERP_TESTS
-      ? [...configDefaults.exclude, 'tests/e2e/**']
-      : [...configDefaults.exclude, 'tests/live/**', 'tests/e2e/**'],
+    exclude: [
+      ...configDefaults.exclude,
+      'tests/e2e/**',
+      ...(process.env.RUN_LIVE_ERP_TESTS ? [] : ['tests/live/**']),
+      ...(process.env.RUN_GOTENBERG_TESTS ? [] : ['tests/gotenberg/**']),
+    ],
     // Vitest externalizes node_modules by default and loads them via Node's
     // native resolver, which ignores the `resolve.conditions` above. Inlining
     // next-intl routes it through Vite's resolver instead, so the
@@ -63,6 +69,7 @@ export default defineConfig({
         'scripts/**',
         'lib/test-support/**',
         'tests/live/**',
+        'tests/gotenberg/**',
         '**/.next/**',
         'coverage/**',
       ],
@@ -75,6 +82,7 @@ export default defineConfig({
         'packages/erp-core/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/sync/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/domain/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+        'lib/documents/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/api/ext/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/security/tokens.ts': { lines: 90, branches: 90, functions: 90, statements: 90 },
       },

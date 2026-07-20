@@ -1,13 +1,24 @@
 // drizzle/schema.ts
-import { bigint, index, jsonb, numeric, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
+import { bigint, customType, index, jsonb, numeric, pgTable, text, timestamp, uuid, boolean, integer, primaryKey, unique } from 'drizzle-orm/pg-core'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import type { InferSelectModel } from 'drizzle-orm'
+
+// drizzle-orm 0.44 has no built-in bytea column type; the standard customType
+// escape hatch maps it to Buffer (what the postgres.js driver hands back).
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return 'bytea'
+  },
+})
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // WS12 (0021_documents.sql): built-in report theming
+  // { locale?, logoUrl?, accentColor?, footerText? }. Null = neutral defaults.
+  branding: jsonb('branding'),
 })
 
 export const erpCompanies = pgTable('erp_companies', {
@@ -586,3 +597,93 @@ export const erpPushSteps = pgTable(
 
 export type PushGroupRow = InferSelectModel<typeof erpPushGroups>
 export type PushStepRow = InferSelectModel<typeof erpPushSteps>
+
+// WS12 documents slice (docs/superpowers/plans/2026-07-20-service-phase1-ws12-documents.md
+// decision 4, 0021_documents.sql). Uploaded DOCX templates; selection v1 is
+// "newest active for (tenant, docType), else built-in" — the doc-12 rule
+// chain is deferred.
+export const documentTemplates = pgTable(
+  'document_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    docType: text('doc_type').notNull(), // 'order_report' | 'order_confirmation'
+    name: text('name').notNull(),
+    version: integer('version').notNull().default(1),
+    docx: bytea('docx').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('document_templates_tenant_type_active_idx').on(t.tenantId, t.docType, t.active)],
+)
+
+// Per-(tenant, docType) counter behind `<prefix>-<year>-<counter>` numbers —
+// auto-seeded on first use, assigned at first final render, immutable after.
+export const documentNumberSeries = pgTable(
+  'document_number_series',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    docType: text('doc_type').notNull(),
+    prefix: text('prefix').notNull(), // 'SR' for order_report, 'OC' for order_confirmation
+    nextCounter: integer('next_counter').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.tenantId, t.docType)],
+)
+
+// A row is only inserted on SUCCESSFUL render (no status column); re-renders
+// bump version and copy the number from version 1. templateId null = built-in
+// report. Bytes live here as bytea per plan decision 3 — all reads/writes go
+// through lib/documents/store.ts so the later media-store swap is one module.
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    docType: text('doc_type').notNull(),
+    orderId: uuid('order_id').notNull().references(() => serviceOrders.id, { onDelete: 'cascade' }),
+    number: text('number').notNull(),
+    seriesId: uuid('series_id').notNull().references(() => documentNumberSeries.id),
+    version: integer('version').notNull().default(1),
+    templateId: uuid('template_id').references(() => documentTemplates.id),
+    templateVersion: integer('template_version'),
+    contextSnapshot: jsonb('context_snapshot').notNull(),
+    docxBytes: bytea('docx_bytes'),
+    pdfBytes: bytea('pdf_bytes'),
+    renderedAt: timestamp('rendered_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.tenantId, t.docType, t.orderId, t.version),
+    index('documents_tenant_order_idx').on(t.tenantId, t.orderId),
+  ],
+)
+
+// Queued render pipeline — the WS4 push-queue idioms (erpPushSteps above):
+// plain-text status, attempts + nextAttemptAt backoff, dead after max
+// attempts. Coalescing enqueue: an existing 'queued' job for
+// (tenant, order, docType) absorbs a new trigger instead of duplicating.
+export const documentRenderJobs = pgTable(
+  'document_render_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    erpCompanyId: uuid('erp_company_id').references(() => erpCompanies.id, { onDelete: 'cascade' }),
+    docType: text('doc_type').notNull(),
+    orderId: uuid('order_id').notNull().references(() => serviceOrders.id, { onDelete: 'cascade' }),
+    trigger: text('trigger').notNull(), // 'approval' | 'manual'
+    status: text('status').notNull().default('queued'), // 'queued' | 'running' | 'done' | 'dead'
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('document_render_jobs_status_next_idx').on(t.status, t.nextAttemptAt)],
+)
+
+export type DocumentTemplateRow = InferSelectModel<typeof documentTemplates>
+export type DocumentNumberSeriesRow = InferSelectModel<typeof documentNumberSeries>
+export type DocumentRow = InferSelectModel<typeof documents>
+export type DocumentRenderJobRow = InferSelectModel<typeof documentRenderJobs>

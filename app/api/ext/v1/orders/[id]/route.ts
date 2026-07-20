@@ -22,6 +22,7 @@ import { getServiceItemsByIds } from '@/lib/domain/stores/service-items'
 import { toCustomerOrderStatus } from '@/lib/domain/customer-order-status'
 import type { OrderStatus } from '@/lib/domain/types'
 import { mapOrderDetail, mapWorksheetSummary, resolveOrderServiceItems } from '@/lib/api/ext/mappers'
+import { orderHasRenderedReport } from '@/lib/documents/store'
 import { orderDetailSchema } from '@/lib/api/ext/dto'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -65,7 +66,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (list) list.push(row)
     else rowsByWorksheet.set(row.worksheetId, [row])
   }
-  const worksheetSummaries = worksheets.map((ws) => mapWorksheetSummary(ws, rowsByWorksheet.get(ws.id) ?? []))
+  // reportPdf is order-level (WS12): resolve once and share across worksheets.
+  const reportPdf = await orderHasRenderedReport(db, { tenantId: verified.tenantId, orderId: id })
+  const worksheetSummaries = worksheets.map((ws) => mapWorksheetSummary(ws, rowsByWorksheet.get(ws.id) ?? [], reportPdf))
 
   const orderRows = await getServiceOrderRowsForOrders(db, [id])
   const itemIds = [...new Set(orderRows.map((r) => r.serviceItemId).filter((v): v is string => v != null))]
