@@ -32,8 +32,15 @@ export default defineConfig({
     // tests/gotenberg/** uses the identical mechanism, gated on
     // RUN_GOTENBERG_TESTS (`pnpm test:gotenberg`) — it needs a running
     // Gotenberg container.
+    //
+    // tests/e2e/** is always excluded regardless of those flags — it's
+    // Playwright's own suite (playwright.config.ts), not vitest's. Its spec
+    // files use @playwright/test's test/expect; vitest's default
+    // `**/*.spec.ts` include pattern would otherwise also try to collect and
+    // run them, failing immediately on the wrong test API.
     exclude: [
       ...configDefaults.exclude,
+      'tests/e2e/**',
       ...(process.env.RUN_LIVE_ERP_TESTS ? [] : ['tests/live/**']),
       ...(process.env.RUN_GOTENBERG_TESTS ? [] : ['tests/gotenberg/**']),
     ],
@@ -50,11 +57,13 @@ export default defineConfig({
         '**/*.config.*',
         '**/*.d.ts',
         'app/layout.tsx',
-        'app/page.tsx',
         // Thin 'use client' + useEffect/Dexie glue, same rationale as
-        // app/layout.tsx/app/page.tsx above — no branch logic worth unit
-        // testing without adding a jsdom + React Testing Library dependency
-        // chain the task didn't otherwise call for (Task 16 self-review).
+        // app/layout.tsx above — no branch logic worth unit testing without
+        // adding a jsdom + React Testing Library dependency chain the task
+        // didn't otherwise call for (Task 16 self-review). app/page.tsx used
+        // to be excluded on the same basis (create-next-app boilerplate) but
+        // Task 4 gave it real branch logic and a real test file, so it was
+        // removed from this list.
         'app/(app)/customers/page.tsx',
         'drizzle/**',
         'scripts/**',

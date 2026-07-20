@@ -2,6 +2,12 @@ packages:
   - '.'
   - 'packages/*'
 
+# The single workspace package is the repo root itself ('.' above), so any
+# `pnpm add` run from here — including the ones shadcn's own CLI shells out
+# to for `init`/`add` — trips pnpm's "adding to workspace root" guard. Needed
+# for `shadcn init` (this task) and every future `shadcn add <component>`.
+ignoreWorkspaceRootCheck: true
+
 allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true

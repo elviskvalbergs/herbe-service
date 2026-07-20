@@ -12,15 +12,26 @@
 // exists inside a real Next.js server request, not a bare Vitest call to
 // `POST(request)` — same reasoning as __tests__/api/test/login.test.ts.
 //
-// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
-// decision 11): the route was refactored to push via the saga engine
-// (enqueueOrderCreatePush -> processPushQueue) instead of calling
-// pushServiceOrderCreate directly, so `payload` is now `{orderId}` — a real
-// service_orders row — rather than a raw ERP-shaped `{custCode, transDate,
-// rows}` object. Every test below seeds a real customer + service order per
-// tenant/company instead of using a literal ERP payload. Response shapes,
-// status codes, and the idempotency/cross-tenant contract itself are
-// unchanged — only what `payload` means changed.
+// Two things changed under the hood since this file was first written, and
+// both affect how every authenticated test here is set up:
+//
+// - WS1: the route now calls `getVerifiedSession` (lib/auth/session-guard),
+//   which wraps `auth()` with a DB round-trip comparing
+//   `session.user.sessionVersion` against the live `users.session_version`
+//   row — so an authenticated test session must correspond to a real users
+//   row with a matching `sessionVersion`, not just an arbitrary id string
+//   (see `makeUser`/`sessionFor` below; same pattern as
+//   app/api/settings/route.test.ts).
+// - WS4 (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+//   decision 11): the route was refactored to push via the saga engine
+//   (enqueueOrderCreatePush -> processPushQueue) instead of calling
+//   pushServiceOrderCreate directly, so `payload` is now `{orderId}` — a real
+//   service_orders row — rather than a raw ERP-shaped `{custCode, transDate,
+//   rows}` object. Every test below seeds a real customer + service order per
+//   tenant/company (via `makeCompanyWithOrder`) instead of using a literal
+//   ERP payload. Response shapes, status codes, and the idempotency/
+//   cross-tenant contract itself are unchanged — only what `payload` means,
+//   and what a valid session must look like, changed.
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
@@ -166,6 +177,21 @@ async function makeCompanyWithOrder(adapterType: string, slug: string) {
   return { tenantId: tenant.id, erpCompanyId: company.id, orderId: order.id }
 }
 
+// The route now calls `getVerifiedSession` (lib/auth/session-guard), which
+// requires a real `users` row whose `sessionVersion` matches the session
+// claim — see the header comment above.
+async function makeUser(tenantId: string, email: string) {
+  const [user] = await db.insert(schema.users).values({ tenantId, email, role: 'technician' }).returning()
+  return user
+}
+
+function sessionFor(user: { id: string; tenantId: string; sessionVersion: number }) {
+  return {
+    user: { id: user.id, tenantId: user.tenantId, sessionVersion: user.sessionVersion },
+    expires: '2099-01-01T00:00:00.000Z',
+  }
+}
+
 describe('POST /api/sync/outbox', () => {
   beforeEach(() => {
     // Authenticated by default; the 401 test below overrides this per-call.
@@ -192,7 +218,8 @@ describe('POST /api/sync/outbox', () => {
 
   it('accepts an op once, applies it with the real erpRef, and is a no-op idempotent replay on the same client UUID', async () => {
     const { tenantId, orderId } = await makeCompanyWithOrder('ok_push_adapter', 'ok-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'ok-tenant-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const opId = '22222222-0000-0000-0000-000000000001'
     const callsBefore = okPushCalls
 
@@ -243,7 +270,8 @@ describe('POST /api/sync/outbox', () => {
     // write to tenant B (attacker-controlled tenantId). The orderId is
     // tenant A's own order — the route never looks up tenant B's order or
     // adapter from the request body regardless.
-    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: tenantA.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const attacker = await makeUser(tenantA.tenantId, 'idor-attacker@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(attacker))
     const body = { id: opId, tenantId: tenantB.tenantId, entity: 'serviceOrder', op: 'create', payload: { orderId: tenantA.orderId } }
 
     const { POST } = await import('./route')
@@ -263,9 +291,13 @@ describe('POST /api/sync/outbox', () => {
   })
 
   it('rejects with 401 when the session has no tenantId, rather than writing unscoped', async () => {
-    const { orderId } = await makeCompanyWithOrder('ok_push_adapter', 'no-tenant-claim')
+    const { tenantId, orderId } = await makeCompanyWithOrder('ok_push_adapter', 'no-tenant-claim')
     const opId = '22222222-0000-0000-0000-000000000011'
-    authMock.mockResolvedValue({ user: { id: 'x' }, expires: '2099-01-01T00:00:00.000Z' })
+    // A fully verified session (real user, matching sessionVersion) whose
+    // claim simply omits tenantId — distinct from an unauthenticated/
+    // unverifiable session, which is covered by the test above.
+    const user = await makeUser(tenantId, 'no-tenant-claim-user@herbe-service.test')
+    authMock.mockResolvedValue({ user: { id: user.id, sessionVersion: user.sessionVersion }, expires: '2099-01-01T00:00:00.000Z' })
 
     const body = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId } }
     const { POST } = await import('./route')
@@ -283,7 +315,8 @@ describe('POST /api/sync/outbox', () => {
     const callsBefore = okPushCalls
 
     // Seed an outbox op owned by tenant B, applied with a real erpRef.
-    authMock.mockResolvedValue({ user: { id: 'tenant-b-user', tenantId: tenantB.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const userB = await makeUser(tenantB.tenantId, 'cross-tenant-b-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(userB))
     const seedBody = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId: tenantB.orderId } }
     const { POST } = await import('./route')
     const seedRes = await POST(
@@ -294,7 +327,8 @@ describe('POST /api/sync/outbox', () => {
 
     // Tenant A's session reuses tenant B's op id — must not confirm existence
     // or leak tenant B's erpRef ('SVO-000123').
-    authMock.mockResolvedValue({ user: { id: 'tenant-a-user', tenantId: tenantA.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const userA = await makeUser(tenantA.tenantId, 'cross-tenant-a-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(userA))
     const reuseBody = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId: tenantA.orderId } }
     const res = await POST(
       new Request('http://x/api/sync/outbox', { method: 'POST', body: JSON.stringify(reuseBody) }),
@@ -323,7 +357,8 @@ describe('POST /api/sync/outbox', () => {
     // (lib/domain/stores/service-orders.ts) filters on tenantId, so gathering
     // the SVOVc payload for A's session against B's orderId must find
     // nothing and dead-letter the step — never reach ANY adapter's pushCreate.
-    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: tenantA.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const attacker = await makeUser(tenantA.tenantId, 'idor-order-attacker@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(attacker))
     const body = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId: tenantB.orderId } }
 
     const { POST } = await import('./route')
@@ -355,7 +390,8 @@ describe('POST /api/sync/outbox', () => {
 
   it('rejects a payload with a missing or non-string orderId with 400, before writing any outbox row (review)', async () => {
     const { tenantId } = await makeCompanyWithOrder('ok_push_adapter', 'bad-orderid-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'bad-orderid-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const callsBefore = okPushCalls
     const { POST } = await import('./route')
 
@@ -393,7 +429,8 @@ describe('POST /api/sync/outbox', () => {
 
   it('records an empty erpRef as a failed op, not applied — "200 and no error" is not proof of a write', async () => {
     const { tenantId, orderId } = await makeCompanyWithOrder('silent_noop_adapter', 'noop-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'noop-tenant-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const opId = '22222222-0000-0000-0000-000000000002'
 
     const body = { id: opId, entity: 'serviceOrder', op: 'create', payload: { orderId } }

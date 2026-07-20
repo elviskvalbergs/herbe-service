@@ -7,8 +7,10 @@
 // duplicate Service Order.
 //
 // Phase 0 simplification: any pre-existing row (applied OR failed) short-
-// circuits as "already_applied" — retrying a *failed* op is Task 13's out-
-// of-scope push-queue-per-order / DLQ work (Phase 1, 04-erp-sync.md).
+// circuits as "already_applied" — this POST never re-attempts a *failed* op.
+// Task 8 adds a dedicated retry path for that
+// (app/api/sync/outbox/[id]/retry/route.ts), which re-drives the WS4 saga for
+// the op's order rather than reusing this idempotency check.
 //
 // Task 16b: tenantId is taken ONLY from the authenticated session
 // (session.user.tenantId), never from the request body — two reviews
@@ -31,14 +33,14 @@ import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
 import { getAdapter } from '@herbe/erp-core'
-import { auth } from '@/lib/auth'
+import { getVerifiedSession } from '@/lib/auth/session-guard'
 import { enqueueOrderCreatePush } from '@/lib/sync/push/enqueue'
 import { getStepsForGroup } from '@/lib/sync/push/store'
 import { processPushQueue } from '@/lib/sync/push/engine'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(request: Request) {
-  const session = await auth()
+  const session = await getVerifiedSession(db)
   const tenantId = session?.user?.tenantId
   if (!tenantId) {
     return new Response('Unauthorized', { status: 401 })

@@ -183,6 +183,11 @@ export const users = pgTable(
     mfaSecretEncrypted: text('mfa_secret_encrypted'),
     mfaEnabled: boolean('mfa_enabled').notNull().default(false),
     mfaTotpLastUsedEpoch: integer('mfa_totp_last_used_epoch'),
+    // WS1 Task 3 (settings model — user prefs): validated in application code
+    // (lib/settings/user-prefs.ts) against lib/i18n/config.ts's locale list
+    // and the 'standard' | 'sunlight' | 'dark' display-scheme union.
+    locale: text('locale').notNull().default('lv'),
+    displayScheme: text('display_scheme').notNull().default('standard'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.tenantId, t.email)],
@@ -516,6 +521,27 @@ export const extRateLimit = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tokenId, t.endpoint, t.windowStart] })],
 )
+
+// WS1 Task 9 (push infra, docs/superpowers/sdd/task-9-brief.md): one row per
+// browser/device Push subscription (PushSubscriptionJSON from the client's
+// `PushManager.subscribe()`). endpoint is globally unique per the Push API
+// spec (it's the push service's per-subscription URL), so it doubles as the
+// natural upsert key for subscribe. No tenantId — a subscription is scoped
+// to the user only; lib/push/send.ts looks up by userId.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.endpoint), index('push_subscriptions_user_idx').on(t.userId)],
+)
+
+export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>
 
 // WS4 ERP outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
 // decision 1, 0020_erp_push_queue.sql, renumbered from 0017 — WS2's
