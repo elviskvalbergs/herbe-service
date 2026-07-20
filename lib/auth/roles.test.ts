@@ -16,7 +16,10 @@ describe('hasCapability', () => {
     ['back_office', 'worksheet:approve', false],
     ['admin', 'tenant:manage_settings', true],
     ['admin', 'users:manage', true],
-    ['admin', 'worksheet:approve', false],
+    // FIX-14: admin is additive — it now inherits operational capabilities too.
+    ['admin', 'worksheet:approve', true],
+    ['admin', 'worksheet:execute_own', true],
+    ['admin', 'customer:edit', true],
   ]
 
   it.each(cases)('role=%s capability=%s -> %s', (role, capability, expected) => {
@@ -36,6 +39,19 @@ describe('hasCapability', () => {
   it('every role has at least one capability', () => {
     for (const role of Object.keys(ROLE_CAPABILITIES) as Role[]) {
       expect(ROLE_CAPABILITIES[role].length).toBeGreaterThan(0)
+    }
+  })
+
+  // FIX-14: admin = additive capability, not a separate surface. It must hold
+  // every capability granted to any other role (plus its admin-only ones).
+  it('admin is a superset of every other role capability', () => {
+    const everyOtherCapability = new Set(
+      (Object.keys(ROLE_CAPABILITIES) as Role[])
+        .filter((role) => role !== 'admin')
+        .flatMap((role) => ROLE_CAPABILITIES[role]),
+    )
+    for (const capability of everyOtherCapability) {
+      expect(hasCapability('admin', capability)).toBe(true)
     }
   })
 })
