@@ -203,3 +203,65 @@ export async function resetDeadStep(db: Db, stepId: string): Promise<void> {
       .where(eq(schema.erpPushGroups.id, step.groupId))
   })
 }
+
+// Echo-suppression signal (FIX-1 / FIX-5). Only the push saga ever writes
+// erp_push_steps, so a step for (entityType, entityId) means this record was
+// authored locally and pushed to the ERP — the inbound re-ingest of that
+// record's own echo must NOT clobber local state (status downgrade,
+// description overwrite, row reimport). Note the vocabulary: push steps use
+// 'serviceOrder' / 'worksheet' (see enqueue.ts), which differs from the
+// erp_refs entityType ('service_order' / 'worksheet'). entityId is a UUID PK,
+// globally unique, so no tenant scope is needed for correctness here.
+export async function hasPushStepForEntity(db: Db, entityType: string, entityId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.erpPushSteps.id })
+    .from(schema.erpPushSteps)
+    .where(and(eq(schema.erpPushSteps.entityType, entityType), eq(schema.erpPushSteps.entityId, entityId)))
+    .limit(1)
+
+  return row != null
+}
+
+// The oldest group of a given kind on a lane (FIX-4). The conflict-inbox
+// retry route uses this to find the order-create group its failed op already
+// left on the lane, instead of stacking a new one behind the FIFO gate.
+export async function findGroupForLaneKind(
+  db: Db,
+  erpCompanyId: string,
+  lane: string,
+  kind: string,
+): Promise<PushGroupRow | null> {
+  const [group] = await db
+    .select()
+    .from(schema.erpPushGroups)
+    .where(
+      and(
+        eq(schema.erpPushGroups.erpCompanyId, erpCompanyId),
+        eq(schema.erpPushGroups.lane, lane),
+        eq(schema.erpPushGroups.kind, kind),
+      ),
+    )
+    .orderBy(asc(schema.erpPushGroups.createdAt))
+    .limit(1)
+
+  return group ?? null
+}
+
+// Re-drive a stuck (failed/dead) push group (FIX-4). Puts the group back to
+// pending and resets every non-succeeded step to pending/attempts=0 so the
+// engine re-runs it from where it stopped — succeeded steps stay succeeded
+// (the saga is idempotent, but there is no need to re-execute them). Like
+// resetDeadStep but at group granularity and without requiring 'dead'.
+export async function resetGroupForRetry(db: Db, groupId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.erpPushSteps)
+      .set({ status: 'pending', attempts: 0, nextAttemptAt: null, errorMessage: null, updatedAt: new Date() })
+      .where(and(eq(schema.erpPushSteps.groupId, groupId), ne(schema.erpPushSteps.status, 'succeeded')))
+
+    await tx
+      .update(schema.erpPushGroups)
+      .set({ status: 'pending', updatedAt: new Date() })
+      .where(eq(schema.erpPushGroups.id, groupId))
+  })
+}

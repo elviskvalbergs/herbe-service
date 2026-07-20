@@ -32,12 +32,11 @@
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
-import { getAdapter } from '@herbe/erp-core'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { buildAdapterForConnection } from '@/lib/erp/connection'
 import { enqueueOrderCreatePush } from '@/lib/sync/push/enqueue'
 import { getStepsForGroup } from '@/lib/sync/push/store'
 import { processPushQueue } from '@/lib/sync/push/engine'
-import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(request: Request) {
   const session = await getVerifiedSession(db)
@@ -80,7 +79,14 @@ export async function POST(request: Request) {
     // Phase 1's push-queue-per-order generalizes this to N companies and N
     // entity types.
     const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
-    const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
+    // FIX-3: build the adapter from the stored connection (decrypts the
+    // encrypted creds in api_creds_encrypted) — adapterConfigJson has no
+    // `auth`, so the old getAdapter(config) path threw a zod error and 502'd
+    // against a real ERP. Guard a tenant with no connection configured.
+    if (!company) {
+      throw new Error('no ERP connection configured for this tenant')
+    }
+    const adapter = await buildAdapterForConnection(db, company.id)
 
     const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId })
     await processPushQueue(db, adapter, company.id)

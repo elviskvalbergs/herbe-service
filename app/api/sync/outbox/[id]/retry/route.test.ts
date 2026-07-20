@@ -29,6 +29,8 @@ import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { registerAdapter } from '@herbe/erp-core'
 import { insertServiceOrder } from '@/lib/domain/stores/service-orders'
+import { encryptErpCredentials } from '@/lib/erp/credentials'
+import { createPushGroup } from '@/lib/sync/push/store'
 
 const authMock = vi.fn()
 vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
@@ -41,6 +43,10 @@ let retryOkPushCalls = 0
 let retryFailPushCalls = 0
 
 beforeAll(async () => {
+  // FIX-3: the route builds the adapter via buildAdapterForConnection, which
+  // decrypts api_creds_encrypted — set a throwaway envelope key before any
+  // company is seeded (matches lib/erp/connection.test.ts).
+  process.env.MASTER_ENCRYPTION_KEY = 'test-only-throwaway-key-not-a-real-secret-value'
   testDb = await createTestDatabase()
   await runMigrations(testDb.url)
   process.env.DATABASE_URL = testDb.url
@@ -158,7 +164,16 @@ async function makeCompanyWithOrder(adapterType: string, slug: string) {
   const [tenant] = await db.insert(schema.tenants).values({ slug, name: slug }).returning()
   const [company] = await db
     .insert(schema.erpCompanies)
-    .values({ tenantId: tenant.id, displayName: slug, adapterType, adapterConfigJson: {} })
+    .values({
+      tenantId: tenant.id,
+      displayName: slug,
+      adapterType,
+      // FIX-3: seeded like a real connection — buildAdapterForConnection reads
+      // adapterConfigJson + decrypts api_creds_encrypted; the fake adapters
+      // ignore the config, so adapterType still selects the fake.
+      adapterConfigJson: { baseUrl: 'http://x', companyNumber: '1' },
+      apiCredsEncrypted: encryptErpCredentials({ username: 'u', password: 'p' }).toString('base64'),
+    })
     .returning()
   const [customer] = await db
     .insert(schema.customers)
@@ -313,5 +328,52 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
     const [row] = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
     expect(row.status).toBe('applied')
     expect(row.erpRef).toBe('SVO-ALREADY')
+  })
+
+  it('FIX-4: heals a lane whose order-create group already dead-lettered, instead of stacking a new group behind the FIFO gate', async () => {
+    const { tenantId, erpCompanyId, orderId } = await makeCompanyWithOrder('retry_ok_adapter', 'retry-heal-dead-lane')
+    const user = await makeUser(tenantId, 'retry-heal-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
+    const opId = '33333333-0000-0000-0000-000000000007'
+
+    // Reproduce the real production state (which seedFailedOp deliberately
+    // does NOT): the ORIGINAL push already left a DEAD order-create group on
+    // the lane, and the outbox op is 'failed'. Before FIX-4, retry enqueued a
+    // SECOND group here — but the FIFO gate is the older dead group, so the
+    // new group never ran and the op stayed 'failed' forever.
+    const lane = `order:${orderId}`
+    const { groupId: deadGroupId } = await createPushGroup(db, {
+      tenantId,
+      erpCompanyId,
+      lane,
+      kind: 'order_create',
+      steps: [{ seq: 1, entityType: 'serviceOrder', entityId: orderId, register: 'SVOVc', op: 'create' }],
+    })
+    await db.update(schema.erpPushGroups).set({ status: 'dead' }).where(eq(schema.erpPushGroups.id, deadGroupId))
+    await db
+      .update(schema.erpPushSteps)
+      .set({ status: 'dead', attempts: 5, errorMessage: 'ERP number series exhausted' })
+      .where(eq(schema.erpPushSteps.groupId, deadGroupId))
+
+    await seedFailedOp(tenantId, opId, orderId, 'ERP number series exhausted')
+    const callsBefore = retryOkPushCalls
+
+    const res = await call(opId)
+    const body = await res.json()
+
+    // The reset dead group re-drove to success — the op is now applied.
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ status: 'applied', erpRef: 'SVO-RETRY-OK' })
+    expect(retryOkPushCalls).toBe(callsBefore + 1)
+
+    const [row] = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
+    expect(row.status).toBe('applied')
+    expect(row.erpRef).toBe('SVO-RETRY-OK')
+
+    // Crucially: no SECOND group was stacked — the SAME group healed in place.
+    const groups = await db.select().from(schema.erpPushGroups).where(eq(schema.erpPushGroups.lane, lane))
+    expect(groups).toHaveLength(1)
+    expect(groups[0].id).toBe(deadGroupId)
+    expect(groups[0].status).toBe('succeeded')
   })
 })

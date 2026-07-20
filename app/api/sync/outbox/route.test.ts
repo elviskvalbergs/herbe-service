@@ -41,6 +41,7 @@ import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { registerAdapter } from '@herbe/erp-core'
 import { insertServiceOrder } from '@/lib/domain/stores/service-orders'
+import { encryptErpCredentials } from '@/lib/erp/credentials'
 
 const authMock = vi.fn()
 vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
@@ -52,6 +53,11 @@ let db: ReturnType<typeof drizzle<typeof schema>>
 let okPushCalls = 0
 
 beforeAll(async () => {
+  // FIX-3: the route now builds the adapter via buildAdapterForConnection,
+  // which decrypts api_creds_encrypted — so a throwaway envelope key must be
+  // set before makeCompanyWithOrder seeds encrypted creds (matches
+  // lib/erp/connection.test.ts).
+  process.env.MASTER_ENCRYPTION_KEY = 'test-only-throwaway-key-not-a-real-secret-value'
   testDb = await createTestDatabase()
   await runMigrations(testDb.url)
   process.env.DATABASE_URL = testDb.url
@@ -162,11 +168,24 @@ afterAll(async () => {
 // zero order rows (so the saga's natural-key lookup never fires — see the
 // fetchRecords stubs above). Returns everything a test needs to build an
 // `{orderId}` outbox payload for that tenant.
+//
+// FIX-3: the company is seeded the way a real connection is — a
+// buildAdapterForConnection-shaped adapterConfigJson plus encrypted creds in
+// api_creds_encrypted — since the route now builds the adapter from the
+// stored connection, not from a literal config. The registered fake adapters
+// ignore the config they're handed, so which adapterType is set still selects
+// the fake.
 async function makeCompanyWithOrder(adapterType: string, slug: string) {
   const [tenant] = await db.insert(schema.tenants).values({ slug, name: slug }).returning()
   const [company] = await db
     .insert(schema.erpCompanies)
-    .values({ tenantId: tenant.id, displayName: slug, adapterType, adapterConfigJson: {} })
+    .values({
+      tenantId: tenant.id,
+      displayName: slug,
+      adapterType,
+      adapterConfigJson: { baseUrl: 'http://x', companyNumber: '1' },
+      apiCredsEncrypted: encryptErpCredentials({ username: 'u', password: 'p' }).toString('base64'),
+    })
     .returning()
   const [customer] = await db
     .insert(schema.customers)

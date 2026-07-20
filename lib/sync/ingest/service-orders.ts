@@ -31,6 +31,7 @@ import * as schema from '@/drizzle/schema'
 import { deriveOrderStatus } from '@/lib/domain/order-status'
 import { insertServiceOrder, setOrderStatus } from '@/lib/domain/stores/service-orders'
 import { findEntityIdByErpRef, putErpRef } from '@/lib/domain/stores/erp-refs'
+import { hasPushStepForEntity } from '@/lib/sync/push/store'
 import { parseItemTypeLabel } from '@/lib/domain/charge-type'
 
 // Standard Books returns dates as ISO-ish 'YYYY-MM-DD' strings; empty/blank
@@ -180,9 +181,20 @@ export async function ingestServiceOrders(
     let orderId: string
 
     if (existingId) {
+      // Echo-suppression (FIX-5): the SVOVc push truncates the description to
+      // CustComplaint1's 60 chars (builders.ts) and never re-sends the full
+      // text, so re-ingesting our own order's echo would overwrite the
+      // locally-authored description with its 60-char prefix. For an order we
+      // pushed, keep the local description; the ERP still owns the other
+      // header fields. Same echo-suppression family as the worksheet fix.
+      const selfPushed = await hasPushStepForEntity(db, 'serviceOrder', existingId)
       await db
         .update(schema.serviceOrders)
-        .set({ customerId, description, contactName, requestedAt, promisedDate, siteName })
+        .set(
+          selfPushed
+            ? { customerId, contactName, requestedAt, promisedDate, siteName }
+            : { customerId, description, contactName, requestedAt, promisedDate, siteName },
+        )
         .where(
           and(eq(schema.serviceOrders.id, existingId), eq(schema.serviceOrders.tenantId, company.tenantId)),
         )
