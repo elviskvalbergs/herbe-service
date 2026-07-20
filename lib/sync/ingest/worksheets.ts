@@ -18,10 +18,17 @@
 // and service_items deferring modelId).
 //
 // Status (docs/superpowers/plans/2026-07-15-service-phase1-wsvc-worksheets.md
-// decision 4): derived directly from ERP flags on both insert and update via
-// deriveWorksheetStatusFromErp — worksheets are ERP-owned on this inbound
-// path and there is no locally-advanced status to protect yet (unlike
-// service_orders' DoneMark handling in service-orders.ts).
+// decision 4): on insert (and for an ERP-owned worksheet we never pushed)
+// it's derived directly from ERP flags via deriveWorksheetStatusFromErp.
+// But a worksheet WE approved and pushed reads back with OKFlag=0 until a
+// manager OKs it in the ERP, so applying the flag-derived status
+// unconditionally would regress it Synced/Approved -> Draft on every sync
+// tick and wipe the locally-authored workDescription (never sent in the
+// push) with the empty echo. Echo-suppression (docs/04-erp-sync.md:195,
+// FIX-1): for a self-pushed record, apply only the forward transitions the
+// ERP owns (Invalid -> Rejected, OKFlag -> Synced) and never touch
+// workDescription or the line rows — same "never downgrade a locally-advanced
+// status" rule as service-orders.ts's DoneMark handling.
 //
 // Line rows: each header's rows[] reconciles into worksheet_rows via
 // reconcileWorksheetRows (delete-and-reinsert, same idiom as
@@ -33,6 +40,7 @@ import * as schema from '@/drizzle/schema'
 import type { WorksheetStatus } from '@/lib/domain/types'
 import { insertWorksheet, setWorksheetStatus } from '@/lib/domain/stores/worksheets'
 import { findEntityIdByErpRef, putErpRef } from '@/lib/domain/stores/erp-refs'
+import { hasPushStepForEntity } from '@/lib/sync/push/store'
 import { parseItemTypeLabel } from '@/lib/domain/charge-type'
 
 // Books marks a boolean flag as the string or int 1 (same idiom as
@@ -174,6 +182,23 @@ export async function ingestWorksheets(
     let worksheetId: string
 
     if (existingId) {
+      // Echo-suppression (FIX-1): a worksheet we pushed to the ERP must not be
+      // rolled back by its own un-OK'd read-back. Apply only the ERP-owned
+      // forward transitions; leave status, workDescription, and rows as the
+      // local (self-authored) side has them.
+      if (await hasPushStepForEntity(db, 'worksheet', existingId)) {
+        if (isBooksTrue(row.Invalid)) {
+          await setWorksheetStatus(db, company.tenantId, existingId, 'Rejected')
+        } else if (isBooksTrue(row.OKFlag)) {
+          await setWorksheetStatus(db, company.tenantId, existingId, 'Synced')
+        }
+        // else: un-OK'd echo (OKFlag=0, Invalid=0) — leave everything as-is.
+        ingested++
+        continue
+      }
+
+      // ERP-owned worksheet (never pushed by us): the inbound ERP state is
+      // authoritative, so refresh description + derive status + reconcile rows.
       await db
         .update(schema.worksheets)
         .set({ workDescription })

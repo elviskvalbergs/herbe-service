@@ -17,6 +17,7 @@ import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { insertServiceOrder } from '@/lib/domain/stores/service-orders'
 import { insertServiceItem } from '@/lib/domain/stores/service-items'
 import { putErpRef, getErpRefs } from '@/lib/domain/stores/erp-refs'
+import { createPushGroup } from '@/lib/sync/push/store'
 import { ingestWorksheets, deriveWorksheetStatusFromErp } from './worksheets'
 
 let testDb: TestDatabase
@@ -209,6 +210,76 @@ describe('ingestWorksheets', () => {
     it('PrelOK=1 (and OKFlag/Invalid 0) -> Done', async () => {
       await ingestWorksheets(db, erpCompanyId, changeSetOf([row({ SerNr: 8013, PrelOK: '1' })]))
       expect((await findWorksheet('8013'))!.status).toBe('Done')
+    })
+  })
+
+  describe('echo-suppression for self-pushed worksheets (FIX-1)', () => {
+    // Seeds a worksheet, advances it to a locally-authored + pushed state
+    // (status Synced, a full local workDescription, one local part row), and
+    // records a worksheet_push step for it — exactly the state a worksheet is
+    // in right after approveWorksheet + a successful WSVc create, when the
+    // next sync tick full-pulls WSVc and re-ingests the un-OK'd echo.
+    async function seedPushedWorksheet(sernr: number, localDescription: string) {
+      await ingestWorksheets(db, erpCompanyId, changeSetOf([row({ SerNr: sernr })]))
+      const ws = await findWorksheet(String(sernr))
+      await db
+        .update(schema.worksheets)
+        .set({ status: 'Synced', workDescription: localDescription })
+        .where(eq(schema.worksheets.id, ws!.id))
+      await db.insert(schema.worksheetRows).values({ worksheetId: ws!.id, description: 'local part row' })
+      await createPushGroup(db, {
+        tenantId,
+        erpCompanyId,
+        lane: `order:${orderId}`,
+        kind: 'worksheet_push',
+        steps: [{ seq: 1, entityType: 'worksheet', entityId: ws!.id, register: 'WSVc', op: 'create' }],
+      })
+      return ws!
+    }
+
+    it('an un-OK\'d echo (OKFlag=0) does NOT regress status to Draft or wipe the local description/rows', async () => {
+      const ws = await seedPushedWorksheet(8600, 'Full local work notes, well over what the ERP echo carries')
+
+      // The exact regression: sync-tick re-ingests WSVc with OKFlag=0, blank
+      // Comments, and synthetic labor/distance rows.
+      const result = await ingestWorksheets(
+        db,
+        erpCompanyId,
+        changeSetOf([
+          row({
+            SerNr: 8600,
+            OKFlag: '0',
+            PrelOK: '0',
+            Invalid: '0',
+            Comment1: '',
+            Comment2: '',
+            Comment3: '',
+            Comment4: '',
+            rows: [{ ArtCode: 'LABOR-ECHO', SerialNr: '', ItemType: 'Invoiceable' }],
+          }),
+        ]),
+      )
+      expect(result).toEqual({ ingested: 1, skipped: 0 })
+
+      const after = await findWorksheet('8600')
+      expect(after!.status).toBe('Synced') // not Draft
+      expect(after!.workDescription).toBe('Full local work notes, well over what the ERP echo carries')
+
+      const rows = await rowsForWorksheet(ws.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].description).toBe('local part row') // not the synthetic LABOR-ECHO row
+    })
+
+    it('applies the OKFlag=1 upgrade on a self-pushed worksheet (the flattering echo) — stays Synced', async () => {
+      await seedPushedWorksheet(8601, 'local notes')
+      await ingestWorksheets(db, erpCompanyId, changeSetOf([row({ SerNr: 8601, OKFlag: '1' })]))
+      expect((await findWorksheet('8601'))!.status).toBe('Synced')
+    })
+
+    it('applies the Invalid=1 upgrade on a self-pushed worksheet — Synced -> Rejected', async () => {
+      await seedPushedWorksheet(8602, 'local notes')
+      await ingestWorksheets(db, erpCompanyId, changeSetOf([row({ SerNr: 8602, Invalid: '1' })]))
+      expect((await findWorksheet('8602'))!.status).toBe('Rejected')
     })
   })
 
