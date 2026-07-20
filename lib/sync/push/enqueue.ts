@@ -8,6 +8,7 @@
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import { createPushGroup, type CreatePushGroupStepInput } from './store'
+import { enqueueRenderJob } from '@/lib/documents/render/store'
 import { getWorksheetById, setWorksheetStatus } from '@/lib/domain/stores/worksheets'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
 import { getErpIdentityLink } from '@/lib/domain/stores/identity-links'
@@ -83,6 +84,19 @@ export async function approveWorksheet(
   // transaction.
   return db.transaction(async (tx) => {
     await setWorksheetStatus(tx, tenantId, worksheetId, 'Approved')
+
+    // The order-report render job commits atomically with the approval (same
+    // tx): an enqueue failure rolls the approval back by design. Coalescing
+    // (enqueueRenderJob) means multiple approved worksheets of one order share
+    // one queued render, and a re-approval after a prior render produces a new
+    // document version (insertRenderedDocument's version rules).
+    await enqueueRenderJob(tx, {
+      tenantId,
+      erpCompanyId,
+      docType: 'order_report',
+      orderId: worksheet.orderId,
+      trigger: 'approval',
+    })
 
     const orderRefs = await getErpRefs(tx, tenantId, 'service_order', worksheet.orderId)
     const hasOrderPrimary = orderRefs.some((r) => r.purpose === 'primary')

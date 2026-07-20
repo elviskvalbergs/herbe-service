@@ -164,7 +164,15 @@ export function mapOrderDetail(
   };
 }
 
-export function mapWorksheetSummary(ws: WorksheetRow, rows: WorksheetLineRow[]): WorksheetSummary {
+// reportPdf is an ORDER-level fact (a rendered order_report PDF exists for the
+// worksheet's order), so every worksheet of one order shares the same value —
+// the route resolves it once (orderHasRenderedReport) and passes it to each
+// call. Defaults to false so callers with no document data behave as before.
+export function mapWorksheetSummary(
+  ws: WorksheetRow,
+  rows: WorksheetLineRow[],
+  reportPdf = false,
+): WorksheetSummary {
   return {
     id: ws.id,
     // workDate has no domain column yet; falling back to updatedAt (a real,
@@ -190,8 +198,8 @@ export function mapWorksheetSummary(ws: WorksheetRow, rows: WorksheetLineRow[]):
       // name separately and re-attach it after calling this mapper.
     })),
     signedOnSite: ws.signedOnSite,
-    // No report-generation source yet — always false, same placeholder idiom
-    // as timeline/invoices above.
-    reportPdf: false,
+    // Order-level: true when the worksheet's order has a rendered order_report
+    // PDF (WS12). Resolved by the route and passed in; the mapper stays pure.
+    reportPdf,
   };
 }

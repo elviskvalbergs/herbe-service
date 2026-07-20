@@ -1,9 +1,10 @@
-# ADR 0004: PDF rendering approach — Gotenberg (recommended, pending confirmation)
+# ADR 0004: PDF rendering approach — Gotenberg (accepted)
 
 ## Status
-Proposed — pending product-owner sign-off (Non-Code Prerequisite 6). Not a
-Phase 0 blocker: no PDF rendering ships until Phase 1's document engine
-(`12-documents-templates.md`).
+Accepted (2026-07-20, WS12 documents slice — `docs/superpowers/plans/2026-07-20-service-phase1-ws12-documents.md`).
+Originally Proposed pending product-owner sign-off (Non-Code Prerequisite 6);
+confirmed when the document engine landed. See the addendum below for the
+implementation and the still-open infra decision.
 
 ## Context
 `06-roadmap.md` lists "PDF rendering approach" as a Phase 0 sync-spike output,
@@ -31,3 +32,32 @@ for that reason, not for capability.
   small Vercel-adjacent deployment (or a Fly.io/Render container, since
   Gotenberg isn't a Vercel Function) in staging/production — record that
   infrastructure decision as an addendum once made.
+
+## Addendum (2026-07-20) — implementation
+
+Gotenberg is implemented as the converter for WS12. Both render paths go
+through one service: the built-in order report renders HTML then
+`/forms/chromium/convert/html`; a DOCX template merges then
+`/forms/libreoffice/convert`.
+
+- Client: `lib/documents/convert/gotenberg.ts` — global `fetch` multipart, read
+  from `GOTENBERG_URL`. Typed errors distinguish retryable states:
+  `ConverterUnavailableError` (env unset or connection refused),
+  `ConverterTimeoutError`, `ConverterHttpError` (non-2xx), `ConverterBadOutputError`
+  (2xx body isn't a `%PDF-`). The render job treats all of them as retryable
+  (backoff → dead after 8 attempts) — the ERP push-queue taxonomy.
+- **Graceful degradation:** when `GOTENBERG_URL` is unset/unreachable, render
+  jobs stay queued and retry. Approval never blocks on rendering (it's off the
+  critical path, enqueued in the approval transaction and drained by the
+  `/api/cron/documents-tick` cron), so a converter outage delays reports without
+  blocking field/approval work.
+- Verified against a real `gotenberg/gotenberg:8` container (HTML→PDF and
+  DOCX→PDF both produce valid `%PDF-` output); the live smoke lives at
+  `tests/gotenberg/**`, gated on `RUN_GOTENBERG_TESTS=1` (`pnpm test:gotenberg`),
+  excluded from the default/CI run.
+
+**Still open — production hosting.** Gotenberg is not a Vercel Function; it
+needs its own container (Fly.io / Render / a Vercel-adjacent deployment) with
+`GOTENBERG_URL` pointed at it per environment. Until that container exists in
+staging/production, reports queue and retry rather than render. This is the one
+infra decision this ADR still defers.

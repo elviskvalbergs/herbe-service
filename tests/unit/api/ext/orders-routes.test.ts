@@ -26,6 +26,7 @@ import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { seedBaseline } from '@/lib/seed'
 import { insertServiceOrder } from '@/lib/domain/stores/service-orders'
 import { mintExtToken } from '@/lib/api/ext/tokens-store'
+import { insertRenderedDocument } from '@/lib/documents/store'
 import { orderListSchema, orderDetailSchema } from '@/lib/api/ext/dto'
 
 let testDb: TestDatabase
@@ -44,6 +45,7 @@ let unitItemName: string
 let confirmedOrderId: string
 let workDoneOrderId: string
 let otherCustomerOrderId: string
+let seedCustomerId: string
 
 function authed(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` }
@@ -74,6 +76,7 @@ beforeAll(async () => {
   if (!workDoneOrder) throw new Error('seedDomain did not seed a SVO-WORK-DONE order for tenant 1')
   confirmedOrderId = confirmedOrder.id
   workDoneOrderId = workDoneOrder.id
+  seedCustomerId = confirmedOrder.customerId
 
   const tenant1Items = await db.select().from(schema.serviceItems).where(eq(schema.serviceItems.tenantId, TENANT_1))
   const unit = tenant1Items.find((i) => i.kind === 'unit')
@@ -254,5 +257,47 @@ describe('GET /api/ext/v1/orders/[id]', () => {
     expect(res.status).toBe(404)
     const body = await res.json()
     expect(body.code).toBe('not_found')
+  })
+
+  it('reports reportPdf=false before any render and true after a rendered order_report PDF exists (WS12)', async () => {
+    const { GET } = await import('@/app/api/ext/v1/orders/[id]/route')
+
+    // A fresh in-scope order (seed customer) with one worksheet, isolated from
+    // the other tests so the false→true flip is unambiguous.
+    const order = await insertServiceOrder(db, {
+      tenantId: TENANT_1,
+      customerId: seedCustomerId,
+      erpCompanyId: COMPANY_1,
+      orderNumber: 'SVO-REPORTPDF',
+    })
+    await db
+      .insert(schema.worksheets)
+      .values({ tenantId: TENANT_1, erpCompanyId: COMPANY_1, orderId: order.id, status: 'Draft', changeSeq: BigInt(0) })
+
+    const before = await (
+      await GET(new Request(`http://x/api/ext/v1/orders/${order.id}`, { headers: authed(rawToken) }), {
+        params: Promise.resolve({ id: order.id }),
+      })
+    ).json()
+    expect(before.worksheets).toHaveLength(1)
+    expect(before.worksheets.every((w: { reportPdf: boolean }) => w.reportPdf === false)).toBe(true)
+
+    // Insert a rendered order_report document with PDF bytes for this order.
+    await insertRenderedDocument(db, {
+      tenantId: TENANT_1,
+      docType: 'order_report',
+      orderId: order.id,
+      contextSnapshot: {},
+      pdfBytes: Buffer.from('%PDF-1.7 test'),
+      now: new Date(),
+    })
+
+    const after = await (
+      await GET(new Request(`http://x/api/ext/v1/orders/${order.id}`, { headers: authed(rawToken) }), {
+        params: Promise.resolve({ id: order.id }),
+      })
+    ).json()
+    expect(after.worksheets).toHaveLength(1)
+    expect(after.worksheets.every((w: { reportPdf: boolean }) => w.reportPdf === true)).toBe(true)
   })
 })
