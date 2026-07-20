@@ -3,7 +3,11 @@
 // PLACEHOLDER (Task 6 scope: nav + chrome only). doc07 O8 "Stock overview" —
 // real content (levels per location, transfers, consumption log) is a later
 // WS's job. Auth/role/tenant gating happens once in the parent layout.tsx,
-// not per-page here (see that file's header comment).
+// not per-page here (see that file's header comment) — note that
+// layout.tsx's gate only requires dispatcher/back_office/admin, not the
+// 'item:edit' capability specifically (nav visibility in office-nav.tsx is
+// not route access control); the real stock page will need its own
+// additional 'item:edit'-only check once it has content worth restricting.
 export default function StockPage() {
   return (
     <main className="flex flex-1 flex-col gap-4">

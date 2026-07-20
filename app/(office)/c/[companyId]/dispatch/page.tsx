@@ -3,7 +3,11 @@
 // PLACEHOLDER (Task 6 scope: nav + chrome only). doc07 O5 "Dispatch board" —
 // real content (day/week x technician grid, drag-and-drop bookings) is
 // WS10's job. Auth/role/tenant gating happens once in the parent layout.tsx,
-// not per-page here (see that file's header comment).
+// not per-page here (see that file's header comment) — note that layout.tsx's
+// gate only requires dispatcher/back_office/admin, not the 'dispatch:manage'
+// capability specifically (nav visibility in office-nav.tsx is not route
+// access control); the real dispatch page will need its own additional
+// 'dispatch:manage'-only check once it has content worth restricting.
 export default function DispatchPage() {
   return (
     <main className="flex flex-1 flex-col gap-4">

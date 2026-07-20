@@ -151,6 +151,18 @@ describe('OfficeLayout', () => {
     ).rejects.toThrow('NOT_FOUND')
   })
 
+  it('404s when :companyId belongs to the caller\'s own tenant but is deactivated — same outcome as missing/foreign', async () => {
+    const tenant = await makeTenant('office-layout-inactive-company')
+    const user = await makeUser(tenant.id, 'admin@herbe-service.test', 'admin')
+    const inactiveCompany = await makeCompany(tenant.id, 'Deactivated Co', { active: false })
+    authMock.mockResolvedValue(sessionFor(user))
+    const { default: OfficeLayout } = await import('./layout')
+
+    await expect(
+      OfficeLayout({ children: null, params: Promise.resolve({ companyId: inactiveCompany.id }) }),
+    ).rejects.toThrow('NOT_FOUND')
+  })
+
   it.each(['dispatcher', 'back_office', 'admin'] as const)(
     'renders the shell for the office role %s owning the company',
     async (role) => {

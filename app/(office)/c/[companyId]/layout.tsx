@@ -61,14 +61,15 @@ export default async function OfficeLayout({
 
   const { companyId } = await params
 
-  // Tenant-ownership check: an unrecognized/foreign companyId must not leak
-  // any information (brief's explicit requirement) — notFound() renders the
-  // same 404 whether the row doesn't exist at all or belongs to a different
-  // tenant, so neither case distinguishes "wrong id" from "not yours".
+  // Tenant-ownership check: an unrecognized/foreign/deactivated companyId
+  // must not leak any information (brief's explicit requirement) —
+  // notFound() renders the same 404 whether the row doesn't exist at all,
+  // belongs to a different tenant, or has been deactivated, so none of the
+  // three cases distinguishes itself from the others.
   const [company] = await db
     .select({ id: schema.erpCompanies.id, tenantId: schema.erpCompanies.tenantId })
     .from(schema.erpCompanies)
-    .where(eq(schema.erpCompanies.id, companyId))
+    .where(and(eq(schema.erpCompanies.id, companyId), eq(schema.erpCompanies.active, true)))
 
   if (!company || company.tenantId !== session.user.tenantId) {
     notFound()
