@@ -508,3 +508,24 @@ export const extRateLimit = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tokenId, t.endpoint, t.windowStart] })],
 )
+
+// WS1 Task 9 (push infra, docs/superpowers/sdd/task-9-brief.md): one row per
+// browser/device Push subscription (PushSubscriptionJSON from the client's
+// `PushManager.subscribe()`). endpoint is globally unique per the Push API
+// spec (it's the push service's per-subscription URL), so it doubles as the
+// natural upsert key for subscribe. No tenantId — a subscription is scoped
+// to the user only; lib/push/send.ts looks up by userId.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.endpoint), index('push_subscriptions_user_idx').on(t.userId)],
+)
+
+export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>
