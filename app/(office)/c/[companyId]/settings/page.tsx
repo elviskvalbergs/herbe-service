@@ -9,11 +9,21 @@
 // admin specifically, so this stub is reachable (though empty) by any office
 // role today; the real settings page will need its own additional
 // tenant:manage_settings-only check once it has content worth restricting.
+//
+// Task 10 adds the one real piece of content this stub has so far: the Web
+// Push opt-in (components/push-toggle.tsx), the same component the field
+// shell's More page uses.
+import { PushToggle } from '@/components/push-toggle'
+
 export default function SettingsPage() {
   return (
     <main className="flex flex-1 flex-col gap-4">
       <h1 className="text-lg font-semibold">Settings / Admin</h1>
       <p className="text-sm text-[var(--fg-muted)]">Coming soon.</p>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Notifications</h2>
+        <PushToggle vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''} />
+      </section>
     </main>
   )
 }

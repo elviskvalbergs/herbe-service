@@ -24,6 +24,10 @@ packages/*/node_modules
 /public/sw.js.map
 /public/workbox-*.js
 /public/workbox-*.js.map
+# next-pwa's bundled custom worker (worker/index.ts, WS1 Task 10) — same
+# generated-on-every-build story as sw.js/workbox-*.js above.
+/public/worker-*.js
+/public/worker-*.js.map
 
 # production
 /build
