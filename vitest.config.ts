@@ -73,6 +73,7 @@ export default defineConfig({
         'packages/erp-core/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/sync/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/domain/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
+        'lib/documents/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/api/ext/**': { lines: 90, branches: 90, functions: 90, statements: 90 },
         'lib/security/tokens.ts': { lines: 90, branches: 90, functions: 90, statements: 90 },
       },
