@@ -29,9 +29,14 @@ export default defineConfig({
     // tests/live`) collect zero files. Gating the exclude on the same env
     // var keeps both commands working: unset -> excluded/never collected;
     // set -> collected, then the file's own describe.skipIf decides.
-    exclude: process.env.RUN_LIVE_ERP_TESTS
-      ? configDefaults.exclude
-      : [...configDefaults.exclude, 'tests/live/**'],
+    // tests/gotenberg/** uses the identical mechanism, gated on
+    // RUN_GOTENBERG_TESTS (`pnpm test:gotenberg`) — it needs a running
+    // Gotenberg container.
+    exclude: [
+      ...configDefaults.exclude,
+      ...(process.env.RUN_LIVE_ERP_TESTS ? [] : ['tests/live/**']),
+      ...(process.env.RUN_GOTENBERG_TESTS ? [] : ['tests/gotenberg/**']),
+    ],
     // Vitest externalizes node_modules by default and loads them via Node's
     // native resolver, which ignores the `resolve.conditions` above. Inlining
     // next-intl routes it through Vite's resolver instead, so the
@@ -55,6 +60,7 @@ export default defineConfig({
         'scripts/**',
         'lib/test-support/**',
         'tests/live/**',
+        'tests/gotenberg/**',
         '**/.next/**',
         'coverage/**',
       ],
