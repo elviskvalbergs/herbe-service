@@ -379,6 +379,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
     let orderId: string
     let orderErpRef: string
     let emCode: string
+    let worksheetId: string
 
     it('T7.1 creates a live SVOVc via the saga from an ERP-ingested customer + service item', async () => {
       // Join through already-ingested REAL SVOVc orders (from the
@@ -545,7 +546,7 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
         orderId,
         technicianUserId: techUser.id,
       })
-      const worksheetId = worksheet.id
+      worksheetId = worksheet.id
       await setWorksheetStatus(db, tenantId, worksheetId, 'Done')
       await db.insert(schema.worksheetRows).values({
         worksheetId,
@@ -725,6 +726,36 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
         `live natural-key adoption: erp_ref restored to the same SerNr: true, SerNr-count before/after=1/1, CustCode-count unchanged: true (${beforeByCustomer.length})`,
       )
     }, 30_000)
+
+    it('T7.6 (FIX-1) a full syncConnection after the WSVc create does NOT regress the worksheet Synced -> Draft', async () => {
+      expect(worksheetId, 'T7.3 must have run first and set worksheetId').toBeTruthy()
+
+      // The worksheet we pushed reads back from WSVc with OKFlag=0 — un-OK'd
+      // until a manager approves it in the ERP. Before FIX-1, syncConnection's
+      // WSVc re-ingest applied that flag-derived status unconditionally and
+      // regressed the worksheet Synced -> Draft (and wiped workDescription)
+      // within one sync tick. Echo-suppression must now skip the downgrade for
+      // this self-pushed record. This exercises the exact un-OK'd handoff M1
+      // exists to prove, against the real ERP.
+      const before = await getWorksheetById(db, tenantId, worksheetId)
+      expect(before!.status).toBe('Synced')
+
+      // Confirm the live WSVc really does read back un-OK'd (OKFlag=0) — i.e.
+      // this test is exercising the regression path, not the flattering one.
+      const wsRefBefore = (await getErpRefs(db, tenantId, 'worksheet', worksheetId))[0]
+      const liveWs = (await adapter.fetchRecords('WSVc', { 'filter.SerNr': wsRefBefore.recordRef }))[0]
+      const okFlag = liveWs?.OKFlag
+      console.log(`live FIX-1 precondition: our WSVc reads back OKFlag=${JSON.stringify(okFlag)} (expected 0/blank)`)
+
+      await syncConnection(db, adapter, companyId)
+
+      const after = await getWorksheetById(db, tenantId, worksheetId)
+      expect(after!.status).toBe('Synced') // NOT regressed to Draft
+
+      const refs = await getErpRefs(db, tenantId, 'worksheet', worksheetId)
+      expect(refs).toHaveLength(1) // primary WSVc ref still intact
+      console.log("live FIX-1: worksheet stayed Synced across a full syncConnection re-ingest of its own un-OK'd echo")
+    }, 60_000)
   })
 
   // -------------------------------------------------------------------------

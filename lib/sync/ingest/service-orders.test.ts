@@ -16,6 +16,7 @@ import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { setOrderStatus } from '@/lib/domain/stores/service-orders'
 import { insertServiceItem } from '@/lib/domain/stores/service-items'
 import { getErpRefs } from '@/lib/domain/stores/erp-refs'
+import { createPushGroup } from '@/lib/sync/push/store'
 import { buildDelAddrSiteMap, ingestServiceOrders } from './service-orders'
 
 let testDb: TestDatabase
@@ -141,6 +142,51 @@ describe('ingestServiceOrders', () => {
 
     const refs = await getErpRefs(db, tenantId, 'service_order', rows[0].id)
     expect(refs).toHaveLength(1) // erp_refs row not duplicated either
+  })
+
+  describe('echo-suppression for self-pushed orders (FIX-5)', () => {
+    it('keeps the full local description; the 60-char CustComplaint1 echo does not overwrite it', async () => {
+      const longDescription =
+        'This is the full customer complaint text that runs well beyond sixty characters and would be truncated by the push'
+      const echo60 = longDescription.slice(0, 60)
+      expect(longDescription.length).toBeGreaterThan(60)
+
+      // Create the order, then simulate local authorship of a long description
+      // plus a completed order-create push (the state right after
+      // enqueueOrderCreatePush + a successful SVOVc create).
+      await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 5500 })]))
+      const order = await orderByNumber('5500')
+      await db
+        .update(schema.serviceOrders)
+        .set({ description: longDescription })
+        .where(eq(schema.serviceOrders.id, order.id))
+      await createPushGroup(db, {
+        tenantId,
+        erpCompanyId,
+        lane: `order:${order.id}`,
+        kind: 'order_create',
+        steps: [{ seq: 1, entityType: 'serviceOrder', entityId: order.id, register: 'SVOVc', op: 'create' }],
+      })
+
+      // The SVOVc read-back echoes only the 60-char CustComplaint1.
+      await ingestServiceOrders(
+        db,
+        erpCompanyId,
+        changeSetOf([row({ SerNr: 5500, CustComplaint1: echo60, CustComplaint2: '', CustComplaint3: '', CustComplaint4: '' })]),
+      )
+
+      const after = await orderByNumber('5500')
+      expect(after.description).toBe(longDescription)
+      expect(after.description).not.toBe(echo60)
+    })
+
+    it('an ERP-owned order (never pushed) still refreshes its description from the ERP on re-ingest', async () => {
+      // Guards against over-suppression: echo-suppression must apply ONLY to
+      // records we pushed, never to genuinely ERP-owned ones.
+      await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 5501, CustComplaint1: 'first' })]))
+      await ingestServiceOrders(db, erpCompanyId, changeSetOf([row({ SerNr: 5501, CustComplaint1: 'second' })]))
+      expect((await orderByNumber('5501')).description).toBe('second')
+    })
   })
 
   it('DoneMark=1 on update forces Closed, even for an existing non-Closed order', async () => {

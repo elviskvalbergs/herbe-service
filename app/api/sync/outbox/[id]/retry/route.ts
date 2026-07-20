@@ -10,11 +10,19 @@
 // the Phase-0 spike this route originally shared (lib/sync/outbox-push.ts's
 // attemptOutboxPush → pushServiceOrderCreate) was replaced wholesale by the
 // push-queue saga, and the outbox `payload` contract changed to `{orderId}`
-// referencing a domain service_orders row. So retry now mirrors the main
-// route's push tail exactly: enqueue an order-create push group for the op's
-// orderId and drain it inline via processPushQueue (the saga is idempotent —
+// referencing a domain service_orders row.
+//
+// FIX-4: a failed op left a failed/dead order-create group on this order's
+// lane (`order:<orderId>`). Enqueuing a NEW group here (the original bug)
+// would stack it behind the FIFO gate — the oldest non-succeeded group, i.e.
+// the very group that failed — so the new group could never run and the op
+// stayed `failed` forever. So retry now RESETS the existing order-create
+// group on the lane (group → pending, its non-succeeded steps → pending) and
+// re-drives it inline via processPushQueue (the saga is idempotent —
 // stored-ref → natural-key → create — so re-driving never duplicates the ERP
-// record), then reflect the group's own step outcome back onto the op.
+// record). Only when no group exists yet (an op that failed before any group
+// was created) does it enqueue a fresh one. Then it reflects the group's own
+// step outcome back onto the op.
 //
 // Tenant-scoping follows the same rule as the original route (Task 16b):
 // tenantId comes only from the session. An op id belonging to another
@@ -26,12 +34,11 @@
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
-import { getAdapter } from '@herbe/erp-core'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { buildAdapterForConnection } from '@/lib/erp/connection'
 import { enqueueOrderCreatePush } from '@/lib/sync/push/enqueue'
-import { getStepsForGroup } from '@/lib/sync/push/store'
+import { findGroupForLaneKind, getStepsForGroup, resetGroupForRetry } from '@/lib/sync/push/store'
 import { processPushQueue } from '@/lib/sync/push/engine'
-import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getVerifiedSession(db)
@@ -66,9 +73,29 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   try {
     const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
-    const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
+    // FIX-3: build the adapter from the stored connection (decrypts the
+    // encrypted creds) rather than from adapterConfigJson, which has no auth.
+    if (!company) {
+      throw new Error('no ERP connection configured for this tenant')
+    }
+    const adapter = await buildAdapterForConnection(db, company.id)
 
-    const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId })
+    // FIX-4: re-drive the existing order-create group on this lane instead of
+    // stacking a new one behind the FIFO gate. Reset it only if it hasn't
+    // already succeeded (a succeeded group re-drives to a no-op and its step
+    // outcome below still applies the op). Fall back to a fresh enqueue only
+    // when the op failed before any group existed.
+    const lane = `order:${orderId}`
+    const existingGroup = await findGroupForLaneKind(db, company.id, lane, 'order_create')
+    let groupId: string
+    if (existingGroup) {
+      if (existingGroup.status !== 'succeeded') {
+        await resetGroupForRetry(db, existingGroup.id)
+      }
+      groupId = existingGroup.id
+    } else {
+      ;({ groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId }))
+    }
     await processPushQueue(db, adapter, company.id)
 
     const steps = await getStepsForGroup(db, groupId)
