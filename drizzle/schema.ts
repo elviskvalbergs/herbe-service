@@ -54,6 +54,8 @@ export const customers = pgTable(
   (t) => [unique().on(t.erpCompanyId, t.erpRef), index('idx_customers_change_seq').on(t.changeSeq)],
 )
 
+export type CustomerRow = InferSelectModel<typeof customers>
+
 // The Phase-0 outbound round-trip (04-erp-sync.md outbox). id is the
 // CLIENT-generated UUID, not server-assigned — it's the idempotency key a
 // device replays a queued op under, so a retried POST never double-pushes.
@@ -529,3 +531,58 @@ export const pushSubscriptions = pgTable(
 )
 
 export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>
+
+// WS4 ERP outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 1, 0020_erp_push_queue.sql, renumbered from 0017 — WS2's
+// 0017/0018/0019 landed and deployed first): the app->ERP write path's own FIFO
+// saga queue. outboxOps (above) stays a client-op journal; this is its own
+// pair. lane is the FIFO ordering key (e.g. "order:<orderId>") so a
+// worksheet push never races ahead of its order's create. No changeSeq
+// trigger — the saga engine (Task 5) drives status transitions directly.
+export const erpPushGroups = pgTable(
+  'erp_push_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    erpCompanyId: uuid('erp_company_id').notNull().references(() => erpCompanies.id, { onDelete: 'cascade' }),
+    lane: text('lane').notNull(),
+    kind: text('kind').notNull(), // 'order_create' | 'worksheet_push'
+    status: text('status').notNull().default('pending'), // PushStatus
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('erp_push_groups_company_status_idx').on(t.erpCompanyId, t.status),
+    index('erp_push_groups_lane_created_idx').on(t.lane, t.createdAt),
+  ],
+)
+
+// Seq-ordered work items within a group. groupId cascades (0020 migration)
+// so a group delete takes its steps with it.
+export const erpPushSteps = pgTable(
+  'erp_push_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => erpPushGroups.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    entityType: text('entity_type').notNull(), // 'serviceOrder' | 'worksheet'
+    entityId: uuid('entity_id').notNull(),
+    register: text('register').notNull(), // 'SVOVc' | 'WSVc'
+    op: text('op').notNull(), // 'create' | 'update'
+    status: text('status').notNull().default('pending'), // PushStatus
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    erpRef: text('erp_ref'),
+    errorMessage: text('error_message'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique().on(t.groupId, t.seq),
+    index('erp_push_steps_group_idx').on(t.groupId),
+  ],
+)
+
+export type PushGroupRow = InferSelectModel<typeof erpPushGroups>
+export type PushStepRow = InferSelectModel<typeof erpPushSteps>

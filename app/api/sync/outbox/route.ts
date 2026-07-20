@@ -9,19 +9,34 @@
 // Phase 0 simplification: any pre-existing row (applied OR failed) short-
 // circuits as "already_applied" — this POST never re-attempts a *failed* op.
 // Task 8 adds a dedicated retry path for that
-// (app/api/sync/outbox/[id]/retry/route.ts), sharing this route's push logic
-// via lib/sync/outbox-push.ts rather than reusing this idempotency check.
+// (app/api/sync/outbox/[id]/retry/route.ts), which re-drives the WS4 saga for
+// the op's order rather than reusing this idempotency check.
 //
 // Task 16b: tenantId is taken ONLY from the authenticated session
 // (session.user.tenantId), never from the request body — two reviews
 // flagged that trusting a client-supplied tenantId let any authenticated
 // user write into another tenant (IDOR). A session with no tenantId claim
 // is rejected rather than falling through to an unscoped query.
+//
+// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 11): the saga engine is now the only code path that ever POSTs a
+// create to the ERP, so this route no longer pushes a raw client-supplied
+// SVOVc-shaped payload directly — it enqueues an order-create push group for
+// a DOMAIN service order and drains it inline via processPushQueue, the same
+// engine the push-tick cron runs. This is a CONTRACT CHANGE from the Phase-0
+// spike: `payload` used to be an ERP-shaped `{custCode, transDate, rows}`
+// object; it is now `{orderId}`, referencing a real service_orders row owned
+// by the caller's tenant (the saga builds the actual SVOVc payload from that
+// row's current domain state, per decision 2). Response shapes, status
+// codes, and idempotency/cross-tenant semantics are unchanged.
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
-import { attemptOutboxPush } from '@/lib/sync/outbox-push'
+import { getAdapter } from '@herbe/erp-core'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { enqueueOrderCreatePush } from '@/lib/sync/push/enqueue'
+import { getStepsForGroup } from '@/lib/sync/push/store'
+import { processPushQueue } from '@/lib/sync/push/engine'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(request: Request) {
@@ -43,6 +58,15 @@ export async function POST(request: Request) {
     return Response.json({ status: 'already_applied', erpRef: existing.erpRef })
   }
 
+  // Review (WS4 task 6): a missing/non-string payload.orderId used to fall
+  // through to the enqueue/push try-block below and surface as a generic 502
+  // (op marked failed) only after a DB write. Reject it up front instead —
+  // same "no work done" posture as the 401 guard above.
+  const orderId = body.payload?.orderId
+  if (typeof orderId !== 'string') {
+    return new Response('Bad Request', { status: 400 })
+  }
+
   await db.insert(schema.outboxOps).values({
     id: body.id,
     tenantId,
@@ -51,9 +75,47 @@ export async function POST(request: Request) {
     payloadJson: body.payload,
   })
 
-  const result = await attemptOutboxPush(db, tenantId, body.id, body.payload)
-  if (result.status === 'applied') {
-    return Response.json(result)
+  try {
+    // Phase 0 spike: hardcode the single-company lookup for the tenant —
+    // Phase 1's push-queue-per-order generalizes this to N companies and N
+    // entity types.
+    const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
+    const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
+
+    const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId })
+    await processPushQueue(db, adapter, company.id)
+
+    const steps = await getStepsForGroup(db, groupId)
+    const orderStep = steps.find((s) => s.entityType === 'serviceOrder' && s.entityId === orderId)
+
+    if (orderStep?.status === 'succeeded' && orderStep.erpRef) {
+      await db
+        .update(schema.outboxOps)
+        .set({ status: 'applied', erpRef: orderStep.erpRef, appliedAt: new Date() })
+        .where(eq(schema.outboxOps.id, body.id))
+
+      return Response.json({ status: 'applied', erpRef: orderStep.erpRef })
+    }
+
+    // The enqueued group's own step didn't succeed this tick — either it
+    // failed/dead-lettered, or (rare) a still-active older group on the same
+    // lane gated it out. Either way this synchronous request can't wait for
+    // a later tick, so it reports failure now; the step itself is left in
+    // whatever state the engine put it in (retryable or dead per its own
+    // classification) for push-tick / push-retry to pick up later.
+    const errorMessage = orderStep?.errorMessage ?? 'push did not complete this tick'
+    await db
+      .update(schema.outboxOps)
+      .set({ status: 'failed', errorMessage })
+      .where(eq(schema.outboxOps.id, body.id))
+
+    return Response.json({ status: 'failed', error: errorMessage }, { status: 502 })
+  } catch (err) {
+    await db
+      .update(schema.outboxOps)
+      .set({ status: 'failed', errorMessage: String(err) })
+      .where(eq(schema.outboxOps.id, body.id))
+
+    return Response.json({ status: 'failed', error: String(err) }, { status: 502 })
   }
-  return Response.json(result, { status: 502 })
 }

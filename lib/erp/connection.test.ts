@@ -56,6 +56,46 @@ describe('buildAdapterForConnection', () => {
     })
   })
 
+  it('forwards features.invoiceReadback from adapterConfigJson to adapter capabilities', async () => {
+    const [tenant] = await db.insert(schema.tenants).values({ slug: 'conn-t2', name: 'Conn T2' }).returning()
+    const [company] = await db
+      .insert(schema.erpCompanies)
+      .values({
+        tenantId: tenant.id,
+        displayName: 'Conn C2',
+        adapterType: 'standard_books',
+        adapterConfigJson: {
+          baseUrl: 'http://x',
+          companyNumber: '1',
+          features: { invoiceReadback: true },
+        },
+        apiCredsEncrypted: encryptErpCredentials({ username: 'u', password: 'p' }).toString('base64'),
+      })
+      .returning()
+
+    const adapter = await buildAdapterForConnection(db, company.id)
+
+    expect(adapter.capabilities().supportsInvoiceStatusReadback).toBe(true)
+  })
+
+  it('defaults supportsInvoiceStatusReadback to false when features are absent', async () => {
+    const [tenant] = await db.insert(schema.tenants).values({ slug: 'conn-t3', name: 'Conn T3' }).returning()
+    const [company] = await db
+      .insert(schema.erpCompanies)
+      .values({
+        tenantId: tenant.id,
+        displayName: 'Conn C3',
+        adapterType: 'standard_books',
+        adapterConfigJson: { baseUrl: 'http://x', companyNumber: '1' },
+        apiCredsEncrypted: encryptErpCredentials({ username: 'u', password: 'p' }).toString('base64'),
+      })
+      .returning()
+
+    const adapter = await buildAdapterForConnection(db, company.id)
+
+    expect(adapter.capabilities().supportsInvoiceStatusReadback).toBe(false)
+  })
+
   it('throws for an unknown erp company id', async () => {
     await expect(buildAdapterForConnection(db, '00000000-0000-0000-0000-000000000000')).rejects.toThrow(
       /unknown erp company/,

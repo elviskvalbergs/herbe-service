@@ -2,11 +2,19 @@
 //
 // Task 8 (conflict inbox retry). The original POST /api/sync/outbox's
 // idempotency check short-circuits ANY pre-existing row — applied OR
-// failed — as `already_applied` without re-pushing (confirmed by reading
-// that route directly; see its header comment). So retrying a failed op
-// needs a distinct mechanism: reset the row to 'pending' and re-invoke the
-// same push logic (lib/sync/outbox-push.ts's attemptOutboxPush, shared with
-// the original route rather than duplicated).
+// failed — as `already_applied` without re-pushing (see that route's header
+// comment). So retrying a failed op needs a distinct mechanism: reset the
+// row to 'pending' and re-drive the ERP push for its order.
+//
+// WS4 outbound slice reconciliation (merge of feature/service-phase1-erp-outbound):
+// the Phase-0 spike this route originally shared (lib/sync/outbox-push.ts's
+// attemptOutboxPush → pushServiceOrderCreate) was replaced wholesale by the
+// push-queue saga, and the outbox `payload` contract changed to `{orderId}`
+// referencing a domain service_orders row. So retry now mirrors the main
+// route's push tail exactly: enqueue an order-create push group for the op's
+// orderId and drain it inline via processPushQueue (the saga is idempotent —
+// stored-ref → natural-key → create — so re-driving never duplicates the ERP
+// record), then reflect the group's own step outcome back onto the op.
 //
 // Tenant-scoping follows the same rule as the original route (Task 16b):
 // tenantId comes only from the session. An op id belonging to another
@@ -18,8 +26,11 @@
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
-import { attemptOutboxPush } from '@/lib/sync/outbox-push'
+import { getAdapter } from '@herbe/erp-core'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { enqueueOrderCreatePush } from '@/lib/sync/push/enqueue'
+import { getStepsForGroup } from '@/lib/sync/push/store'
+import { processPushQueue } from '@/lib/sync/push/engine'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -43,11 +54,48 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     )
   }
 
+  // Under the WS4 contract the op's payload is `{orderId}`. A failed op should
+  // always carry one (the main route validates it before inserting), but guard
+  // defensively rather than passing undefined into the saga.
+  const orderId = (existing.payloadJson as { orderId?: unknown })?.orderId
+  if (typeof orderId !== 'string') {
+    return Response.json({ status: 'invalid_state', error: 'op payload has no orderId to retry' }, { status: 409 })
+  }
+
   await db.update(schema.outboxOps).set({ status: 'pending', errorMessage: null }).where(eq(schema.outboxOps.id, id))
 
-  const result = await attemptOutboxPush(db, tenantId, id, existing.payloadJson)
-  if (result.status === 'applied') {
-    return Response.json(result)
+  try {
+    const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
+    const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
+
+    const { groupId } = await enqueueOrderCreatePush(db, { tenantId, erpCompanyId: company.id, orderId })
+    await processPushQueue(db, adapter, company.id)
+
+    const steps = await getStepsForGroup(db, groupId)
+    const orderStep = steps.find((s) => s.entityType === 'serviceOrder' && s.entityId === orderId)
+
+    if (orderStep?.status === 'succeeded' && orderStep.erpRef) {
+      await db
+        .update(schema.outboxOps)
+        .set({ status: 'applied', erpRef: orderStep.erpRef, appliedAt: new Date() })
+        .where(eq(schema.outboxOps.id, id))
+
+      return Response.json({ status: 'applied', erpRef: orderStep.erpRef })
+    }
+
+    const errorMessage = orderStep?.errorMessage ?? 'push did not complete this tick'
+    await db
+      .update(schema.outboxOps)
+      .set({ status: 'failed', errorMessage })
+      .where(eq(schema.outboxOps.id, id))
+
+    return Response.json({ status: 'failed', error: errorMessage }, { status: 502 })
+  } catch (err) {
+    await db
+      .update(schema.outboxOps)
+      .set({ status: 'failed', errorMessage: String(err) })
+      .where(eq(schema.outboxOps.id, id))
+
+    return Response.json({ status: 'failed', error: String(err) }, { status: 502 })
   }
-  return Response.json(result, { status: 502 })
 }

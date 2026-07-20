@@ -19,7 +19,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
-import type { WorksheetRow, WorksheetLineRow } from '@/drizzle/schema'
+import type { WorksheetRow, WorksheetLineRow, TimeEntryRow, DistanceEntryRow } from '@/drizzle/schema'
 import type { WorksheetStatus } from '@/lib/domain/types'
 
 type Db = PostgresJsDatabase<typeof schema>
@@ -97,6 +97,19 @@ export async function getWorksheetRowsForWorksheets(db: Db, worksheetIds: string
     .select()
     .from(schema.worksheetRows)
     .where(inArray(schema.worksheetRows.worksheetId, worksheetIds))
+}
+
+// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 7): the push saga (lib/sync/push/gather.ts) gathers a
+// worksheet's time/distance entries to feed buildWsCreatePayload's
+// labor/distance rows. No tenant filter: worksheetId is already tenant-scoped
+// by the caller (getWorksheetById), same as getWorksheetRowsForWorksheets.
+export async function getTimeEntriesForWorksheet(db: Db, worksheetId: string): Promise<TimeEntryRow[]> {
+  return db.select().from(schema.timeEntries).where(eq(schema.timeEntries.worksheetId, worksheetId))
+}
+
+export async function getDistanceEntriesForWorksheet(db: Db, worksheetId: string): Promise<DistanceEntryRow[]> {
+  return db.select().from(schema.distanceEntries).where(eq(schema.distanceEntries.worksheetId, worksheetId))
 }
 
 export async function setWorksheetStatus(

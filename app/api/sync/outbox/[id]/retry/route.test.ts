@@ -10,6 +10,16 @@
 // against the live `users.session_version` row — so an authenticated test
 // session must correspond to a real users row with a matching
 // `sessionVersion` (see `makeUser`/`sessionFor` below).
+//
+// WS4 outbound slice (docs/superpowers/plans/2026-07-16-service-phase1-erp-outbound.md
+// decision 11): the route no longer re-drives the Phase-0
+// `attemptOutboxPush` -> `pushServiceOrderCreate` path — it re-enqueues the
+// op's order onto the push-queue saga (enqueueOrderCreatePush ->
+// processPushQueue), same as the main outbox route. `payload` is now
+// `{orderId}` — a real service_orders row — rather than an ERP-shaped
+// `{custCode, transDate, rows}` object, so every seeded failed op below
+// carries `payloadJson: {orderId}` pointing at a real order (see
+// `makeCompanyWithOrder`, mirrored from the main route's test file).
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
@@ -18,6 +28,7 @@ import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
 import { registerAdapter } from '@herbe/erp-core'
+import { insertServiceOrder } from '@/lib/domain/stores/service-orders'
 
 const authMock = vi.fn()
 vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
@@ -52,14 +63,29 @@ beforeAll(async () => {
       retryOkPushCalls += 1
       return { erpRef: 'SVO-RETRY-OK' }
     },
+    pushUpdate: async () => {
+      throw new Error('pushUpdate must not be called by the retry route')
+    },
+    fetchRecords: async () => {
+      // The saga's natural-key lookup only fires for a payload with at
+      // least one serial number; every order seeded below has zero order
+      // rows, so this must never be reached.
+      throw new Error('fetchRecords must not be called by the retry route')
+    },
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('getRecordLinks must not be called by the retry route')
+    },
   }))
 
   // Always fails — proves a retry against a permanently-broken push still
   // re-attempts (pushCreate is actually called again) even though the
-  // outcome is failed once more.
+  // outcome is failed once more. An empty erpRef is classified by the saga
+  // engine as an ErpPermanentError naming the ERP number-series onboarding
+  // issue (lib/sync/push/engine.ts) — same wording asserted in the main
+  // outbox route's silent_noop_adapter test.
   registerAdapter('retry_fail_adapter', () => ({
     capabilities: () => ({
       supportsIncrementalSync: false,
@@ -73,11 +99,20 @@ beforeAll(async () => {
     },
     pushCreate: async () => {
       retryFailPushCalls += 1
-      return { erpRef: '' } // classified as ErpTransientError by pushServiceOrderCreate
+      return { erpRef: '' }
+    },
+    pushUpdate: async () => {
+      throw new Error('pushUpdate must not be called by the retry route')
+    },
+    fetchRecords: async () => {
+      throw new Error('fetchRecords must not be called by the retry route')
     },
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('getRecordLinks must not be called by the retry route')
+    },
   }))
 
   registerAdapter('retry_must_not_be_called_adapter', () => ({
@@ -94,9 +129,18 @@ beforeAll(async () => {
     pushCreate: async () => {
       throw new Error('must not be reached: this op should have been rejected before any push was attempted')
     },
+    pushUpdate: async () => {
+      throw new Error('must not be reached: this op should have been rejected before any push was attempted')
+    },
+    fetchRecords: async () => {
+      throw new Error('must not be reached: this op should have been rejected before any push was attempted')
+    },
     probeIncrementalSupport: async () => false,
     pullFullList: async () => [],
     listLiveRefs: async () => [],
+    getRecordLinks: async () => {
+      throw new Error('must not be reached: this op should have been rejected before any push was attempted')
+    },
   }))
 }, 60_000)
 
@@ -105,13 +149,24 @@ afterAll(async () => {
   await testDb?.cleanup()
 })
 
-async function makeCompany(adapterType: string, slug: string) {
+// Mirrors makeCompanyWithOrder from app/api/sync/outbox/route.test.ts: seeds
+// a tenant + erp_company (given adapterType) + a customer with an erpRef
+// (buildSvoCreatePayload requires one) + a real service order with zero
+// order rows (so the saga's natural-key lookup never fires — see the
+// fetchRecords stubs above).
+async function makeCompanyWithOrder(adapterType: string, slug: string) {
   const [tenant] = await db.insert(schema.tenants).values({ slug, name: slug }).returning()
-  await db
+  const [company] = await db
     .insert(schema.erpCompanies)
     .values({ tenantId: tenant.id, displayName: slug, adapterType, adapterConfigJson: {} })
     .returning()
-  return tenant.id
+  const [customer] = await db
+    .insert(schema.customers)
+    .values({ tenantId: tenant.id, erpCompanyId: company.id, erpRef: `CUST-${slug}`, name: slug, changeSeq: BigInt(0) })
+    .returning()
+  const order = await insertServiceOrder(db, { tenantId: tenant.id, erpCompanyId: company.id, customerId: customer.id })
+
+  return { tenantId: tenant.id, erpCompanyId: company.id, orderId: order.id }
 }
 
 async function makeUser(tenantId: string, email: string) {
@@ -126,15 +181,18 @@ function sessionFor(user: { id: string; tenantId: string; sessionVersion: number
   }
 }
 
-const payload = { custCode: 'CUST001', transDate: '2026-07-08', rows: [{ artCode: 'PART-1', quant: 1 }] }
-
-async function seedFailedOp(tenantId: string, opId: string, errorMessage = 'original failure') {
+// Seeds a failed outbox op directly (bypassing the saga entirely, same as
+// the Phase-0 version of this helper) so each test starts from a clean lane
+// with no pre-existing push group — the retry route's own
+// enqueueOrderCreatePush call is the first group ever created for that
+// order, and runs immediately rather than being gated behind an earlier one.
+async function seedFailedOp(tenantId: string, opId: string, orderId: string, errorMessage = 'original failure') {
   await db.insert(schema.outboxOps).values({
     id: opId,
     tenantId,
     entity: 'serviceOrder',
     op: 'create',
-    payloadJson: payload,
+    payloadJson: { orderId },
     status: 'failed',
     errorMessage,
   })
@@ -153,9 +211,9 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
 
   it('rejects an unauthenticated request with 401 before touching the row', async () => {
     authMock.mockResolvedValue(null)
-    const tenantId = await makeCompany('retry_ok_adapter', 'retry-unauth')
+    const { tenantId, orderId } = await makeCompanyWithOrder('retry_ok_adapter', 'retry-unauth')
     const opId = '33333333-0000-0000-0000-000000000001'
-    await seedFailedOp(tenantId, opId)
+    await seedFailedOp(tenantId, opId, orderId)
     const callsBefore = retryOkPushCalls
 
     const res = await call(opId)
@@ -167,11 +225,11 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
   })
 
   it('resets a failed op to pending, re-attempts the push, and applies it with a real erpRef', async () => {
-    const tenantId = await makeCompany('retry_ok_adapter', 'retry-success')
+    const { tenantId, orderId } = await makeCompanyWithOrder('retry_ok_adapter', 'retry-success')
     const user = await makeUser(tenantId, 'retry-success-user@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000002'
-    await seedFailedOp(tenantId, opId, 'ERP was down')
+    await seedFailedOp(tenantId, opId, orderId, 'ERP was down')
     const callsBefore = retryOkPushCalls
 
     const res = await call(opId)
@@ -189,11 +247,11 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
   })
 
   it('re-attempts the push even when it fails again, recording the new error rather than a stale one', async () => {
-    const tenantId = await makeCompany('retry_fail_adapter', 'retry-still-failing')
+    const { tenantId, orderId } = await makeCompanyWithOrder('retry_fail_adapter', 'retry-still-failing')
     const user = await makeUser(tenantId, 'retry-still-failing-user@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000003'
-    await seedFailedOp(tenantId, opId, 'original failure')
+    await seedFailedOp(tenantId, opId, orderId, 'original failure')
     const callsBefore = retryFailPushCalls
 
     const res = await call(opId)
@@ -206,11 +264,11 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
 
     const [row] = await db.select().from(schema.outboxOps).where(eq(schema.outboxOps.id, opId))
     expect(row.status).toBe('failed')
-    expect(row.errorMessage).toContain('ErpTransientError')
+    expect(row.errorMessage).toContain('SerNr')
   })
 
   it('returns 404 for an op id that does not exist', async () => {
-    const tenantId = await makeCompany('retry_ok_adapter', 'retry-404-tenant')
+    const { tenantId } = await makeCompanyWithOrder('retry_ok_adapter', 'retry-404-tenant')
     const user = await makeUser(tenantId, 'retry-404-user@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))
 
@@ -220,12 +278,12 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
   })
 
   it('returns 404 (not a leak) for an op id belonging to a different tenant', async () => {
-    const tenantA = await makeCompany('retry_ok_adapter', 'retry-idor-a')
-    const tenantB = await makeCompany('retry_must_not_be_called_adapter', 'retry-idor-b')
+    const tenantA = await makeCompanyWithOrder('retry_ok_adapter', 'retry-idor-a')
+    const tenantB = await makeCompanyWithOrder('retry_must_not_be_called_adapter', 'retry-idor-b')
     const opId = '33333333-0000-0000-0000-000000000005'
-    await seedFailedOp(tenantB, opId)
+    await seedFailedOp(tenantB.tenantId, opId, tenantB.orderId)
 
-    const attacker = await makeUser(tenantA, 'retry-idor-attacker@herbe-service.test')
+    const attacker = await makeUser(tenantA.tenantId, 'retry-idor-attacker@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(attacker))
     const res = await call(opId)
 
@@ -235,7 +293,7 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
   })
 
   it('rejects retrying an op that is not "failed" (e.g. already applied), without re-pushing', async () => {
-    const tenantId = await makeCompany('retry_must_not_be_called_adapter', 'retry-not-failed')
+    const { tenantId, orderId } = await makeCompanyWithOrder('retry_must_not_be_called_adapter', 'retry-not-failed')
     const user = await makeUser(tenantId, 'retry-not-failed-user@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000006'
@@ -244,7 +302,7 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
       tenantId,
       entity: 'serviceOrder',
       op: 'create',
-      payloadJson: payload,
+      payloadJson: { orderId },
       status: 'applied',
       erpRef: 'SVO-ALREADY',
     })
