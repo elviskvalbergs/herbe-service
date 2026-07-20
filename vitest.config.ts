@@ -29,9 +29,15 @@ export default defineConfig({
     // tests/live`) collect zero files. Gating the exclude on the same env
     // var keeps both commands working: unset -> excluded/never collected;
     // set -> collected, then the file's own describe.skipIf decides.
+    //
+    // tests/e2e/** is always excluded regardless of that flag — it's
+    // Playwright's own suite (playwright.config.ts), not vitest's. Its spec
+    // files use @playwright/test's test/expect; vitest's default
+    // `**/*.spec.ts` include pattern would otherwise also try to collect and
+    // run them, failing immediately on the wrong test API.
     exclude: process.env.RUN_LIVE_ERP_TESTS
-      ? configDefaults.exclude
-      : [...configDefaults.exclude, 'tests/live/**'],
+      ? [...configDefaults.exclude, 'tests/e2e/**']
+      : [...configDefaults.exclude, 'tests/live/**', 'tests/e2e/**'],
     // Vitest externalizes node_modules by default and loads them via Node's
     // native resolver, which ignores the `resolve.conditions` above. Inlining
     // next-intl routes it through Vite's resolver instead, so the
@@ -45,11 +51,13 @@ export default defineConfig({
         '**/*.config.*',
         '**/*.d.ts',
         'app/layout.tsx',
-        'app/page.tsx',
         // Thin 'use client' + useEffect/Dexie glue, same rationale as
-        // app/layout.tsx/app/page.tsx above — no branch logic worth unit
-        // testing without adding a jsdom + React Testing Library dependency
-        // chain the task didn't otherwise call for (Task 16 self-review).
+        // app/layout.tsx above — no branch logic worth unit testing without
+        // adding a jsdom + React Testing Library dependency chain the task
+        // didn't otherwise call for (Task 16 self-review). app/page.tsx used
+        // to be excluded on the same basis (create-next-app boilerplate) but
+        // Task 4 gave it real branch logic and a real test file, so it was
+        // removed from this list.
         'app/(app)/customers/page.tsx',
         'drizzle/**',
         'scripts/**',

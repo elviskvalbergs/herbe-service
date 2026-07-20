@@ -1,0 +1,247 @@
+/* ==========================================================================
+   herbe.service — Design Tokens
+   ──────────────────────────────────────────────────────────────────────────
+   herbe-service's local copy of the suite-wide design-system vocabulary
+   (source of truth: ~/AI/herbe-design-system/tokens.css, read-only sibling
+   repo — not committed here). This is a subset, not a byte-for-byte mirror:
+   marketing hero type sizes and calendar-only categorical colors this app
+   doesn't consume are dropped; the base palette, semantic bg/fg/border/
+   status roles, and the --ui-comfy-* tier are kept because office surfaces
+   (dispatch, approval, admin) reuse the system built for herbe.portal
+   (`docs/14-design-handoff.md` "Starting point").
+
+   Everything below §"Field-only extensions" is net-new for herbe.service —
+   the field-tool gaps `docs/14-design-handoff.md` §1 catalogues (sizing,
+   sunlight contrast, sync/charge/work-entry/revision badges, print). Every
+   new token here is a var() reference to a token already named above, or —
+   only where nothing existing fits (sunlight scheme literals, the field
+   density tier, print) — a literal value with a comment explaining it.
+
+   Principle 6 (suite-wide, restated from herbe.portal's CLAUDE.md): no
+   `border-radius: 50%` or `border-radius: 9999px` on identity/UI elements.
+   Herbe geometry is square-first; dots/indicators are squares, not circles.
+   ========================================================================== */
+
+/* ---------- Fonts (Poppins, self-hosted — replaces create-next-app's Geist) --------- */
+@font-face { font-family: 'Poppins'; font-weight: 300; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Light.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 400; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 400; font-style: italic; font-display: swap; src: url('/fonts/Poppins-Italic.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 500; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 600; font-style: normal; font-display: swap; src: url('/fonts/Poppins-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 700; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 700; font-style: italic; font-display: swap; src: url('/fonts/Poppins-BoldItalic.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 800; font-style: normal; font-display: swap; src: url('/fonts/Poppins-ExtraBold.ttf') format('truetype'); }
+@font-face { font-family: 'Poppins'; font-weight: 900; font-style: normal; font-display: swap; src: url('/fonts/Poppins-Black.ttf') format('truetype'); }
+
+:root {
+  /* ---------- Base palette (Burti brandbook, Sept 2022) ---------- */
+  --burti-black:       #231F20;
+  --burti-rowanberry:  #CD4C38;   /* brand red — squared dot, danger */
+  --burti-high-sky:    #00AEE7;   /* brand cyan */
+  --burti-forest:      #134A40;   /* primary brand surface */
+  --burti-mud:         #212722;   /* near-black alternate, dark bg-sunken */
+  --burti-forest-dark: #0A4A42;
+  --burti-offwhite:    #F7F9F8;
+  --burti-gray:        #6B7B78;
+  --burti-gray-light:  #E0E5E4;
+
+  /* ---------- herbe-* semantic aliases ---------- */
+  --herbe-paper:       #FFFFFF;
+  --herbe-cream:       var(--burti-offwhite);
+  --herbe-bone:        #ECEFEE;
+  --herbe-mist:        var(--burti-gray-light);
+  --herbe-ink:         var(--burti-black);
+  --herbe-stone:       var(--burti-gray);
+  --herbe-ash:         #9AA5A2;
+  --herbe-forest:      var(--burti-forest);
+  --herbe-forest-dark: var(--burti-forest-dark);
+  --herbe-mud:         var(--burti-mud);
+  --herbe-red:         var(--burti-rowanberry);
+  --herbe-sky:         var(--burti-high-sky);
+
+  /* ---------- Categorical palette (only the entry herbe-service uses) ---------- */
+  --cat-amber: #E08A2B;
+
+  /* ---------- Product accent ---------- */
+  /* doc 14 §6 — amber, "reads field / hi-vis, distinct from calendar-red and
+     portal-cyan" (owner decision 2026-07-08). Not yet in the shared
+     tokens.css (no --product-* accent exists there for herbe.service). */
+  --product-service: var(--cat-amber);
+
+  /* ---------- Semantic roles (default = light surface) ---------- */
+  --bg:            var(--herbe-paper);
+  --bg-elevated:   var(--herbe-cream);
+  --bg-sunken:     var(--herbe-bone);
+  --bg-inverse:    var(--herbe-forest);
+  --fg:            var(--herbe-ink);
+  --fg-muted:      var(--herbe-stone);
+  --fg-subtle:     var(--herbe-ash);
+  --fg-on-accent:  #FFFFFF;
+  --border:        var(--herbe-mist);
+  --border-strong: #C9D0CE;
+  --accent:        var(--herbe-red);
+  --accent-cool:   var(--herbe-sky);
+  --link:          var(--herbe-forest);
+  --link-hover:    var(--herbe-sky);
+  --focus-ring:    0 0 0 3px rgba(19,74,64,0.18);
+  --selection-bg:  var(--herbe-red);
+  --selection-fg:  #FFFFFF;
+
+  /* ---------- Font ---------- */
+  --font-sans: 'Poppins', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+
+  /* ---------- Status roles (canonical semantic mapping, all four apps) ---------- */
+  --status-success:      #0A4A42;
+  --status-success-soft: #D4E1DD;
+  --status-success-fg:   #0A4A42;
+
+  --status-warning:      #B07A1A;
+  --status-warning-soft: #FBEBD4;
+  --status-warning-fg:   #6B4B14;
+
+  --status-danger:      #CD4C38;
+  --status-danger-soft: #FBE7E2;
+  --status-danger-fg:   #8C2E20;
+
+  --status-info:      #0088B5;
+  --status-info-soft: #D1EEFA;
+  --status-info-fg:   #0B5A72;
+
+  --status-neutral:      var(--herbe-stone);
+  --status-neutral-soft: var(--herbe-bone);
+  --status-neutral-fg:   var(--herbe-ink);
+
+  /* ---------- Radii (only the two sizes the field density tier reuses) ---------- */
+  --radius-lg: 6px;   /* comfy inputs/buttons/cards (Portal default) */
+  --radius-xl: 8px;
+
+  /* ════════════════════════════════════════════════════════════════
+     DENSITY TIER PRESETS
+     ════════════════════════════════════════════════════════════════ */
+
+  /* COMFY — office surfaces (dispatch, approval, admin) */
+  --ui-comfy-body:         15px;
+  --ui-comfy-btn-h:        42px;
+  --ui-comfy-btn-h-sm:     36px;
+  --ui-comfy-btn-h-lg:     46px;
+  --ui-comfy-input-h:      44px;
+  --ui-comfy-radius-input: 4px;
+  --ui-comfy-radius-btn:   4px;
+  --ui-comfy-radius-card:  6px;
+  --ui-comfy-radius-chip:  4px;
+  --ui-comfy-label-fs:     12px;
+  --ui-comfy-label-track:  0.04em;
+
+  /* FIELD — herbe-service-only, net new (doc 14 §1 "Field-mode sizing
+     scale"). Same shape as the tier presets above, sized for gloves/
+     sunlight/one-hand use: touch targets >=48px, primary actions 56-64px,
+     enlarged type for arm's-length reading. No new radius values — reuses
+     --radius-lg/--radius-xl above (do not invent circular/pill radii,
+     Principle 6). */
+  --ui-field-body:       17px;  /* enlarged type scale for arm's-length reading */
+  --ui-field-btn-h:      56px;  /* primary actions — using the 56px floor of the 56-64px range */
+  --ui-field-btn-h-sm:   48px;  /* minimum touch target */
+  --ui-field-input-h:    56px;  /* matches primary button height for one-hand reach */
+  --ui-field-radius-btn:  var(--radius-lg);
+  --ui-field-radius-card: var(--radius-xl);
+
+  /* ════════════════════════════════════════════════════════════════
+     FIELD-ONLY EXTENSIONS (net new — doc 14 §1 token-level gaps)
+     ════════════════════════════════════════════════════════════════ */
+
+  /* Sync-state — local/pending/synced/conflict (doc 02-data-model.md "Sync
+     metadata"). One vocabulary app-wide; colorblind-safe (gray/amber/green/
+     red hues, none pure red-green); never color-only — pair with the named
+     icon in code, CSS can't enforce that pairing. */
+  --sync-local:    var(--status-neutral);  /* pair with a "cloud-off" icon — stored on this device only */
+  --sync-pending:  var(--status-warning);  /* pair with an "upload-cloud" icon — queued, not yet confirmed */
+  --sync-synced:   var(--status-success);  /* pair with a "cloud-check" icon — confirmed synced */
+  --sync-conflict: var(--status-danger);   /* pair with an "alert-triangle" icon — needs resolution */
+
+  /* Charge-type badge — invoiceable/warranty/contract/goodwill (doc
+     02-data-model.md "Charge type"). Only `invoiceable` is billed to the
+     customer; the other three are functionally no-charge in-app (the
+     difference is ERP-side cost-of-sales routing), so they get calmer,
+     non-danger hues. */
+  --charge-invoiceable: var(--status-info);     /* billable — standard flow */
+  --charge-warranty:    var(--status-success);  /* covered, no charge */
+  --charge-contract:    var(--status-neutral);  /* covered under contract, no charge */
+  --charge-goodwill:    var(--status-warning);  /* discretionary exception — flagged for review */
+
+  /* Work-entry-mode indicator — booking/prepared-ahead/walk-up (doc
+     02-data-model.md "Work-entry modes"). A booking-less worksheet must
+     "silently read as normal, not broken" (doc 14 §1) — none of these use
+     the danger hue. */
+  --work-entry-booking:        var(--status-info);     /* pair with a "calendar" icon — scheduled ahead */
+  --work-entry-prepared-ahead: var(--status-neutral);  /* pair with a "clipboard" icon — prepared, no booking */
+  --work-entry-walk-up:        var(--accent-cool);     /* pair with a "map-pin" icon — unscheduled, on the spot */
+
+  /* Worksheet-confirmation revision-state badge — signed/superseded/
+     re-sign-requested/proceed-audited (doc 02-data-model.md
+     "Worksheet-confirmation lock vs. rejection/correction"). */
+  --revision-signed:            var(--status-success);  /* pair with a "check-circle" icon */
+  --revision-superseded:        var(--status-info);      /* pair with a "history" icon — see the latest instead */
+  --revision-resign-requested:  var(--status-warning);   /* pair with a "user-check" icon — action needed */
+  --revision-proceed-audited:   var(--status-danger);    /* pair with a "shield-alert" icon — exception path, audited */
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Dark scheme — reuses the design system's existing dark-surface
+   override values verbatim (no second dark implementation).
+   ════════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --bg:            var(--herbe-forest);
+  --bg-elevated:   var(--herbe-forest-dark);
+  --bg-sunken:     var(--herbe-mud);
+  --bg-inverse:    var(--herbe-paper);
+  --fg:            #FFFFFF;
+  --fg-muted:      rgba(255,255,255,0.72);
+  --fg-subtle:     rgba(255,255,255,0.5);
+  --border:        rgba(255,255,255,0.12);
+  --border-strong: rgba(255,255,255,0.22);
+  --link:          var(--herbe-sky);
+  --link-hover:    #FFFFFF;
+  --focus-ring:    0 0 0 3px rgba(255,255,255,0.32);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Sunlight scheme (doc 14 §1 "Sunlight / high-contrast mode") — a
+   separate axis from dark/light (a technician can be in a sunlit,
+   high-contrast van interior in either theme), switched independently
+   via [data-scheme] rather than folded into [data-theme]. No existing
+   token clears the >=7:1 target, so these are literal values, each with
+   its measured WCAG contrast ratio against #FFFFFF (relative-luminance
+   formula, not eyeballed).
+   ════════════════════════════════════════════════════════════════ */
+[data-scheme="sunlight"] {
+  --bg:        #FFFFFF;  /* pure white */
+  --fg:        #000000;  /* pure black — 21:1 on --bg */
+  --border:    #545454;  /* ~7.6:1 on --bg — a "border" role but held to the same 7:1 bar since it doubles as a control edge at arm's length */
+  --accent:    #8F2C1F;  /* rowanberry red, darkened until text/icon use clears 7:1 (~8.2:1 on --bg) */
+  /* --fg-muted (--herbe-stone, #6B7B78) is only ~4.4:1 on white — below the
+     scheme's own 7:1 bar — and is the color placeholder/"coming soon" body
+     text renders in across every field and office shell page, so it needs
+     its own sunlight override. #565656 measures ~7.34:1 on --bg (relative-
+     luminance formula). --fg-subtle isn't referenced by any component yet;
+     add the same treatment if that changes. */
+  --fg-muted:  #565656;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Print (doc 14 §1 "Print/PDF tokens" — no @media print styling existed
+   anywhere in the design-system repo prior to this). Minimal: page
+   margin, table border color, header/footer font-size vars only — no
+   layout components (that's WS12's actual PDF/report work).
+   ════════════════════════════════════════════════════════════════ */
+@media print {
+  :root {
+    --print-page-margin: 12mm;  /* standard document margin — no existing token covers page geometry */
+    --print-header-fs:   9pt;   /* running header */
+    --print-footer-fs:   8pt;   /* running footer */
+    --print-table-border: var(--herbe-mist);
+    --print-severity-success: var(--status-success);
+    --print-severity-warning: var(--status-warning);
+    --print-severity-danger:  var(--status-danger);
+    --print-severity-info:    var(--status-info);
+  }
+}

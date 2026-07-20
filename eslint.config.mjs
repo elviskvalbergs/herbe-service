@@ -26,6 +26,9 @@ const eslintConfig = defineConfig([
     // after a `pnpm build` — see next.config.ts).
     "public/sw.js",
     "public/workbox-*.js",
+    // next-pwa's bundled custom worker output (worker/index.ts, WS1 Task 10)
+    // — same generated-on-every-build story as the two entries above.
+    "public/worker-*.js",
   ]),
 ]);
 
