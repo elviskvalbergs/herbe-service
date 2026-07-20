@@ -19,11 +19,11 @@ import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
 import { attemptOutboxPush } from '@/lib/sync/outbox-push'
-import { auth } from '@/lib/auth'
+import { getVerifiedSession } from '@/lib/auth/session-guard'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
+  const session = await getVerifiedSession(db)
   const tenantId = session?.user?.tenantId
   if (!tenantId) {
     return new Response('Unauthorized', { status: 401 })

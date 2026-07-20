@@ -4,6 +4,12 @@
 // Postgres, not Testcontainers; `@/lib/auth`'s `auth()` mocked at the module
 // seam for the same next/headers-outside-a-real-request reason documented
 // there).
+//
+// The route calls `getVerifiedSession` (lib/auth/session-guard), which
+// wraps `auth()` with a DB round-trip comparing `session.user.sessionVersion`
+// against the live `users.session_version` row — so an authenticated test
+// session must correspond to a real users row with a matching
+// `sessionVersion` (see `makeUser`/`sessionFor` below).
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
@@ -108,6 +114,18 @@ async function makeCompany(adapterType: string, slug: string) {
   return tenant.id
 }
 
+async function makeUser(tenantId: string, email: string) {
+  const [user] = await db.insert(schema.users).values({ tenantId, email, role: 'technician' }).returning()
+  return user
+}
+
+function sessionFor(user: { id: string; tenantId: string; sessionVersion: number }) {
+  return {
+    user: { id: user.id, tenantId: user.tenantId, sessionVersion: user.sessionVersion },
+    expires: '2099-01-01T00:00:00.000Z',
+  }
+}
+
 const payload = { custCode: 'CUST001', transDate: '2026-07-08', rows: [{ artCode: 'PART-1', quant: 1 }] }
 
 async function seedFailedOp(tenantId: string, opId: string, errorMessage = 'original failure') {
@@ -150,7 +168,8 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
 
   it('resets a failed op to pending, re-attempts the push, and applies it with a real erpRef', async () => {
     const tenantId = await makeCompany('retry_ok_adapter', 'retry-success')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'retry-success-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000002'
     await seedFailedOp(tenantId, opId, 'ERP was down')
     const callsBefore = retryOkPushCalls
@@ -171,7 +190,8 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
 
   it('re-attempts the push even when it fails again, recording the new error rather than a stale one', async () => {
     const tenantId = await makeCompany('retry_fail_adapter', 'retry-still-failing')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'retry-still-failing-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000003'
     await seedFailedOp(tenantId, opId, 'original failure')
     const callsBefore = retryFailPushCalls
@@ -190,7 +210,9 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
   })
 
   it('returns 404 for an op id that does not exist', async () => {
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId: crypto.randomUUID() }, expires: '2099-01-01T00:00:00.000Z' })
+    const tenantId = await makeCompany('retry_ok_adapter', 'retry-404-tenant')
+    const user = await makeUser(tenantId, 'retry-404-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
 
     const res = await call('33333333-0000-0000-0000-000000000404')
 
@@ -203,7 +225,8 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
     const opId = '33333333-0000-0000-0000-000000000005'
     await seedFailedOp(tenantB, opId)
 
-    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: tenantA }, expires: '2099-01-01T00:00:00.000Z' })
+    const attacker = await makeUser(tenantA, 'retry-idor-attacker@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(attacker))
     const res = await call(opId)
 
     expect(res.status).toBe(404)
@@ -213,7 +236,8 @@ describe('POST /api/sync/outbox/[id]/retry', () => {
 
   it('rejects retrying an op that is not "failed" (e.g. already applied), without re-pushing', async () => {
     const tenantId = await makeCompany('retry_must_not_be_called_adapter', 'retry-not-failed')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const user = await makeUser(tenantId, 'retry-not-failed-user@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
     const opId = '33333333-0000-0000-0000-000000000006'
     await db.insert(schema.outboxOps).values({
       id: opId,

@@ -112,6 +112,41 @@ describe('PATCH /api/settings', () => {
     expect(await getRes.json()).toEqual({ locale: 'lv', displayScheme: 'sunlight' })
   })
 
+  it('rejects a malformed JSON body with 400, not a 500, and leaves prefs unchanged', async () => {
+    const user = await makeUser('settings-patch-malformed', 'patch-malformed@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
+
+    const { PATCH } = await import('./route')
+    const req = new Request('http://localhost/api/settings', {
+      method: 'PATCH',
+      body: 'not json',
+      headers: { 'content-type': 'application/json' },
+    })
+    const res = await PATCH(req)
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'invalid_body' })
+
+    const { GET } = await import('./route')
+    const getRes = await GET()
+    expect(await getRes.json()).toEqual({ locale: 'lv', displayScheme: 'standard' })
+  })
+
+  it('rejects a JSON body that parses to null with 400, not a 500, and leaves prefs unchanged', async () => {
+    const user = await makeUser('settings-patch-null-body', 'patch-null-body@herbe-service.test')
+    authMock.mockResolvedValue(sessionFor(user))
+
+    const { PATCH } = await import('./route')
+    const res = await PATCH(patchRequest(null))
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'invalid_body' })
+
+    const { GET } = await import('./route')
+    const getRes = await GET()
+    expect(await getRes.json()).toEqual({ locale: 'lv', displayScheme: 'standard' })
+  })
+
   it('rejects an invalid locale with 400 and leaves prefs unchanged', async () => {
     const user = await makeUser('settings-patch-bad-locale', 'patch-bad-locale@herbe-service.test')
     authMock.mockResolvedValue(sessionFor(user))

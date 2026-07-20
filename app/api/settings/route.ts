@@ -15,7 +15,15 @@ export async function PATCH(request: Request) {
   const session = await getVerifiedSession(db)
   if (!session?.user?.id) return new Response('Unauthorized', { status: 401 })
 
-  const body = (await request.json()) as { locale?: unknown; displayScheme?: unknown }
+  let body: { locale?: unknown; displayScheme?: unknown }
+  try {
+    body = await request.json()
+  } catch {
+    return Response.json({ error: 'invalid_body' }, { status: 400 })
+  }
+  if (body === null || typeof body !== 'object') {
+    return Response.json({ error: 'invalid_body' }, { status: 400 })
+  }
   const { locale, displayScheme } = body
 
   if (locale !== undefined && typeof locale !== 'string') {

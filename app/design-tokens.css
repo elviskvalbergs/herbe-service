@@ -214,10 +214,17 @@
    formula, not eyeballed).
    ════════════════════════════════════════════════════════════════ */
 [data-scheme="sunlight"] {
-  --bg:     #FFFFFF;  /* pure white */
-  --fg:     #000000;  /* pure black — 21:1 on --bg */
-  --border: #545454;  /* ~7.6:1 on --bg — a "border" role but held to the same 7:1 bar since it doubles as a control edge at arm's length */
-  --accent: #8F2C1F;  /* rowanberry red, darkened until text/icon use clears 7:1 (~8.2:1 on --bg) */
+  --bg:        #FFFFFF;  /* pure white */
+  --fg:        #000000;  /* pure black — 21:1 on --bg */
+  --border:    #545454;  /* ~7.6:1 on --bg — a "border" role but held to the same 7:1 bar since it doubles as a control edge at arm's length */
+  --accent:    #8F2C1F;  /* rowanberry red, darkened until text/icon use clears 7:1 (~8.2:1 on --bg) */
+  /* --fg-muted (--herbe-stone, #6B7B78) is only ~4.4:1 on white — below the
+     scheme's own 7:1 bar — and is the color placeholder/"coming soon" body
+     text renders in across every field and office shell page, so it needs
+     its own sunlight override. #565656 measures ~7.34:1 on --bg (relative-
+     luminance formula). --fg-subtle isn't referenced by any component yet;
+     add the same treatment if that changes. */
+  --fg-muted:  #565656;
 }
 
 /* ════════════════════════════════════════════════════════════════
