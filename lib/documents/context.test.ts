@@ -137,7 +137,6 @@ describe('buildOrderReportContext — solo order', () => {
         id: '00000000-0000-4000-8000-00000000ddd1',
         orderId: order.id,
         serviceItemId: unitItemId,
-        coverage: { covered: 1, of: 2 },
         symptom: 'Rattling noise',
         workType: 'maintenance',
         chargeType: 'warranty',
@@ -207,7 +206,6 @@ describe('buildOrderReportContext — solo order', () => {
         id: unitItemId,
         name: 'AHU-01',
         serial: 'SN-123',
-        coverage: { covered: 1, of: 2 },
         symptom: 'Rattling noise',
         workType: 'maintenance',
         chargeType: 'warranty',
@@ -433,5 +431,76 @@ describe('buildOrderReportContext — null-field tolerance', () => {
     expect(section.distanceKm).toBe(0)
 
     expect(JSON.parse(JSON.stringify(ctx))).toStrictEqual(ctx)
+  })
+})
+
+// FIX-10 / docs/21 WS12 TDD "loop over coverage exceptions": a group/lot row
+// resolves its coverage record against the node's members into an explicit
+// covered/exception list, not a passed-through jsonb blob.
+describe('buildOrderReportContext — group coverage (covered units of a lot)', () => {
+  // A lot node with three member units. Explicit ascending ids pin the
+  // deterministic member order the builder promises (order by id), so
+  // 'n_of_m' coverage of the first n is assertable.
+  const LOT_ID = '00000000-0000-4000-8000-0000000c1070'
+  const MEMBER_1 = '00000000-0000-4000-8000-0000000ce001'
+  const MEMBER_2 = '00000000-0000-4000-8000-0000000ce002'
+  const MEMBER_3 = '00000000-0000-4000-8000-0000000ce003'
+
+  beforeAll(async () => {
+    await db.insert(schema.serviceItems).values([
+      { id: LOT_ID, tenantId, kind: 'lot', name: 'Detector lot', labelId: 'LBL-LOT', changeSeq: BigInt(0) },
+      { id: MEMBER_1, tenantId, parentId: LOT_ID, kind: 'unit', name: 'Detector 1', serialNr: 'D-1', labelId: 'LBL-D1', changeSeq: BigInt(0) },
+      { id: MEMBER_2, tenantId, parentId: LOT_ID, kind: 'unit', name: 'Detector 2', serialNr: 'D-2', labelId: 'LBL-D2', changeSeq: BigInt(0) },
+      { id: MEMBER_3, tenantId, parentId: LOT_ID, kind: 'unit', name: 'Detector 3', serialNr: 'D-3', labelId: 'LBL-D3', changeSeq: BigInt(0) },
+    ])
+  }, 60_000)
+
+  async function serviceItemForCoverage(coverage: unknown) {
+    const order = await insertOrder()
+    await db
+      .insert(schema.serviceOrderRows)
+      .values({ orderId: order.id, serviceItemId: LOT_ID, coverage })
+    const ctx = await buildOrderReportContext(db, { tenantId, orderId: order.id })
+    return ctx.serviceItems[0]
+  }
+
+  it('n_of_m: covers the first n members by id, the rest are exceptions', async () => {
+    const item = await serviceItemForCoverage({ mode: 'n_of_m', n: 2 })
+    expect(item.coverage).toEqual({ covered: 2, of: 3 })
+    expect(item.coveredUnits).toEqual([
+      { id: MEMBER_1, name: 'Detector 1', serial: 'D-1', covered: true },
+      { id: MEMBER_2, name: 'Detector 2', serial: 'D-2', covered: true },
+      { id: MEMBER_3, name: 'Detector 3', serial: 'D-3', covered: false },
+    ])
+  })
+
+  it('all: every member covered', async () => {
+    const item = await serviceItemForCoverage({ mode: 'all' })
+    expect(item.coverage).toEqual({ covered: 3, of: 3 })
+    expect(item.coveredUnits?.map((u) => u.covered)).toEqual([true, true, true])
+  })
+
+  it('list: only the listed members covered', async () => {
+    const item = await serviceItemForCoverage({ mode: 'list', ids: [MEMBER_2] })
+    expect(item.coverage).toEqual({ covered: 1, of: 3 })
+    expect(item.coveredUnits?.filter((u) => u.covered).map((u) => u.id)).toEqual([MEMBER_2])
+  })
+
+  it('all_except: everyone but the excepted members covered', async () => {
+    const item = await serviceItemForCoverage({ mode: 'all_except', ids: [MEMBER_1, MEMBER_3] })
+    expect(item.coverage).toEqual({ covered: 1, of: 3 })
+    expect(item.coveredUnits?.filter((u) => !u.covered).map((u) => u.id)).toEqual([MEMBER_1, MEMBER_3])
+  })
+
+  it('omits coverage and coveredUnits when the row carries no coverage record', async () => {
+    const item = await serviceItemForCoverage(null)
+    expect(item).not.toHaveProperty('coverage')
+    expect(item).not.toHaveProperty('coveredUnits')
+  })
+
+  it('ignores a malformed coverage blob with no recognized mode', async () => {
+    const item = await serviceItemForCoverage({ covered: 1, of: 2 })
+    expect(item).not.toHaveProperty('coverage')
+    expect(item).not.toHaveProperty('coveredUnits')
   })
 })

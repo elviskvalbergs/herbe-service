@@ -25,6 +25,7 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
+import { resolveCoveredIds, type Coverage } from '@/lib/domain/coverage'
 
 type Db = PostgresJsDatabase<typeof schema>
 
@@ -62,13 +63,28 @@ export interface OrderReportCustomer {
   name: string
 }
 
+/** {#coveredUnits}…{/coveredUnits} — one entry per member of a group/lot
+ *  node, covered members and exceptions alike, so the fire-detector-annex
+ *  loop can mark each (docs/12 §Loops "covered units of a lot"). */
+export interface OrderReportCoveredUnit {
+  id: string
+  name: string
+  serial?: string
+  /** True when this member is covered by the row's coverage record. */
+  covered: boolean
+}
+
 /** {#serviceItems}…{/serviceItems} — one entry per order row with an item. */
 export interface OrderReportServiceItem {
   id: string
   name: string
   serial?: string
-  /** Coverage payload of the order row, passed through as-is (jsonb). */
-  coverage?: unknown
+  /** Resolved coverage rollup {covered, of} — present only on rows carrying a
+   *  group-coverage record; same shape as the /api/ext coverage summary. */
+  coverage?: { covered: number; of: number }
+  /** The group/lot node's members with their covered/exception flag; present
+   *  alongside `coverage`, empty when the node has no members. */
+  coveredUnits?: OrderReportCoveredUnit[]
   symptom?: string
   workType?: string
   /** Row charge type; falls back to the order's defaultChargeType. */
@@ -194,17 +210,69 @@ export async function buildOrderReportContext(
     .where(eq(schema.serviceOrderRows.orderId, orderId))
     .orderBy(asc(schema.serviceOrderRows.id))
 
-  const serviceItems: OrderReportServiceItem[] = orderRows.map(({ row, item }) =>
-    compact({
+  // Covered-units-of-a-lot rollup (docs/12 §Loops; docs/21 WS12; WS7's
+  // resolveCoveredIds). A row can carry a group-coverage record targeting the
+  // members of its service-item node ('all' / 'n_of_m' / list / all_except).
+  // Resolve it into an explicit per-member covered/exception list so the
+  // report's fire-detector-annex loop can render one row per member. Members
+  // are the node's children, fetched in one batched query and ordered by id
+  // for determinism (golden tests); 'n_of_m' covers the first n in that order.
+  // Rows with no coverage record — or a malformed one — get neither field.
+  const groupItemIds = new Set<string>()
+  for (const { row, item } of orderRows) {
+    if (asCoverage(row.coverage)) groupItemIds.add(item.id)
+  }
+  const memberRows = groupItemIds.size
+    ? await db
+        .select({
+          id: schema.serviceItems.id,
+          parentId: schema.serviceItems.parentId,
+          name: schema.serviceItems.name,
+          serialNr: schema.serviceItems.serialNr,
+        })
+        .from(schema.serviceItems)
+        .where(
+          and(
+            inArray(schema.serviceItems.parentId, [...groupItemIds]),
+            isNull(schema.serviceItems.deletedAt),
+          ),
+        )
+        .orderBy(asc(schema.serviceItems.id))
+    : []
+  const membersByParentId = groupBy(
+    memberRows.filter((m): m is typeof m & { parentId: string } => m.parentId != null),
+    (m) => m.parentId,
+  )
+
+  const serviceItems: OrderReportServiceItem[] = orderRows.map(({ row, item }) => {
+    const coverage = asCoverage(row.coverage)
+    let coverageSummary: { covered: number; of: number } | undefined
+    let coveredUnits: OrderReportCoveredUnit[] | undefined
+    if (coverage) {
+      const members = membersByParentId.get(item.id) ?? []
+      const memberIds = members.map((m) => m.id)
+      const coveredIds = new Set(resolveCoveredIds(coverage, memberIds))
+      coverageSummary = { covered: coveredIds.size, of: memberIds.length }
+      coveredUnits = members.map((m) =>
+        compact({
+          id: m.id,
+          name: m.name,
+          serial: m.serialNr ?? undefined,
+          covered: coveredIds.has(m.id),
+        }),
+      )
+    }
+    return compact({
       id: item.id,
       name: item.name,
       serial: item.serialNr ?? undefined,
-      coverage: row.coverage ?? undefined,
+      coverage: coverageSummary,
+      coveredUnits,
       symptom: row.symptom ?? undefined,
       workType: row.workType ?? undefined,
       chargeType: row.chargeType ?? order.defaultChargeType,
-    }),
-  )
+    })
+  })
 
   // Deterministic base order: by worksheet id (no created_at column exists).
   const worksheets = await db
@@ -372,4 +440,31 @@ function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
     else map.set(k, [item])
   }
   return map
+}
+
+/** Narrow the row's raw jsonb `coverage` to a Coverage record, or null when it
+ *  isn't one. serviceOrderRows.coverage is untyped jsonb, so a legacy or
+ *  malformed blob must not drive the covered-units rollup; only the four
+ *  recognized modes do. Rebuilds a clean value (dropping stray keys) so the
+ *  context stays JSON-round-trip stable. */
+function asCoverage(value: unknown): Coverage | null {
+  if (value == null || typeof value !== 'object') return null
+  const mode = (value as { mode?: unknown }).mode
+  switch (mode) {
+    case 'all':
+      return { mode: 'all' }
+    case 'n_of_m': {
+      const n = (value as { n?: unknown }).n
+      return typeof n === 'number' ? { mode: 'n_of_m', n } : null
+    }
+    case 'list':
+    case 'all_except': {
+      const ids = (value as { ids?: unknown }).ids
+      return Array.isArray(ids) && ids.every((x) => typeof x === 'string')
+        ? { mode, ids }
+        : null
+    }
+    default:
+      return null
+  }
 }
