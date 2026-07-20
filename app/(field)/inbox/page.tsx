@@ -1,10 +1,15 @@
 // app/(field)/inbox/page.tsx
 //
-// PLACEHOLDER (Task 5 scope: page chrome only). doc07 F10 "Inbox" — conflict
-// tasks (bounced transitions, sync rejections), assignment notifications,
-// manager rejection comments. Task 8 replaces this with the real
-// conflict-inbox component; this is an honest "coming soon" state rather
-// than fake inbox items (plan §2 decision 5).
+// doc07 F10 "Inbox" — conflict tasks (bounced transitions, sync rejections).
+// Task 8's real source: failed outbox_ops rows
+// (lib/inbox/get-inbox-items.ts), rendered by components/conflict-inbox.tsx
+// with a retry action. Assignment notifications and manager rejection
+// comments aren't sourced from anywhere yet — still an honest gap, not
+// faked (plan §2 decision 5).
+//
+// getInboxItemsForUser is tenant-scoped, not truly per-user (outbox_ops has
+// no userId column — confirmed in drizzle/schema.ts) — a known limitation,
+// same as lib/offline/briefcase-summary.ts's "pending sync" bucket.
 //
 // Gates on session itself (not just via a parent redirect): this repo has no
 // centralized route-level auth guard (proxy.ts only forwards locale — see
@@ -13,6 +18,8 @@
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { getInboxItemsForUser } from '@/lib/inbox/get-inbox-items'
+import { ConflictInbox } from '@/components/conflict-inbox'
 
 export default async function InboxPage() {
   const session = await getVerifiedSession(db)
@@ -20,10 +27,12 @@ export default async function InboxPage() {
     redirect('/login')
   }
 
+  const items = await getInboxItemsForUser(db, session.user.tenantId)
+
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
       <h1 className="text-lg font-semibold">Inbox</h1>
-      <p className="text-sm text-[var(--fg-muted)]">Coming soon.</p>
+      <ConflictInbox items={items} />
     </main>
   )
 }

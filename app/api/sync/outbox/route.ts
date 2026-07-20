@@ -7,8 +7,10 @@
 // duplicate Service Order.
 //
 // Phase 0 simplification: any pre-existing row (applied OR failed) short-
-// circuits as "already_applied" — retrying a *failed* op is Task 13's out-
-// of-scope push-queue-per-order / DLQ work (Phase 1, 04-erp-sync.md).
+// circuits as "already_applied" — this POST never re-attempts a *failed* op.
+// Task 8 adds a dedicated retry path for that
+// (app/api/sync/outbox/[id]/retry/route.ts), sharing this route's push logic
+// via lib/sync/outbox-push.ts rather than reusing this idempotency check.
 //
 // Task 16b: tenantId is taken ONLY from the authenticated session
 // (session.user.tenantId), never from the request body — two reviews
@@ -18,8 +20,7 @@
 import { db } from '@/lib/db'
 import * as schema from '@/drizzle/schema'
 import { eq } from 'drizzle-orm'
-import { getAdapter } from '@herbe/erp-core'
-import { pushServiceOrderCreate } from '@/lib/erp/standard-books/push-service-order'
+import { attemptOutboxPush } from '@/lib/sync/outbox-push'
 import { auth } from '@/lib/auth'
 import '@/lib/erp/standard-books/adapter' // registers 'standard_books'
 
@@ -50,27 +51,9 @@ export async function POST(request: Request) {
     payloadJson: body.payload,
   })
 
-  try {
-    // Phase 0 spike: hardcode the single-company lookup for the tenant —
-    // Phase 1's push-queue-per-order generalizes this to N companies and N
-    // entity types.
-    const [company] = await db.select().from(schema.erpCompanies).where(eq(schema.erpCompanies.tenantId, tenantId))
-    const adapter = getAdapter(company.adapterType, company.adapterConfigJson)
-
-    const { erpRef } = await pushServiceOrderCreate(adapter, body.payload)
-
-    await db
-      .update(schema.outboxOps)
-      .set({ status: 'applied', erpRef, appliedAt: new Date() })
-      .where(eq(schema.outboxOps.id, body.id))
-
-    return Response.json({ status: 'applied', erpRef })
-  } catch (err) {
-    await db
-      .update(schema.outboxOps)
-      .set({ status: 'failed', errorMessage: String(err) })
-      .where(eq(schema.outboxOps.id, body.id))
-
-    return Response.json({ status: 'failed', error: String(err) }, { status: 502 })
+  const result = await attemptOutboxPush(db, tenantId, body.id, body.payload)
+  if (result.status === 'applied') {
+    return Response.json(result)
   }
+  return Response.json(result, { status: 502 })
 }
