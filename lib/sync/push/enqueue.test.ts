@@ -196,6 +196,51 @@ describe('approveWorksheet', () => {
     ).rejects.toThrow(/not found/)
   })
 
+  it('enqueues exactly one queued order_report render job that co-commits with the push group', async () => {
+    const orderId = await makeOrder()
+    const technicianUserId = await makeTechnician(true)
+    const worksheetId = await makeDoneWorksheet(orderId, technicianUserId)
+
+    const { groupId } = await approveWorksheet(db, { tenantId, erpCompanyId, worksheetId })
+
+    // The push group committed…
+    const [group] = await db.select().from(schema.erpPushGroups).where(eq(schema.erpPushGroups.id, groupId))
+    expect(group).toBeDefined()
+
+    // …and, in the SAME transaction, exactly one queued render job for the order.
+    const renderJobs = await db
+      .select()
+      .from(schema.documentRenderJobs)
+      .where(eq(schema.documentRenderJobs.orderId, orderId))
+    expect(renderJobs).toHaveLength(1)
+    expect(renderJobs[0]).toMatchObject({
+      tenantId,
+      erpCompanyId,
+      docType: 'order_report',
+      orderId,
+      trigger: 'approval',
+      status: 'queued',
+    })
+  })
+
+  it('coalesces two worksheets of the SAME order approved in sequence into ONE queued render job', async () => {
+    const orderId = await makeOrder()
+    const worksheet1 = await makeDoneWorksheet(orderId, await makeTechnician(true))
+    const worksheet2 = await makeDoneWorksheet(orderId, await makeTechnician(true))
+
+    await approveWorksheet(db, { tenantId, erpCompanyId, worksheetId: worksheet1 })
+    // The second approval's enqueue finds the first's job still queued and
+    // absorbs it — no duplicate row.
+    await approveWorksheet(db, { tenantId, erpCompanyId, worksheetId: worksheet2 })
+
+    const renderJobs = await db
+      .select()
+      .from(schema.documentRenderJobs)
+      .where(eq(schema.documentRenderJobs.orderId, orderId))
+    expect(renderJobs).toHaveLength(1)
+    expect(renderJobs[0].status).toBe('queued')
+  })
+
   it('leaves the worksheet status unchanged when createPushGroup fails inside the same transaction', async () => {
     const orderId = await makeOrder()
     const technicianUserId = await makeTechnician(true)

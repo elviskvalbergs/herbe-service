@@ -208,9 +208,16 @@ describe('processRenderJobs — built-in report path', () => {
     expect(doc.pdfBytes?.subarray(0, 5).toString()).toBe('%PDF-')
     expect(doc.renderedAt.getTime()).toBe(NOW.getTime())
     // Context snapshot is the built merge context.
-    const snapshot = doc.contextSnapshot as { customer: { name: string }; meta: { orderId: string } }
+    const snapshot = doc.contextSnapshot as {
+      customer: { name: string }
+      meta: { orderId: string }
+      computed: Record<string, unknown>
+    }
     expect(snapshot.customer.name).toBe('Acme OÜ')
     expect(snapshot.meta.orderId).toBe(orderId)
+    // WS6 computed-fields seam ran (applyComputedFields) and produced {} —
+    // herbe.service ships zero definitions (plan decision 12).
+    expect(snapshot.computed).toEqual({})
 
     expect((await jobById(job.id)).status).toBe('done')
   })

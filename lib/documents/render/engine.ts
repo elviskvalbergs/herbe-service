@@ -20,6 +20,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { eq } from 'drizzle-orm'
 import * as schema from '@/drizzle/schema'
 import { buildOrderReportContext } from '../context'
+import { applyComputedFields } from '../computed/sandbox'
 import { renderBuiltinOrderReportHtml, type TenantBranding } from '../builtin-report'
 import { convertDocxToPdf, convertHtmlToPdf, requireGotenberg } from '../convert/gotenberg'
 import { renderDocx } from '../docx/engine'
@@ -106,6 +107,11 @@ async function renderJob(
   // built-in report explicitly states "no worksheets" rather than the job
   // dying on a state the operator can't see.
   const context = await buildOrderReportContext(db, { tenantId: job.tenantId, orderId: job.orderId })
+
+  // WS6 computed-fields seam (plan decision 12): exercise the shared sandbox
+  // seam even though herbe.service ships zero definitions — the call is real,
+  // the result is {} today. WS6 will source real definitions here.
+  context.computed = applyComputedFields(context, [])
 
   const template = await getActiveTemplate(db, { tenantId: job.tenantId, docType: job.docType })
 
