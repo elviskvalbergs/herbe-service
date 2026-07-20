@@ -1,7 +1,8 @@
 // lib/settings/user-prefs.ts
 //
 // WS1 Task 3: user-level settings model — locale + display-scheme
-// preference, stored directly on `users` (0020_user_settings.sql), same
+// preference, stored directly on `users` (0022_user_settings.sql, renumbered
+// past WS4's 0020_erp_push_queue.sql on merge), same
 // convention as password_hash/mfa_* on that table. Validated here rather
 // than coerced: an invalid locale or scheme is a caller bug, not a value to
 // silently fall back from.
