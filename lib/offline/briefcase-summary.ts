@@ -17,7 +17,7 @@
 // 'use client' sub-component merging its own count into this loader's
 // buckets client-side; deferred as a follow-on wiring detail (see task-7
 // report) rather than forced in here.
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import * as schema from '@/drizzle/schema'
 import type { BriefcaseBucket } from '@/components/briefcase-summary'
@@ -33,13 +33,19 @@ export async function getBriefcaseSummary(
     .from(schema.scopeMembership)
     .where(and(eq(schema.scopeMembership.userId, opts.userId), isNull(schema.scopeMembership.outScopeSeq)))
 
-  const pendingRows = await db
-    .select({ id: schema.outboxOps.id })
+  // outbox_ops is tenant-wide and accumulates specifically during sync
+  // degradation — exactly when this bucket needs to report a number cheaply,
+  // not fetch potentially thousands of rows. count(*)::int here (rather than
+  // select+.length as above) avoids that; the ::int cast keeps drizzle/pg's
+  // count() as a JS number instead of the string postgres.js otherwise
+  // returns for bigint-typed aggregates.
+  const [pendingCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
     .from(schema.outboxOps)
     .where(and(eq(schema.outboxOps.tenantId, opts.tenantId), eq(schema.outboxOps.status, 'pending')))
 
   return [
     { label: 'Assigned to you', count: scopeRows.length },
-    { label: 'Pending sync', count: pendingRows.length },
+    { label: 'Pending sync', count: pendingCount.count },
   ]
 }
