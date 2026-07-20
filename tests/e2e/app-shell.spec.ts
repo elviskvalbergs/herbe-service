@@ -33,6 +33,11 @@ test.describe('manifest', () => {
     const sizes = manifest.icons.map((icon: { sizes: string }) => icon.sizes)
     expect(sizes).toEqual(expect.arrayContaining(['192x192', '512x512']))
 
+    // Regression coverage for the theme_color fix (was `#000000`, the
+    // generic Chromium default — now the real brand forest green used for
+    // browser chrome / task switcher / splash background).
+    expect(manifest.theme_color).toBe('#134A40')
+
     // Not just referenced — each icon file must actually be served, since an
     // empty/broken icons list is exactly the bug this task fixed (Task 1's
     // manifest.json shipped with `icons: []`, which would make this
@@ -86,6 +91,24 @@ test.describe('offline resilience', () => {
     await page.reload()
     await expect(page).toHaveURL(/\/today$/)
 
+    // page.reload() resolves on the `load` event, but Workbox's NetworkFirst
+    // strategy writes the response into the "pages" cache inside the fetch
+    // event's event.waitUntil() — which isn't guaranteed to have settled by
+    // then. Without this wait, setOffline(true) below can race ahead of the
+    // cache write, causing an intermittent flake with no actual code
+    // regression. Confirmed cache name directly in the built public/sw.js
+    // (the same-origin, non-/api/ NetworkFirst route registers under
+    // cacheName "pages").
+    await page.waitForFunction(
+      async () => {
+        const cache = await caches.open('pages')
+        const keys = await cache.keys()
+        return keys.some((req) => new URL(req.url).pathname === '/today')
+      },
+      undefined,
+      { timeout: 10_000 },
+    )
+
     await context.setOffline(true)
     try {
       await page.reload()
@@ -93,6 +116,11 @@ test.describe('offline resilience', () => {
       // served from the SW's "pages" NetworkFirst runtime cache even though
       // the network is down — even if the data on the page is stale/empty.
       await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+      // The header's sync-status chip must also reflect reality offline —
+      // not just the tab bar shell around it (components/sync-status-chip.tsx
+      // derives `state: 'offline'` from navigator.onLine via
+      // useSyncExternalStore, exposed as a stable data-state attribute).
+      await expect(page.getByTestId('sync-status-chip')).toHaveAttribute('data-state', 'offline')
     } finally {
       await context.setOffline(false)
     }
