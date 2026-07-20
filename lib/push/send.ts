@@ -59,6 +59,10 @@ export async function sendPushToUser(db: Db, userId: string, payload: unknown): 
         await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, subscription.id))
         removed++
       } else {
+        console.error(
+          `[push] sendNotification failed for subscription ${subscription.id} (${subscription.endpoint}): statusCode=${statusCode ?? 'unknown'}`,
+          err,
+        )
         failed++
       }
     }

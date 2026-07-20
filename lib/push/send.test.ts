@@ -167,4 +167,23 @@ describe('sendPushToUser', () => {
     const remaining = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, user.id))
     expect(remaining).toHaveLength(2)
   })
+
+  it('continues to all subscriptions and reports a full failed count when every send fails identically (e.g. systemic VAPID misconfiguration)', async () => {
+    const user = await makeUser('push-send-uniform-failure')
+    await db.insert(schema.pushSubscriptions).values([
+      { userId: user.id, endpoint: 'https://push.example/uniform-1', p256dh: 'p1', auth: 'a1' },
+      { userId: user.id, endpoint: 'https://push.example/uniform-2', p256dh: 'p2', auth: 'a2' },
+      { userId: user.id, endpoint: 'https://push.example/uniform-3', p256dh: 'p3', auth: 'a3' },
+    ])
+    sendNotificationMock.mockRejectedValue(Object.assign(new Error('Bad Request'), { statusCode: 400 }))
+
+    const { sendPushToUser } = await import('./send')
+    const result = await sendPushToUser(db, user.id, { title: 'Hi' })
+
+    expect(result).toEqual({ sent: 0, removed: 0, failed: 3 })
+    expect(sendNotificationMock).toHaveBeenCalledTimes(3)
+
+    const remaining = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, user.id))
+    expect(remaining).toHaveLength(3)
+  })
 })
