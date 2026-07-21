@@ -24,6 +24,12 @@ const redirectMock = vi.fn((url: string) => {
 })
 vi.mock('next/navigation', () => ({ redirect: (url: string) => redirectMock(url) }))
 
+// JobsPage links to the detail page with next/link's Link, which crashes on
+// import under this project's forced 'react-server' resolve condition (see
+// components/field-tab-bar.test.ts for the full explanation) — stubbed here
+// purely to make the module loadable.
+vi.mock('next/link', () => ({ default: (props: Record<string, unknown>) => props }))
+
 vi.mock('next-intl/server', () => ({
   getTranslations: async (_namespace: string) => (key: string) => key,
 }))

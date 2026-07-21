@@ -13,6 +13,7 @@
 // app/(field)/today/page.tsx does. The FIX-9 field-role gate right after the
 // session guard is preserved from the Task 5 stub this page replaces.
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
@@ -61,13 +62,13 @@ export default async function JobsPage() {
         <ul className="flex flex-col gap-3">
           {jobs.map((job) => (
             <li key={job.id} className="border-b border-[var(--border)] pb-3 text-sm">
-              <a href={`/jobs/${job.id}`} className="flex flex-col gap-1">
+              <Link href={`/jobs/${job.id}`} className="flex flex-col gap-1">
                 <span className="font-semibold text-[var(--herbe-ink)]">{job.customerName}</span>
                 <span className="text-[var(--fg-muted)]">{job.orderSummary}</span>
                 <span className="text-xs font-medium uppercase text-[var(--fg-muted)]">
                   {t(STATUS_LABEL_KEYS[job.status])}
                 </span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>

@@ -18,6 +18,7 @@
 // explicitly rather than assuming the role list and the capability matrix
 // never drift apart).
 import { notFound, redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
@@ -55,9 +56,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-8">
-      <a href="/jobs" className="text-sm font-semibold underline">
+      <Link href="/jobs" className="text-sm font-semibold underline">
         {t('back_to_list')}
-      </a>
+      </Link>
       <h1 className="text-lg font-semibold">{customer?.name ?? ''}</h1>
       <p className="text-sm text-[var(--fg-muted)]">{order?.description ?? order?.orderNumber ?? ''}</p>
       <p className="text-xs font-medium uppercase text-[var(--fg-muted)]">
