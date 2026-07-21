@@ -48,8 +48,17 @@ describe('getVisibleNavSections', () => {
     expect(keys).not.toContain('dispatch')
   })
 
-  it('shows admin only Settings/Admin — ROLE_CAPABILITIES gives admin no dispatcher/back-office capabilities', () => {
-    expect(getVisibleNavSections('admin').map((s) => s.key)).toEqual(['settings'])
+  it('shows admin every section — admin is additive (FIX-14), so it holds every nav capability', () => {
+    expect(getVisibleNavSections('admin').map((s) => s.key)).toEqual([
+      'dispatch',
+      'orders',
+      'worksheets',
+      'customers',
+      'service-items',
+      'stock',
+      'reports',
+      'settings',
+    ])
   })
 
   it('shows technician and team_lead nothing — neither role has any office-shell capability', () => {

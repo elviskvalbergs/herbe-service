@@ -44,7 +44,18 @@ async function makeCompany(slug: string) {
     .insert(schema.erpCompanies)
     .values({ tenantId: tenant.id, displayName: slug, adapterType: 'standard_books', adapterConfigJson: {} })
     .returning()
-  return { tenantId: tenant.id, erpCompanyId: company.id }
+  // FIX-6: the route now uses getVerifiedSession, which re-checks
+  // users.session_version against the JWT claim — so a real user row is
+  // required for the mocked session to verify.
+  const [user] = await db.insert(schema.users).values({ tenantId: tenant.id, email: `${slug}@sync.test` }).returning()
+  return { tenantId: tenant.id, erpCompanyId: company.id, user }
+}
+
+function sessionFor(user: { id: string; tenantId: string; sessionVersion: number }) {
+  return {
+    user: { id: user.id, tenantId: user.tenantId, sessionVersion: user.sessionVersion },
+    expires: '2099-01-01T00:00:00.000Z',
+  }
 }
 
 describe('GET /api/sync/customers', () => {
@@ -63,9 +74,9 @@ describe('GET /api/sync/customers', () => {
   })
 
   it('returns only rows with changeSeq greater than "after", scoped to the given tenant', async () => {
-    const { tenantId, erpCompanyId } = await makeCompany('delta-tenant')
+    const { tenantId, erpCompanyId, user } = await makeCompany('delta-tenant')
     const other = await makeCompany('other-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    authMock.mockResolvedValue(sessionFor(user))
 
     const [c1] = await db
       .insert(schema.customers)
@@ -100,8 +111,8 @@ describe('GET /api/sync/customers', () => {
   })
 
   it('returns the unchanged cursor and no rows when nothing changed since "after"', async () => {
-    const { tenantId, erpCompanyId } = await makeCompany('no-delta-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const { tenantId, erpCompanyId, user } = await makeCompany('no-delta-tenant')
+    authMock.mockResolvedValue(sessionFor(user))
     const [c1] = await db
       .insert(schema.customers)
       .values({ tenantId, erpCompanyId, erpRef: 'CUST001', name: 'First Client', changeSeq: BigInt(0) })
@@ -117,8 +128,8 @@ describe('GET /api/sync/customers', () => {
   })
 
   it('defaults "after" to 0 when the query param is omitted, returning every row for the tenant', async () => {
-    const { tenantId, erpCompanyId } = await makeCompany('no-after-tenant')
-    authMock.mockResolvedValue({ user: { id: 'test-user-id', tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    const { tenantId, erpCompanyId, user } = await makeCompany('no-after-tenant')
+    authMock.mockResolvedValue(sessionFor(user))
     await db
       .insert(schema.customers)
       .values({ tenantId, erpCompanyId, erpRef: 'CUST001', name: 'First Client', changeSeq: BigInt(0) })
@@ -144,7 +155,7 @@ describe('GET /api/sync/customers', () => {
       .values({ tenantId: b.tenantId, erpCompanyId: b.erpCompanyId, erpRef: 'CUST-B1', name: 'Tenant B Client', changeSeq: BigInt(0) })
 
     // The logged-in session belongs to tenant A...
-    authMock.mockResolvedValue({ user: { id: 'attacker', tenantId: a.tenantId }, expires: '2099-01-01T00:00:00.000Z' })
+    authMock.mockResolvedValue(sessionFor(a.user))
 
     // ...but the request tries to reach tenant B's data by supplying tenantId=B.
     const { GET } = await import('./route')
@@ -157,8 +168,11 @@ describe('GET /api/sync/customers', () => {
   })
 
   it('rejects with 401 when the session has no tenantId, rather than querying unscoped', async () => {
-    const { tenantId } = await makeCompany('no-tenant-claim')
-    authMock.mockResolvedValue({ user: { id: 'x' }, expires: '2099-01-01T00:00:00.000Z' })
+    const { tenantId, user } = await makeCompany('no-tenant-claim')
+    // A verified session (real user id + matching sessionVersion) but with no
+    // tenantId claim — the route's tenant guard, not getVerifiedSession, is
+    // what must reject it here.
+    authMock.mockResolvedValue({ user: { id: user.id, sessionVersion: user.sessionVersion }, expires: '2099-01-01T00:00:00.000Z' })
 
     const { GET } = await import('./route')
     const res = await GET(new Request(`http://x/api/sync/customers?tenantId=${tenantId}&after=0`))

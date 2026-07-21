@@ -105,4 +105,39 @@ describe('authorizeCredentials', () => {
     })
     expect(result?.id).toBe(user.id)
   })
+
+  // FIX-7: login is throttled per IP+tenant+email (policy 'login' = 10/min),
+  // checked BEFORE argon2 so a flood can't burn CPU or brute-force the
+  // password/TOTP. Fake Date pins the fixed window. A throttled attempt
+  // returns null even with the correct password.
+  it('throttles repeated login attempts from the same IP+tenant+email (FIX-7)', async () => {
+    const { user, tenantId } = await makeUser({ role: 'admin', password: 'correct horse battery staple' })
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(Date.UTC(2026, 0, 2, 9, 0, 0)))
+    try {
+      for (let i = 0; i < 10; i++) {
+        await authorizeCredentials(db, { tenantId, email: user.email, password: 'wrong', ip: '203.0.113.7' })
+      }
+      // 11th attempt is over the cap: even the correct password is rejected.
+      const throttled = await authorizeCredentials(db, {
+        tenantId,
+        email: user.email,
+        password: 'correct horse battery staple',
+        ip: '203.0.113.7',
+      })
+      expect(throttled).toBeNull()
+
+      // A different source IP has its own bucket and still authenticates.
+      const otherIp = await authorizeCredentials(db, {
+        tenantId,
+        email: user.email,
+        password: 'correct horse battery staple',
+        ip: '198.51.100.9',
+      })
+      expect(otherIp?.id).toBe(user.id)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

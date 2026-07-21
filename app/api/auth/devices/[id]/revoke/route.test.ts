@@ -102,6 +102,31 @@ describe('POST /api/auth/devices/[id]/revoke', () => {
     expect(updated.revokedAt).not.toBeNull()
   })
 
+  // FIX-8: revoking a device must invalidate the owner's live session, not
+  // just stamp revokedAt — nothing reads revokedAt on the session path and
+  // sessions aren't device-bound, so bumping session_version is the only
+  // lever that makes getVerifiedSession reject the owner's JWT.
+  it("bumps the owner's session_version so the wipe invalidates their session (FIX-8)", async () => {
+    const user = await makeUser('revoke-bump', 'bump@herbe-service.test')
+    const device = await makeDevice(user, "Bump's phone")
+    authMock.mockResolvedValue(sessionFor(user))
+
+    const [beforeRow] = await db
+      .select({ sessionVersion: schema.users.sessionVersion })
+      .from(schema.users)
+      .where(eq(schema.users.id, user.id))
+
+    const { POST } = await import('./route')
+    const res = await POST(revokeRequest(device.id), { params: Promise.resolve({ id: device.id }) })
+    expect(res.status).toBe(200)
+
+    const [afterRow] = await db
+      .select({ sessionVersion: schema.users.sessionVersion })
+      .from(schema.users)
+      .where(eq(schema.users.id, user.id))
+    expect(afterRow.sessionVersion).toBe(beforeRow.sessionVersion + 1)
+  })
+
   it("forbids a technician from revoking another user's device", async () => {
     const owner = await makeUser('revoke-tech-owner', 'owner@herbe-service.test')
     const device = await makeDevice(owner, "Owner's phone")

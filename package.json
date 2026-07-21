@@ -13,6 +13,7 @@
     "test:live": "RUN_LIVE_ERP_TESTS=1 vitest run tests/live",
     "test:gotenberg": "RUN_GOTENBERG_TESTS=1 vitest run tests/gotenberg",
     "test:e2e": "playwright test",
+    "lhci": "lhci autorun",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs"
   },
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^10.5.0",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
     "@types/node": "^20",
