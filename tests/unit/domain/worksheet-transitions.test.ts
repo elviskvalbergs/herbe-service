@@ -74,7 +74,9 @@ describe('transitionWorksheet', () => {
     const worksheet = await insertWorksheet(db, { tenantId, orderId: order.id })
     await setWorksheetStatus(db, tenantId, worksheet.id, 'Done')
 
-    await expect(transitionWorksheet(db, tenantId, worksheet.id, 'Approved')).rejects.toThrow()
+    await expect(transitionWorksheet(db, tenantId, worksheet.id, 'Approved')).rejects.toThrow(
+      DomainTransitionError,
+    )
 
     const got = await getWorksheetById(db, tenantId, worksheet.id)
     expect(got?.status).toBe('Done')

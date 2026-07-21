@@ -21,8 +21,8 @@ const TRANSITIONS: Record<WorksheetStatus, WorksheetStatus[]> = {
 };
 
 export class DomainTransitionError extends Error {
-  constructor(from: WorksheetStatus, to: WorksheetStatus) {
-    super(`Illegal worksheet transition: ${from} → ${to}`);
+  constructor(from: WorksheetStatus, to: WorksheetStatus, message?: string) {
+    super(message ?? `Illegal worksheet transition: ${from} → ${to}`);
     this.name = 'DomainTransitionError';
   }
 }

@@ -34,7 +34,11 @@ export async function transitionWorksheet(
   // setter does. Refuse it here so a future caller can't silently bypass
   // that guard by calling the generic transition helper instead.
   if (to === 'Approved') {
-    throw new DomainTransitionError(current, to)
+    throw new DomainTransitionError(
+      current,
+      to,
+      'Approved is reachable only via approveWorksheet (which gates on the technician identity link and enqueues the ERP push group), not via transitionWorksheet',
+    )
   }
 
   assertWorksheetTransition(current, to)
