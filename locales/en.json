@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "New booking",
+    "customer_label": "Customer",
+    "customer_placeholder": "Select a customer",
+    "technician_label": "Technician",
+    "technician_placeholder": "Select a technician",
+    "description_label": "Description",
+    "submit_label": "Create booking",
+    "error_generic": "Could not create the booking. Try again."
+  }
+}

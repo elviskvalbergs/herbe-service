@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "Uus tellimus",
+    "customer_label": "Klient",
+    "customer_placeholder": "Vali klient",
+    "technician_label": "Tehnik",
+    "technician_placeholder": "Vali tehnik",
+    "description_label": "Kirjeldus",
+    "submit_label": "Loo tellimus",
+    "error_generic": "Tellimuse loomine ebaõnnestus. Proovi uuesti."
+  }
+}

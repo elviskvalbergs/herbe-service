@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "Jauns pasūtījums",
+    "customer_label": "Klients",
+    "customer_placeholder": "Izvēlieties klientu",
+    "technician_label": "Tehniķis",
+    "technician_placeholder": "Izvēlieties tehniķi",
+    "description_label": "Apraksts",
+    "submit_label": "Izveidot pasūtījumu",
+    "error_generic": "Neizdevās izveidot pasūtījumu. Mēģiniet vēlreiz."
+  }
+}

@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "Uusi varaus",
+    "customer_label": "Asiakas",
+    "customer_placeholder": "Valitse asiakas",
+    "technician_label": "Asentaja",
+    "technician_placeholder": "Valitse asentaja",
+    "description_label": "Kuvaus",
+    "submit_label": "Luo varaus",
+    "error_generic": "Varauksen luonti epäonnistui. Yritä uudelleen."
+  }
+}

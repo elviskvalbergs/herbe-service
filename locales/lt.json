@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "Naujas užsakymas",
+    "customer_label": "Klientas",
+    "customer_placeholder": "Pasirinkite klientą",
+    "technician_label": "Technikas",
+    "technician_placeholder": "Pasirinkite techniką",
+    "description_label": "Aprašymas",
+    "submit_label": "Sukurti užsakymą",
+    "error_generic": "Nepavyko sukurti užsakymo. Bandykite dar kartą."
+  }
+}

@@ -1,1 +1,13 @@
-{ "app": { "name": "herbe.service" } }
+{
+  "app": { "name": "herbe.service" },
+  "booking": {
+    "title": "Ny bokning",
+    "customer_label": "Kund",
+    "customer_placeholder": "Välj en kund",
+    "technician_label": "Tekniker",
+    "technician_placeholder": "Välj en tekniker",
+    "description_label": "Beskrivning",
+    "submit_label": "Skapa bokning",
+    "error_generic": "Kunde inte skapa bokningen. Försök igen."
+  }
+}
