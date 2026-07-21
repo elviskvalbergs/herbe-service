@@ -1,0 +1,19 @@
+{
+  "//": "FIX-17 (docs/27): perf + a11y budget for CI. One Lighthouse run covers both — its accessibility category is axe-core-powered. Assertions are warn-level (ADVISORY): LHCI exits 0 even below threshold, so CI never blocks while the app is still placeholder screens. /login does not exist until WS9; until then this audits whatever renders. Flip the assertions to 'error' (and drop the `|| true` in bitbucket-pipelines.yml) once real screens exist and the thresholds are trustworthy.",
+  "ci": {
+    "collect": {
+      "startServerCommand": "pnpm exec next start -p 3100",
+      "url": ["http://localhost:3100/login"],
+      "numberOfRuns": 1,
+      "settings": { "preset": "desktop" }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["warn", { "minScore": 0.8 }],
+        "categories:accessibility": ["warn", { "minScore": 0.9 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }]
+      }
+    },
+    "upload": { "target": "filesystem", "outputDir": ".lighthouseci" }
+  }
+}
