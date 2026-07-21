@@ -17,7 +17,7 @@ import path from 'node:path'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { and, eq, inArray } from 'drizzle-orm'
 import postgres from 'postgres'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
@@ -37,6 +37,18 @@ import { getStepsForGroup } from '@/lib/sync/push/store'
 import { sweepInvoiceStatus } from '@/lib/sync/invoice-status'
 import { matchUsersByEmail } from '@/lib/auth/identity-link'
 import type { ErpAdapter } from '@herbe/erp-core'
+
+// T9 (Task 7, .superpowers/sdd/task-7-brief.md): the route handlers under
+// app/api/** import `@/lib/db`, which reads DATABASE_URL at module-load time
+// and throws if unset — so route modules are always dynamically imported
+// (never statically) after beforeAll below has set process.env.DATABASE_URL,
+// same convention as app/api/worksheets/[id]/approve/route.test.ts. That
+// route also calls getVerifiedSession -> @/lib/auth's `auth()`, which this
+// suite mocks the same way every other route-test file does (only the
+// `auth` export is replaced; nothing else in this file touches
+// handlers/signIn/signOut, so this is safe file-wide).
+const authMock = vi.fn()
+vi.mock('@/lib/auth', () => ({ auth: () => authMock() }))
 
 // Tiny inline KEY=VALUE loader for the worktree-local .env.vars, instead of
 // pulling in a dotenv dependency for a five-line file: read the file, skip
@@ -61,6 +73,17 @@ function loadEnvVarsFile(filePath: string): void {
 
 loadEnvVarsFile(path.resolve(process.cwd(), '.env.vars'))
 
+// T9: builds the session object getVerifiedSession expects — same shape as
+// every route-test file's own sessionFor helper (id/tenantId/role/
+// sessionVersion, sessionVersion must match the DB row or getVerifiedSession
+// silently rejects it as revoked).
+function sessionFor(user: { id: string; tenantId: string; role: string; sessionVersion: number }) {
+  return {
+    user: { id: user.id, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion },
+    expires: '2099-01-01T00:00:00.000Z',
+  }
+}
+
 describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
   let testDb: TestDatabase
   let sql: ReturnType<typeof postgres>
@@ -77,6 +100,10 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
 
     testDb = await createTestDatabase()
     await runMigrations(testDb.url)
+    // T9 below dynamically imports route modules that transitively import
+    // @/lib/db, which reads this at module-load time — see the comment at
+    // this file's top import block.
+    process.env.DATABASE_URL = testDb.url
     sql = postgres(testDb.url)
     db = drizzle(sql, { schema })
 
@@ -816,5 +843,194 @@ describe.skipIf(!process.env.RUN_LIVE_ERP_TESTS)('live ERP contract', () => {
       expect(result.checked).toBeGreaterThan(0)
       console.log(`live sweepInvoiceStatus: ${JSON.stringify(result)}`)
     }, 60_000)
+  })
+
+  // -------------------------------------------------------------------------
+  // M1 vertical slice, Task 7 (.superpowers/sdd/task-7-brief.md): the LIVE
+  // route-level proof — the same book -> execute -> approve -> WS4 push ->
+  // ERP read-back loop as T7 above, but driven through the HTTP route
+  // handlers (app/api/service-orders, app/api/worksheets/[id]/transition,
+  // app/api/worksheets/[id]/approve) instead of calling
+  // insertServiceOrder/transitionWorksheet/approveWorksheet directly. T7.1-
+  // T7.6 already proved the domain-level chain against this same live ERP;
+  // this block's job is only to prove the ROUTE layer reaches the same
+  // domain functions correctly (session/role gates, request/response shape)
+  // against a real backend, not to re-derive the push mechanics themselves.
+  //
+  // Adapter wiring: no gap here — the routes' own buildAdapterForConnection
+  // resolves the SAME erp_companies row (`companyId`) this suite's beforeAll
+  // already built via buildAdapterForConnection, with real stored creds. The
+  // route dynamic-imports (see top-of-file comment) and vi.mock('@/lib/auth')
+  // seam are the only new plumbing this block needs.
+  //
+  // Runs last, reusing db/adapter/companyId/tenantId from the outer
+  // beforeAll and the customers/service_items T7's syncConnection test
+  // already ingested. Every record created here carries the 'herbe-live-test'
+  // marker convention (order description / worksheet workDescription), same
+  // discipline as T7/T8.
+  describe('T9 — M1 vertical slice via routes', () => {
+    it('T9.1 books, executes, approves, and pushes a live SVOVc + WSVc entirely through the routes', async () => {
+      const { POST: createOrder } = await import('@/app/api/service-orders/route')
+      const { POST: transition } = await import('@/app/api/worksheets/[id]/transition/route')
+      const { POST: approve } = await import('@/app/api/worksheets/[id]/approve/route')
+
+      function jsonRequest(url: string, body: unknown) {
+        return new Request(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      }
+      function emptyPost(url: string) {
+        return new Request(url, { method: 'POST' })
+      }
+
+      const [dispatcherUser] = await db
+        .insert(schema.users)
+        .values({ tenantId, email: `herbe-live-test-t9-dispatcher-${randomUUID()}@example.invalid`, role: 'dispatcher' })
+        .returning()
+
+      // Technician + identity link, resolved once (customer-independent) —
+      // EMCode reused from an existing demo WSVc, same discovery T7.3 used
+      // (never logged — it's a real ERP person code).
+      const [techUser] = await db
+        .insert(schema.users)
+        .values({ tenantId, email: `herbe-live-test-t9-tech-${randomUUID()}@example.invalid`, role: 'technician' })
+        .returning()
+      const existingWsRows = await adapter.fetchRecords('WSVc', {})
+      const emCodeSource = existingWsRows.find((r) => typeof r.EMCode === 'string' && r.EMCode)
+      expect(emCodeSource, 'an existing demo WSVc with a non-empty EMCode must exist').toBeTruthy()
+      const t9EmCode = String(emCodeSource!.EMCode)
+      await db.insert(schema.identityLinks).values({
+        tenantId,
+        userId: techUser.id,
+        provider: 'erp',
+        erpCompanyId: companyId,
+        externalId: t9EmCode,
+        linkedBy: 'test',
+      })
+
+      // Candidate customers: same strategy as T7.1 — customerIds drawn from
+      // ERP-ingested service orders are proven-valid CustCodes for THIS
+      // register, unlike an arbitrary CUVc row. Bounded retry across a few
+      // distinct candidates in case one trips the same ERP-side business
+      // rule T7.1 documented (an unrelated Objects-tag data issue on some
+      // demo customers), without weakening any assertion once one succeeds.
+      const existingOrders = await db
+        .select({ customerId: schema.serviceOrders.customerId })
+        .from(schema.serviceOrders)
+        .where(eq(schema.serviceOrders.erpCompanyId, companyId))
+      expect(existingOrders.length, 'ERP-ingested service orders must exist from the T7 syncConnection test above').toBeGreaterThan(0)
+      const candidateCustomerIds = [...new Set(existingOrders.map((o) => o.customerId))].slice(0, 5)
+
+      // A resolvable service item (serialNr + itemCode) to give the order/
+      // worksheet one real line row each — the booking/transition routes
+      // don't expose a "add row" endpoint in this slice, so these two
+      // inserts are direct, same as T7.1/T7.3's own approach.
+      const items = await db.select().from(schema.serviceItems).where(eq(schema.serviceItems.erpCompanyId, companyId))
+      const item = items.find((row) => {
+        const attrs = (row.attributes ?? {}) as Record<string, unknown>
+        return !!row.serialNr && typeof attrs.itemCode === 'string' && attrs.itemCode.length > 0
+      })
+      expect(item, 'an ERP-ingested service item with both serialNr and attributes.itemCode must exist').toBeTruthy()
+
+      let finalOrderId = ''
+      let finalWorksheetId = ''
+      let finalPushSummary: Record<string, unknown> | null = null
+      let attempts = 0
+      let lastPushSummary = ''
+
+      for (const candidateCustomerId of candidateCustomerIds) {
+        attempts++
+
+        authMock.mockResolvedValue(sessionFor(dispatcherUser))
+        const bookRes = await createOrder(
+          jsonRequest('http://localhost/api/service-orders', {
+            erpCompanyId: companyId,
+            customerId: candidateCustomerId,
+            technicianUserId: techUser.id,
+            description: `herbe-live-test WS4 T9 ${new Date().toISOString()}`,
+          }),
+        )
+        expect(bookRes.status).toBe(201)
+        const { orderId, worksheetId } = await bookRes.json()
+
+        await db.insert(schema.serviceOrderRows).values({ orderId, serviceItemId: item!.id, chargeType: 'invoiceable' })
+        await db.insert(schema.worksheetRows).values({
+          worksheetId,
+          serviceItemId: item!.id,
+          description: 'herbe-live-test WS4 T9 worksheet row',
+          quantity: '1',
+          chargeType: 'invoiceable',
+        })
+
+        authMock.mockResolvedValue(sessionFor(techUser))
+        const acceptedRes = await transition(
+          jsonRequest(`http://localhost/api/worksheets/${worksheetId}/transition`, { to: 'Accepted' }),
+          { params: Promise.resolve({ id: worksheetId }) },
+        )
+        expect(acceptedRes.status).toBe(200)
+        const inProgressRes = await transition(
+          jsonRequest(`http://localhost/api/worksheets/${worksheetId}/transition`, { to: 'In progress' }),
+          { params: Promise.resolve({ id: worksheetId }) },
+        )
+        expect(inProgressRes.status).toBe(200)
+        const doneRes = await transition(
+          jsonRequest(`http://localhost/api/worksheets/${worksheetId}/transition`, {
+            to: 'Done',
+            workDescription: 'herbe-live-test WS4 T9 done',
+          }),
+          { params: Promise.resolve({ id: worksheetId }) },
+        )
+        expect(doneRes.status).toBe(200)
+
+        authMock.mockResolvedValue(sessionFor(dispatcherUser))
+        const approveRes = await approve(emptyPost(`http://localhost/api/worksheets/${worksheetId}/approve`), {
+          params: Promise.resolve({ id: worksheetId }),
+        })
+        expect(approveRes.status).toBe(200)
+        const approveBody = await approveRes.json()
+        lastPushSummary = JSON.stringify(approveBody.pushSummary)
+
+        if (
+          approveBody.pushSummary &&
+          approveBody.pushSummary.stepsSucceeded === 2 &&
+          approveBody.pushSummary.stepsDead === 0
+        ) {
+          finalOrderId = orderId
+          finalWorksheetId = worksheetId
+          finalPushSummary = approveBody.pushSummary
+          break
+        }
+      }
+
+      console.log(`live T9 route push: tried ${attempts} candidate customer(s), succeeded: ${!!finalPushSummary}`)
+      expect(
+        finalPushSummary,
+        `all ${attempts} candidate customers failed to push through the routes — last pushSummary: ${lastPushSummary}`,
+      ).toBeTruthy()
+      expect(finalPushSummary).toMatchObject({ stepsSucceeded: 2, stepsDead: 0 })
+
+      const afterWs = await getWorksheetById(db, tenantId, finalWorksheetId)
+      expect(afterWs!.status).toBe('Synced')
+      expect(afterWs!.workDescription).toBe('herbe-live-test WS4 T9 done')
+
+      const orderRefs = await getErpRefs(db, tenantId, 'service_order', finalOrderId)
+      expect(orderRefs).toHaveLength(1)
+      expect(orderRefs[0]).toMatchObject({ purpose: 'primary', register: 'SVOVc' })
+
+      const wsRefs = await getErpRefs(db, tenantId, 'worksheet', finalWorksheetId)
+      expect(wsRefs).toHaveLength(1)
+      expect(wsRefs[0]).toMatchObject({ purpose: 'primary', register: 'WSVc' })
+
+      const svoRows = await adapter.fetchRecords('SVOVc', { 'filter.SerNr': orderRefs[0].recordRef })
+      const wsRows = await adapter.fetchRecords('WSVc', { 'filter.SerNr': wsRefs[0].recordRef })
+      expect(svoRows).toHaveLength(1)
+      expect(wsRows).toHaveLength(1)
+      expect(String(wsRows[0].SVONr)).toBe(String(svoRows[0].SerNr))
+      console.log(
+        `live T9 read-back: SVOVc count=1, WSVc count=1, WSVc.SVONr matches SVOVc.SerNr: ${String(wsRows[0].SVONr) === String(svoRows[0].SerNr)}`,
+      )
+    }, 120_000)
   })
 })
