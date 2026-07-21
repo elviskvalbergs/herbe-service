@@ -9,5 +9,25 @@
     "description_label": "Aprašymas",
     "submit_label": "Sukurti užsakymą",
     "error_generic": "Nepavyko sukurti užsakymo. Bandykite dar kartą."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Mano darbai",
+    "jobs_empty": "Kol kas nepriskirta jokių darbų.",
+    "back_to_list": "Atgal į darbus",
+    "work_description_label": "Darbo pastabos",
+    "action_accept": "Priimti",
+    "action_start": "Pradėti",
+    "action_pause": "Pristabdyti",
+    "action_done": "Pažymėti kaip atliktą",
+    "error_generic": "Nepavyko atnaujinti darbo. Bandykite dar kartą.",
+    "status_draft": "Juodraštis",
+    "status_assigned": "Priskirtas",
+    "status_accepted": "Priimtas",
+    "status_in_progress": "Vykdomas",
+    "status_paused": "Pristabdytas",
+    "status_done": "Atliktas",
+    "status_approved": "Patvirtintas",
+    "status_synced": "Sinchronizuotas",
+    "status_rejected": "Atmestas"
   }
 }

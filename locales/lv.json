@@ -9,5 +9,25 @@
     "description_label": "Apraksts",
     "submit_label": "Izveidot pasūtījumu",
     "error_generic": "Neizdevās izveidot pasūtījumu. Mēģiniet vēlreiz."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Mani darbi",
+    "jobs_empty": "Pagaidām nav piešķirtu darbu.",
+    "back_to_list": "Atpakaļ pie darbiem",
+    "work_description_label": "Darba piezīmes",
+    "action_accept": "Pieņemt",
+    "action_start": "Sākt",
+    "action_pause": "Pauzēt",
+    "action_done": "Atzīmēt kā pabeigtu",
+    "error_generic": "Neizdevās atjaunināt darbu. Mēģiniet vēlreiz.",
+    "status_draft": "Melnraksts",
+    "status_assigned": "Piešķirts",
+    "status_accepted": "Pieņemts",
+    "status_in_progress": "Norisinās",
+    "status_paused": "Pauzēts",
+    "status_done": "Pabeigts",
+    "status_approved": "Apstiprināts",
+    "status_synced": "Sinhronizēts",
+    "status_rejected": "Noraidīts"
   }
 }

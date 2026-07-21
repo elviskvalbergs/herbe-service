@@ -1,15 +1,16 @@
 // app/(field)/field-stub-pages.test.tsx
 //
-// Covers the field-shell tab stubs (Jobs/Scan) that Task 5 creates as honest
+// Covers the field-shell tab stubs (Scan) that Task 5 creates as honest
 // "coming soon" chrome — same session-gate shape as
 // app/(field)/today/page.tsx (getVerifiedSession -> redirect('/login') when
 // absent), no branch logic of their own beyond that. Consolidated into one
 // test file (one test database) rather than near-identical page.test.tsx
 // files, since there's nothing page-specific to isolate beyond the title
-// text — same seams/mocks as app/page.test.tsx. More and Inbox were in this
-// list too until Task 7 (briefcase) and Task 8 (conflict inbox) gave them
-// real content — they now have their own DB-backed test files
-// (app/(field)/more/page.test.tsx, app/(field)/inbox/page.test.tsx).
+// text — same seams/mocks as app/page.test.tsx. Jobs, More, and Inbox were
+// in this list too until Task 5 (worksheet execution), Task 7 (briefcase),
+// and Task 8 (conflict inbox) gave them real content — they now have their
+// own DB-backed test files (app/(field)/jobs/page.test.tsx,
+// app/(field)/more/page.test.tsx, app/(field)/inbox/page.test.tsx).
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -56,10 +57,7 @@ function sessionFor(user: { id: string; tenantId: string; role: string; sessionV
   }
 }
 
-const STUB_PAGES = [
-  { name: 'JobsPage', modulePath: './jobs/page', title: 'Jobs' },
-  { name: 'ScanPage', modulePath: './scan/page', title: 'Scan' },
-] as const
+const STUB_PAGES = [{ name: 'ScanPage', modulePath: './scan/page', title: 'Scan' }] as const
 
 describe.each(STUB_PAGES)('$name (field shell tab stub)', ({ modulePath, title }) => {
   beforeEach(() => {

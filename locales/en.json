@@ -9,5 +9,25 @@
     "description_label": "Description",
     "submit_label": "Create booking",
     "error_generic": "Could not create the booking. Try again."
+  },
+  "worksheet_execution": {
+    "jobs_title": "My jobs",
+    "jobs_empty": "No jobs assigned yet.",
+    "back_to_list": "Back to jobs",
+    "work_description_label": "Work notes",
+    "action_accept": "Accept",
+    "action_start": "Start",
+    "action_pause": "Pause",
+    "action_done": "Mark done",
+    "error_generic": "Could not update the job. Try again.",
+    "status_draft": "Draft",
+    "status_assigned": "Assigned",
+    "status_accepted": "Accepted",
+    "status_in_progress": "In progress",
+    "status_paused": "Paused",
+    "status_done": "Done",
+    "status_approved": "Approved",
+    "status_synced": "Synced",
+    "status_rejected": "Rejected"
   }
 }

@@ -9,5 +9,25 @@
     "description_label": "Kuvaus",
     "submit_label": "Luo varaus",
     "error_generic": "Varauksen luonti epäonnistui. Yritä uudelleen."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Omat työt",
+    "jobs_empty": "Ei vielä osoitettuja töitä.",
+    "back_to_list": "Takaisin töihin",
+    "work_description_label": "Työn muistiinpanot",
+    "action_accept": "Hyväksy",
+    "action_start": "Aloita",
+    "action_pause": "Keskeytä",
+    "action_done": "Merkitse valmiiksi",
+    "error_generic": "Työn päivitys epäonnistui. Yritä uudelleen.",
+    "status_draft": "Luonnos",
+    "status_assigned": "Osoitettu",
+    "status_accepted": "Hyväksytty",
+    "status_in_progress": "Käynnissä",
+    "status_paused": "Keskeytetty",
+    "status_done": "Valmis",
+    "status_approved": "Vahvistettu",
+    "status_synced": "Synkronoitu",
+    "status_rejected": "Hylätty"
   }
 }

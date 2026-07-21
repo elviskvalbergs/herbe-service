@@ -9,5 +9,25 @@
     "description_label": "Kirjeldus",
     "submit_label": "Loo tellimus",
     "error_generic": "Tellimuse loomine ebaõnnestus. Proovi uuesti."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Minu tööd",
+    "jobs_empty": "Veel pole ühtegi tööd määratud.",
+    "back_to_list": "Tagasi tööde juurde",
+    "work_description_label": "Töö märkmed",
+    "action_accept": "Võta vastu",
+    "action_start": "Alusta",
+    "action_pause": "Peata",
+    "action_done": "Märgi valmis",
+    "error_generic": "Töö uuendamine ebaõnnestus. Proovi uuesti.",
+    "status_draft": "Mustand",
+    "status_assigned": "Määratud",
+    "status_accepted": "Vastu võetud",
+    "status_in_progress": "Pooleli",
+    "status_paused": "Peatatud",
+    "status_done": "Valmis",
+    "status_approved": "Kinnitatud",
+    "status_synced": "Sünkroonitud",
+    "status_rejected": "Tagasi lükatud"
   }
 }

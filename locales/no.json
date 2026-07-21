@@ -9,5 +9,25 @@
     "description_label": "Beskrivelse",
     "submit_label": "Opprett bestilling",
     "error_generic": "Kunne ikke opprette bestillingen. Prøv igjen."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Mine jobber",
+    "jobs_empty": "Ingen jobber tildelt ennå.",
+    "back_to_list": "Tilbake til jobber",
+    "work_description_label": "Arbeidsnotater",
+    "action_accept": "Godta",
+    "action_start": "Start",
+    "action_pause": "Pause",
+    "action_done": "Merk som ferdig",
+    "error_generic": "Kunne ikke oppdatere jobben. Prøv igjen.",
+    "status_draft": "Utkast",
+    "status_assigned": "Tildelt",
+    "status_accepted": "Godtatt",
+    "status_in_progress": "Pågår",
+    "status_paused": "Pauset",
+    "status_done": "Ferdig",
+    "status_approved": "Godkjent",
+    "status_synced": "Synkronisert",
+    "status_rejected": "Avvist"
   }
 }

@@ -9,5 +9,25 @@
     "description_label": "Beskrivning",
     "submit_label": "Skapa bokning",
     "error_generic": "Kunde inte skapa bokningen. Försök igen."
+  },
+  "worksheet_execution": {
+    "jobs_title": "Mina jobb",
+    "jobs_empty": "Inga jobb tilldelade ännu.",
+    "back_to_list": "Tillbaka till jobb",
+    "work_description_label": "Arbetsanteckningar",
+    "action_accept": "Acceptera",
+    "action_start": "Starta",
+    "action_pause": "Pausa",
+    "action_done": "Markera som klar",
+    "error_generic": "Det gick inte att uppdatera jobbet. Försök igen.",
+    "status_draft": "Utkast",
+    "status_assigned": "Tilldelad",
+    "status_accepted": "Accepterad",
+    "status_in_progress": "Pågår",
+    "status_paused": "Pausad",
+    "status_done": "Klar",
+    "status_approved": "Godkänd",
+    "status_synced": "Synkroniserad",
+    "status_rejected": "Avvisad"
   }
 }
