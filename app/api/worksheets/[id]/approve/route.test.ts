@@ -234,4 +234,50 @@ describe('POST /api/worksheets/[id]/approve', () => {
     expect(steps[0]).toMatchObject({ seq: 1, entityType: 'serviceOrder', entityId: order.id, register: 'SVOVc', op: 'create', status: 'dead' })
     expect(steps[1]).toMatchObject({ seq: 2, entityType: 'worksheet', entityId: worksheet.id, register: 'WSVc', op: 'create', status: 'pending' })
   })
+
+  it('returns 409 for a worksheet not in Done status (Assigned), leaving its status unchanged', async () => {
+    const tenant = await makeTenant('approve-409-tenant')
+    const company = await makeCompany(tenant.id, 'approve-409-company')
+    const customer = await makeCustomer(tenant.id, company.id, 'approve-409-customer')
+    const order = await insertServiceOrder(db, { tenantId: tenant.id, erpCompanyId: company.id, customerId: customer.id })
+    const technicianUser = await makeUser(tenant.id, 'tech-409@herbe-service.test', 'technician')
+    await linkTechnicianToErp(tenant.id, technicianUser.id, company.id, 'EM-409')
+    const worksheet = await insertWorksheet(db, {
+      tenantId: tenant.id,
+      erpCompanyId: company.id,
+      orderId: order.id,
+      technicianUserId: technicianUser.id,
+    })
+    await setWorksheetStatus(db, tenant.id, worksheet.id, 'Assigned')
+
+    const dispatcher = await makeUser(tenant.id, 'dispatcher-409@herbe-service.test', 'dispatcher')
+    authMock.mockResolvedValue(sessionFor(dispatcher))
+    const res = await call(worksheet.id)
+
+    // DomainTransitionError from approveWorksheet (assertWorksheetTransition
+    // only allows Done -> Approved) surfaces as 409, per this route's header
+    // comment.
+    expect(res.status).toBe(409)
+    const [row] = await db.select().from(schema.worksheets).where(eq(schema.worksheets.id, worksheet.id))
+    expect(row.status).toBe('Assigned')
+  })
+
+  it('returns 422 for a Done worksheet whose technician has no identity_links (erp) entry, leaving its status unchanged', async () => {
+    const tenant = await makeTenant('approve-422-tenant')
+    const company = await makeCompany(tenant.id, 'approve-422-company')
+    const customer = await makeCustomer(tenant.id, company.id, 'approve-422-customer')
+    const order = await insertServiceOrder(db, { tenantId: tenant.id, erpCompanyId: company.id, customerId: customer.id })
+    const technicianUser = await makeUser(tenant.id, 'tech-422@herbe-service.test', 'technician')
+    // Deliberately no linkTechnicianToErp call — approveWorksheet's plain
+    // Error for a missing identity_links row must surface as 422.
+    const worksheet = await makeDoneWorksheet(tenant.id, company.id, order.id, technicianUser.id)
+
+    const dispatcher = await makeUser(tenant.id, 'dispatcher-422@herbe-service.test', 'dispatcher')
+    authMock.mockResolvedValue(sessionFor(dispatcher))
+    const res = await call(worksheet.id)
+
+    expect(res.status).toBe(422)
+    const [row] = await db.select().from(schema.worksheets).where(eq(schema.worksheets.id, worksheet.id))
+    expect(row.status).toBe('Done')
+  })
 })
