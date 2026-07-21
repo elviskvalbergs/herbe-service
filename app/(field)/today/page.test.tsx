@@ -65,6 +65,15 @@ describe('TodayPage (field shell)', () => {
     expect(redirectMock).toHaveBeenCalledWith('/login')
   })
 
+  it('redirects a non-field role (dispatcher) to / (FIX-9)', async () => {
+    const user = await makeUser('today-dispatcher', 'dispatch@herbe-service.test', 'dispatcher')
+    authMock.mockResolvedValue(sessionFor(user))
+    const { default: TodayPage } = await import('./page')
+
+    await expect(TodayPage()).rejects.toThrow('REDIRECT:/')
+    expect(redirectMock).toHaveBeenCalledWith('/')
+  })
+
   it('does not show the team-lead switch note for a technician', async () => {
     const user = await makeUser('today-technician', 'tech@herbe-service.test', 'technician')
     authMock.mockResolvedValue(sessionFor(user))

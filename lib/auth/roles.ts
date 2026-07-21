@@ -1,5 +1,11 @@
 export type Role = 'technician' | 'team_lead' | 'dispatcher' | 'back_office' | 'admin'
 
+// Roles whose home is the field (technician PWA) shell. Mirror of OFFICE_ROLES
+// in app/(office)/c/[companyId]/layout.tsx, kept here as the single source so
+// the two route gates can't drift. team_lead carries both hats but its field
+// capabilities (worksheet:execute_own etc.) make the field shell its surface.
+export const FIELD_ROLES: Role[] = ['technician', 'team_lead']
+
 export type Capability =
   | 'worksheet:execute_own'
   | 'service_item:create_in_field'

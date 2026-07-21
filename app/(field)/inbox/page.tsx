@@ -18,6 +18,7 @@
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { FIELD_ROLES, type Role } from '@/lib/auth/roles'
 import { getInboxItemsForUser } from '@/lib/inbox/get-inbox-items'
 import { ConflictInbox } from '@/components/conflict-inbox'
 
@@ -25,6 +26,9 @@ export default async function InboxPage() {
   const session = await getVerifiedSession(db)
   if (!session) {
     redirect('/login')
+  }
+  if (!FIELD_ROLES.includes(session.user.role as Role)) {
+    redirect('/')
   }
 
   const items = await getInboxItemsForUser(db, session.user.tenantId)

@@ -20,6 +20,7 @@
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { FIELD_ROLES, type Role } from '@/lib/auth/roles'
 import { BriefcaseSummary } from '@/components/briefcase-summary'
 import { getBriefcaseSummary } from '@/lib/offline/briefcase-summary'
 import { LocaleSwitcher } from '@/components/locale-switcher'
@@ -29,6 +30,9 @@ export default async function MorePage() {
   const session = await getVerifiedSession(db)
   if (!session) {
     redirect('/login')
+  }
+  if (!FIELD_ROLES.includes(session.user.role as Role)) {
+    redirect('/')
   }
 
   const buckets = await getBriefcaseSummary(db, { userId: session.user.id, tenantId: session.user.tenantId })

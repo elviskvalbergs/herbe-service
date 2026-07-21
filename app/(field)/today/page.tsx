@@ -14,11 +14,15 @@
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { getVerifiedSession } from '@/lib/auth/session-guard'
+import { FIELD_ROLES, type Role } from '@/lib/auth/roles'
 
 export default async function TodayPage() {
   const session = await getVerifiedSession(db)
   if (!session) {
     redirect('/login')
+  }
+  if (!FIELD_ROLES.includes(session.user.role as Role)) {
+    redirect('/')
   }
 
   const isTeamLead = session.user.role === 'team_lead'
