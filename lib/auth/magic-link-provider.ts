@@ -8,8 +8,10 @@
 // `issueMagicLinkToken` mints the raw token and stores only its SHA-256 hash;
 // the raw token is never persisted, only ever returned to the caller to embed
 // in the link. `authorizeMagicLink` looks the hash up, consumes it (so a
-// replayed/reused link is rejected), and self-registers the user on first
-// sign-in (insert-or-return-existing keyed on tenant+email).
+// replayed/reused link is rejected), and resolves it to a PRE-EXISTING user
+// keyed on tenant+email — it never self-provisions. FIX-2 (docs/27): the old
+// auto-create let anyone holding a tenant UUID mint themselves an account the
+// moment a mail transport existed.
 import crypto from 'node:crypto'
 import { and, eq, gt, isNull } from 'drizzle-orm'
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
@@ -63,14 +65,15 @@ export async function authorizeMagicLink(
 
   if (!record) return null
 
+  // Resolve to an existing user only — a magic link authenticates, it does not
+  // provision (FIX-2). The token is already consumed above, so a link for an
+  // unknown email is spent without granting anything.
   const [user] = await db
-    .insert(schema.users)
-    .values({ tenantId: record.tenantId, email: record.email })
-    .onConflictDoUpdate({
-      target: [schema.users.tenantId, schema.users.email],
-      set: { email: record.email }, // no-op update; just returns the existing row
-    })
-    .returning()
+    .select()
+    .from(schema.users)
+    .where(and(eq(schema.users.tenantId, record.tenantId), eq(schema.users.email, record.email)))
+
+  if (!user) return null
 
   return { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role, sessionVersion: user.sessionVersion }
 }

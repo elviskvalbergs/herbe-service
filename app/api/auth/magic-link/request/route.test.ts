@@ -46,8 +46,13 @@ function makeRequest(body: unknown) {
   })
 }
 
+async function makeUser(email: string) {
+  await db.insert(schema.users).values({ tenantId, email }).returning()
+}
+
 describe('POST /api/auth/magic-link/request', () => {
-  it('returns 200 and issues a DB-backed token for a known-shaped email', async () => {
+  it('returns 200 and issues a DB-backed token for an existing user', async () => {
+    await makeUser('office.eva@herbe-service.test')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     const { POST } = await import('./route')
@@ -68,11 +73,12 @@ describe('POST /api/auth/magic-link/request', () => {
     expect(row?.tenantId).toBe(tenantId)
   })
 
-  // Anti-enumeration: an email with no corresponding user gets the exact
-  // same 200 response as a known one — the caller can never learn from the
-  // response alone whether the address exists.
-  it('returns 200 for an email with no corresponding user (anti-enumeration)', async () => {
-    vi.spyOn(console, 'log').mockImplementation(() => {})
+  // FIX-2: an unknown email gets the exact same 200 as a known one
+  // (anti-enumeration at the response level) but NO token is issued — the
+  // route never provisions, and the old behavior (inserting a token row for
+  // any email) let an unauthenticated caller flood the token table.
+  it('returns 200 for an unknown email but issues no token (FIX-2, anti-enumeration)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     const { POST } = await import('./route')
     const res = await POST(makeRequest({ tenantId, email: 'nobody-at-all@herbe-service.test' }))
@@ -80,12 +86,13 @@ describe('POST /api/auth/magic-link/request', () => {
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ status: 'ok' })
+    expect(logSpy).not.toHaveBeenCalled()
 
     const rows = await db
       .select()
       .from(schema.magicLinkTokens)
       .where(and(eq(schema.magicLinkTokens.tenantId, tenantId), eq(schema.magicLinkTokens.email, 'nobody-at-all@herbe-service.test')))
-    expect(rows).toHaveLength(1)
+    expect(rows).toHaveLength(0)
   })
 
   // The console.log below is a Phase-0 stand-in for real email delivery, but
@@ -93,7 +100,8 @@ describe('POST /api/auth/magic-link/request', () => {
   // production would leak account access through log aggregation. This test
   // proves the route still issues and persists the token correctly, it just
   // never prints it once VERCEL_ENV/NODE_ENV says production.
-  it('does not log the token or email in production, but still issues and stores the token', async () => {
+  it('does not log the token or email in production, but still issues and stores the token for an existing user', async () => {
+    await makeUser('prod-user@herbe-service.test')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const originalVercelEnv = process.env.VERCEL_ENV
     process.env.VERCEL_ENV = 'production'
@@ -115,6 +123,30 @@ describe('POST /api/auth/magic-link/request', () => {
     } finally {
       if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV
       else process.env.VERCEL_ENV = originalVercelEnv
+    }
+  })
+
+  // FIX-7: repeated requests for the same IP+tenant+email are throttled
+  // (policy 'magic-link' = 5/min). Fake Date pins the fixed window so the
+  // boundary can't roll over mid-test.
+  it('rate-limits repeated requests for the same identity with 429 + Retry-After (FIX-7)', async () => {
+    await makeUser('rl-user@herbe-service.test')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(Date.UTC(2026, 0, 1, 9, 0, 0)))
+
+    try {
+      const { POST } = await import('./route')
+      for (let i = 0; i < 5; i++) {
+        const res = await POST(makeRequest({ tenantId, email: 'rl-user@herbe-service.test' }))
+        expect(res.status).toBe(200)
+      }
+
+      const blocked = await POST(makeRequest({ tenantId, email: 'rl-user@herbe-service.test' }))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('Retry-After')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

@@ -5,6 +5,7 @@ import Credentials from 'next-auth/providers/credentials'
 import { db } from '@/lib/db'
 import { authorizeCredentials } from './credentials-provider'
 import { authorizeMagicLink } from './magic-link-provider'
+import { clientIpFrom } from './rate-limit'
 
 // The default Session["user"] shape has no `id` — augment it so
 // sessionCallback below (and any server-side `auth()` caller) can rely on
@@ -108,12 +109,13 @@ export const authConfig: NextAuthConfig = {
         password: { type: 'password' },
         totp: { type: 'text' },
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
         return authorizeCredentials(db, {
           tenantId: credentials.tenantId as string,
           email: credentials.email as string,
           password: credentials.password as string,
           totp: credentials.totp as string | undefined,
+          ip: clientIpFrom(request),
         })
       },
     }),

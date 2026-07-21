@@ -60,3 +60,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.test
+
+# lighthouse ci (FIX-17) — local/CI audit output
+.lighthouseci

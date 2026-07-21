@@ -1,0 +1,80 @@
+# bitbucket-pipelines.yml
+#
+# Mirrors herbe-portal's preview pipeline conventions (node:22, corepack +
+# pnpm@11.9.0, pnpm-store cache, a `default` pipeline that runs on every
+# non-`main` branch push and every PR). The first step runs the same gate as
+# .github/workflows/ci.yml (lint, typecheck, tests) so the team's Bitbucket
+# remote enforces what GitHub Actions already does.
+#
+# FIX-17 (docs/27): the second step adds the previously-absent perf + a11y
+# budget. It is ADVISORY — the Lighthouse assertions are warn-level
+# (lighthouserc.json) AND the command is `|| true`, so it never blocks a merge.
+# That is deliberate: the app is still placeholder screens (there is no public
+# /login page until WS9), so a hard budget would be noise. One Lighthouse run
+# covers both budgets — its accessibility category is axe-core-powered. Once
+# real screens exist, flip the assertions to "error" and drop the `|| true`.
+image: node:22
+
+definitions:
+  caches:
+    # pnpm content-addressable store, keyed off the clone dir (portal's idiom).
+    pnpm-store: .pnpm-store
+  services:
+    postgres:
+      image: postgres:17
+      variables:
+        POSTGRES_PASSWORD: postgres
+  steps:
+    - step: &lint-typecheck-test
+        name: Lint, typecheck & tests
+        caches:
+          - pnpm-store
+        services:
+          - postgres
+        script:
+          - export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+          - corepack enable
+          - corepack prepare pnpm@11.9.0 --activate
+          - pnpm config set store-dir "$BITBUCKET_CLONE_DIR/.pnpm-store"
+          - pnpm install --frozen-lockfile
+          # postgres service is reachable at localhost:5432 (user/pw/db all
+          # "postgres"); AUTH_SECRET mirrors .github/workflows/ci.yml — a
+          # throwaway CI value, not a real secret.
+          - export TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres"
+          - export AUTH_SECRET="test-only-secret-not-for-production-use-min-32-chars"
+          - pnpm lint
+          - pnpm typecheck
+          - pnpm test:coverage
+    - step: &perf-a11y
+        name: Perf & a11y budget (advisory)
+        # Lighthouse needs a real Chrome; the Playwright image ships one that
+        # matches the repo's @playwright/test version.
+        image: mcr.microsoft.com/playwright:v1.61.1-jammy
+        caches:
+          - pnpm-store
+        script:
+          - export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+          - corepack enable
+          - corepack prepare pnpm@11.9.0 --activate
+          - pnpm config set store-dir "$BITBUCKET_CLONE_DIR/.pnpm-store"
+          - pnpm install --frozen-lockfile
+          # A dummy DATABASE_URL is enough: postgres.js connects lazily and the
+          # audited page doesn't query the DB (lib/db.ts).
+          - export DATABASE_URL="postgres://user:pass@localhost:5432/unused"
+          - export AUTH_SECRET="test-only-secret-not-for-production-use-min-32-chars"
+          - export CHROME_PATH="$(node -e "console.log(require('@playwright/test').chromium.executablePath())")"
+          - pnpm build
+          - pnpm lhci || true
+        artifacts:
+          - .lighthouseci/**
+
+pipelines:
+  # Every non-`main` branch push (preview, feature/*, fix/*, ...). Version-bump
+  # commits on main are out of scope for this repo (no release step here yet).
+  default:
+    - step: *lint-typecheck-test
+    - step: *perf-a11y
+  pull-requests:
+    '**':
+      - step: *lint-typecheck-test
+      - step: *perf-a11y

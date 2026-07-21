@@ -32,19 +32,46 @@ afterAll(async () => {
   await testDb?.cleanup()
 })
 
+async function makeUser(email: string, role = 'technician') {
+  const [user] = await db.insert(schema.users).values({ tenantId, email, role }).returning()
+  return user
+}
+
 describe('magic link auth', () => {
-  it('consumes a valid token once, self-registers the user, then rejects reuse', async () => {
-    const { token } = await issueMagicLinkToken(db, { tenantId, email: 'office.eva@herbe-service.test' })
+  it('consumes a valid token once for an existing user, then rejects reuse', async () => {
+    const user = await makeUser('office.eva@herbe-service.test')
+    const { token } = await issueMagicLinkToken(db, { tenantId, email: user.email })
 
     const first = await authorizeMagicLink(db, { token })
+    expect(first?.id).toBe(user.id)
     expect(first?.email).toBe('office.eva@herbe-service.test')
-    expect(first?.id).toEqual(expect.any(String))
     expect(first?.tenantId).toBe(tenantId)
-    expect(first?.role).toBe('technician') // default role
-    expect(first?.sessionVersion).toBe(1) // default sessionVersion
+    expect(first?.role).toBe('technician')
+    expect(first?.sessionVersion).toBe(1)
 
     const second = await authorizeMagicLink(db, { token })
     expect(second).toBeNull() // single-use
+  })
+
+  // FIX-2: a magic link authenticates an existing user; it never provisions
+  // one. A valid token for an unknown email is still consumed (single-use),
+  // but authorize returns null and no user row is created.
+  it('does not provision a user: a valid token for an unknown email is consumed but grants nothing', async () => {
+    const email = 'ghost@herbe-service.test'
+    const { token } = await issueMagicLinkToken(db, { tenantId, email })
+
+    const result = await authorizeMagicLink(db, { token })
+    expect(result).toBeNull()
+
+    const users = await db
+      .select()
+      .from(schema.users)
+      .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, email)))
+    expect(users).toHaveLength(0)
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+    const [row] = await db.select().from(schema.magicLinkTokens).where(eq(schema.magicLinkTokens.tokenHash, tokenHash))
+    expect(row.consumedAt).not.toBeNull()
   })
 
   it('under concurrent authorize calls with the same token, exactly one wins (atomic single-use)', async () => {
@@ -57,17 +84,17 @@ describe('magic link auth', () => {
     // old two-statement implementation (many false "winners") and passes
     // consistently against the atomic single-UPDATE...RETURNING version
     // (always exactly one winner, verified over repeated runs).
-    const { token } = await issueMagicLinkToken(db, { tenantId, email: 'concurrent@herbe-service.test' })
+    const user = await makeUser('concurrent@herbe-service.test')
+    const { token } = await issueMagicLinkToken(db, { tenantId, email: user.email })
 
     const results = await Promise.all(Array.from({ length: 20 }, () => authorizeMagicLink(db, { token })))
 
     const winners = results.filter((r) => r !== null)
     expect(winners).toHaveLength(1)
     expect(results.filter((r) => r === null)).toHaveLength(19)
+    expect(winners[0]?.id).toBe(user.id)
     expect(winners[0]?.email).toBe('concurrent@herbe-service.test')
     expect(winners[0]?.tenantId).toBe(tenantId)
-    expect(winners[0]?.role).toBe('technician')
-    expect(winners[0]?.sessionVersion).toBe(1)
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
     const [row] = await db.select().from(schema.magicLinkTokens).where(eq(schema.magicLinkTokens.tokenHash, tokenHash))
@@ -105,22 +132,23 @@ describe('magic link auth', () => {
     expect(JSON.stringify(row)).not.toContain(token)
   })
 
-  it('self-registers only once: a second later sign-in resolves to the same user row', async () => {
-    const email = 'repeat-signin@herbe-service.test'
-    const { token: token1 } = await issueMagicLinkToken(db, { tenantId, email })
+  it('repeated sign-ins for an existing user resolve to the same user row (no duplicate provisioning)', async () => {
+    const user = await makeUser('repeat-signin@herbe-service.test')
+
+    const { token: token1 } = await issueMagicLinkToken(db, { tenantId, email: user.email })
     const first = await authorizeMagicLink(db, { token: token1 })
 
-    const { token: token2 } = await issueMagicLinkToken(db, { tenantId, email })
+    const { token: token2 } = await issueMagicLinkToken(db, { tenantId, email: user.email })
     const second = await authorizeMagicLink(db, { token: token2 })
 
-    expect(second?.id).toBe(first?.id)
-    expect(second?.role).toBe(first?.role)
+    expect(first?.id).toBe(user.id)
+    expect(second?.id).toBe(user.id)
     expect(second?.sessionVersion).toBe(first?.sessionVersion)
 
     const rows = await db
       .select()
       .from(schema.users)
-      .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, email)))
+      .where(and(eq(schema.users.tenantId, tenantId), eq(schema.users.email, user.email)))
     expect(rows).toHaveLength(1)
   })
 })

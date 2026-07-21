@@ -40,7 +40,7 @@ export type Capability =
 // list. team_lead's "optionally (tenant flag) approve the team's worksheets"
 // is a tunable edge on top of this default matrix, not part of it (no
 // tenant-config mechanism exists yet to carry that override).
-export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
+const OPERATIONAL_ROLE_CAPABILITIES = {
   technician: ['worksheet:execute_own', 'service_item:create_in_field', 'van_stock:view_own', 'history:view'],
   team_lead: [
     'worksheet:execute_own',
@@ -64,17 +64,33 @@ export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
     'pricing:view_margins',
   ],
   back_office: ['customer:edit', 'item:edit', 'report:view', 'document:manage_delivery'],
-  admin: [
-    'tenant:manage_settings',
-    'users:manage',
-    'device:manage_enrollment',
-    'erp_connection:manage',
-    'document_template:manage',
-    'structure_template:manage',
-    'api_token:manage',
-  ],
+} satisfies Record<Exclude<Role, 'admin'>, Capability[]>
+
+// The admin-only management surfaces — the capabilities no operational role
+// has. admin is ADDITIVE (FIX-14 / docs/27): it inherits every operational
+// capability above AND these, per the org principle "admin = additive
+// capability, not a separate surface." Building admin from a union rather than
+// a hand-copied list keeps it a true superset as roles evolve.
+const ADMIN_ONLY_CAPABILITIES: Capability[] = [
+  'tenant:manage_settings',
+  'users:manage',
+  'device:manage_enrollment',
+  'erp_connection:manage',
+  'document_template:manage',
+  'structure_template:manage',
+  'api_token:manage',
+]
+
+export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
+  ...OPERATIONAL_ROLE_CAPABILITIES,
+  admin: [...new Set([...Object.values(OPERATIONAL_ROLE_CAPABILITIES).flat(), ...ADMIN_ONLY_CAPABILITIES])],
 }
 
+// `role` is typed as Role, but callers routinely cast a bare `users.role` text
+// value (`session.user.role as Role`) — an unrecognized string would make the
+// lookup `undefined` and `.includes` throw. Treat any unknown role as
+// capability-less rather than crashing the page/route that asked.
 export function hasCapability(role: Role, capability: Capability): boolean {
-  return ROLE_CAPABILITIES[role].includes(capability)
+  const capabilities = ROLE_CAPABILITIES[role]
+  return capabilities !== undefined && capabilities.includes(capability)
 }
