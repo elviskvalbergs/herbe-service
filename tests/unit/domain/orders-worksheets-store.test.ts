@@ -3,6 +3,7 @@
 // Uses the local-Postgres test harness (lib/test-support/db.ts), same
 // bootstrap as tests/unit/domain/service-items-store.test.ts /
 // __tests__/db/tenancy.test.ts / lib/sync/ingest/customers.test.ts.
+import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -15,7 +16,15 @@ import {
   scanServiceOrdersForTenant,
   setOrderStatus,
 } from '@/lib/domain/stores/service-orders'
-import { getWorksheetById, getWorksheetsForOrder, insertWorksheet, setWorksheetStatus } from '@/lib/domain/stores/worksheets'
+import {
+  getWorksheetById,
+  getWorksheetsForOrder,
+  getWorksheetsForTechnician,
+  insertWorksheet,
+  scanWorksheetsForCompanyByStatus,
+  setWorksheetStatus,
+  updateWorksheetWorkDescription,
+} from '@/lib/domain/stores/worksheets'
 import { getErpRefs, putErpRef } from '@/lib/domain/stores/erp-refs'
 
 let testDb: TestDatabase
@@ -23,6 +32,7 @@ let sql: ReturnType<typeof postgres>
 let db: ReturnType<typeof drizzle<typeof schema>>
 let tenantId: string
 let otherTenantId: string
+let erpCompanyId: string
 let customerId: string
 let technicianUserId: string
 
@@ -41,6 +51,7 @@ beforeAll(async () => {
     .insert(schema.erpCompanies)
     .values({ tenantId, displayName: 'C1', adapterType: 'standard_books', adapterConfigJson: {} })
     .returning()
+  erpCompanyId = company.id
   const [customer] = await db
     .insert(schema.customers)
     .values({ tenantId, erpCompanyId: company.id, erpRef: 'CUST001', name: 'Test Client OÜ', changeSeq: BigInt(0) })
@@ -105,6 +116,63 @@ describe('worksheets store', () => {
 
     const got = await getWorksheetById(db, tenantId, worksheet.id)
     expect(got?.status).toBe('Rejected')
+  })
+
+  it('getWorksheetsForTechnician returns only that technician\'s worksheets, tenant-scoped, excluding soft-deleted', async () => {
+    const order = await insertServiceOrder(db, { tenantId, customerId })
+    const [otherTech] = await db.insert(schema.users).values({ tenantId, email: 'other-tech@example.com' }).returning()
+
+    const mine = await insertWorksheet(db, { tenantId, orderId: order.id, technicianUserId })
+    const notMine = await insertWorksheet(db, { tenantId, orderId: order.id, technicianUserId: otherTech.id })
+
+    const order2 = await insertServiceOrder(db, { tenantId, customerId })
+    const deletedMine = await insertWorksheet(db, { tenantId, orderId: order2.id, technicianUserId })
+    await db.update(schema.worksheets).set({ deletedAt: new Date() }).where(eq(schema.worksheets.id, deletedMine.id))
+
+    const rows = await getWorksheetsForTechnician(db, tenantId, technicianUserId)
+    const ids = rows.map((r) => r.id)
+    expect(ids).toContain(mine.id)
+    expect(ids).not.toContain(notMine.id)
+    expect(ids).not.toContain(deletedMine.id)
+
+    // cross-tenant read returns none of this technician's worksheets
+    expect(await getWorksheetsForTechnician(db, otherTenantId, technicianUserId)).toEqual([])
+  })
+
+  it('updateWorksheetWorkDescription writes the column, tenant-scoped', async () => {
+    const order = await insertServiceOrder(db, { tenantId, customerId })
+    const worksheet = await insertWorksheet(db, { tenantId, orderId: order.id })
+
+    await updateWorksheetWorkDescription(db, tenantId, worksheet.id, 'Replaced compressor')
+    const got = await getWorksheetById(db, tenantId, worksheet.id)
+    expect(got?.workDescription).toBe('Replaced compressor')
+
+    // cross-tenant write is a no-op
+    await updateWorksheetWorkDescription(db, otherTenantId, worksheet.id, 'Should not apply')
+    const stillMine = await getWorksheetById(db, tenantId, worksheet.id)
+    expect(stillMine?.workDescription).toBe('Replaced compressor')
+  })
+
+  it('scanWorksheetsForCompanyByStatus returns only matching-status worksheets for the erp company, tenant-scoped, excluding soft-deleted', async () => {
+    const order = await insertServiceOrder(db, { tenantId, customerId, erpCompanyId })
+    const [scanTech] = await db.insert(schema.users).values({ tenantId, email: 'scan-status-tech@example.com' }).returning()
+
+    const draftWs = await insertWorksheet(db, { tenantId, orderId: order.id, erpCompanyId, technicianUserId })
+    const assignedWs = await insertWorksheet(db, { tenantId, orderId: order.id, erpCompanyId, technicianUserId: scanTech.id })
+    await setWorksheetStatus(db, tenantId, assignedWs.id, 'Assigned')
+
+    const order2 = await insertServiceOrder(db, { tenantId, customerId, erpCompanyId })
+    const deletedDraftWs = await insertWorksheet(db, { tenantId, orderId: order2.id, erpCompanyId, technicianUserId })
+    await db.update(schema.worksheets).set({ deletedAt: new Date() }).where(eq(schema.worksheets.id, deletedDraftWs.id))
+
+    const rows = await scanWorksheetsForCompanyByStatus(db, tenantId, erpCompanyId, 'Draft')
+    const ids = rows.map((r) => r.id)
+    expect(ids).toContain(draftWs.id)
+    expect(ids).not.toContain(assignedWs.id)
+    expect(ids).not.toContain(deletedDraftWs.id)
+
+    // cross-tenant read returns none
+    expect(await scanWorksheetsForCompanyByStatus(db, otherTenantId, erpCompanyId, 'Draft')).toEqual([])
   })
 })
 

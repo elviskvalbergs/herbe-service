@@ -51,3 +51,23 @@ export async function resolveCustomerIdsByCodes(
 
   return rows.map((r) => r.id)
 }
+
+// Task 3 (docs/superpowers/sdd/task-3-brief.md): company-wide customer list
+// for the booking route (Task 4), same tenant+erpCompanyId+deletedAt idiom
+// as scanServiceOrdersForTenant (service-orders.ts).
+export async function scanCustomersForCompany(
+  db: Db,
+  tenantId: string,
+  erpCompanyId: string,
+): Promise<CustomerRow[]> {
+  return db
+    .select()
+    .from(schema.customers)
+    .where(
+      and(
+        eq(schema.customers.tenantId, tenantId),
+        eq(schema.customers.erpCompanyId, erpCompanyId),
+        isNull(schema.customers.deletedAt),
+      ),
+    )
+}

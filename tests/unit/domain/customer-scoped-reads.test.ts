@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as schema from '@/drizzle/schema'
 import { runMigrations } from '@/scripts/migrate'
 import { createTestDatabase, type TestDatabase } from '@/lib/test-support/db'
-import { resolveCustomerIdsByCodes } from '@/lib/domain/stores/customers'
+import { resolveCustomerIdsByCodes, scanCustomersForCompany } from '@/lib/domain/stores/customers'
 import { insertServiceItem, scanServiceItemsForCustomer } from '@/lib/domain/stores/service-items'
 import { insertServiceOrder, scanServiceOrdersForCustomer, setOrderStatus } from '@/lib/domain/stores/service-orders'
 
@@ -194,5 +194,51 @@ describe('scanServiceOrdersForCustomer', () => {
     })
     expect(rows.map((r) => r.id)).toEqual([acceptedOrder.id])
     expect(rows.some((r) => r.id === newOrder.id)).toBe(false)
+  })
+})
+
+describe('scanCustomersForCompany', () => {
+  it('returns customers for the erp company, tenant-scoped, excluding soft-deleted and other companies', async () => {
+    // Own tenant/companies (not the shared tenantId/erpCompanyId) so this
+    // assertion isn't affected by customers inserted by earlier tests in
+    // this file (cursorCustomer, limitCustomer, statusCustomer, ...).
+    const [scanTenant] = await db.insert(schema.tenants).values({ slug: 'scan-cust-t1', name: 'Scan Cust T1' }).returning()
+    const [scanCompany] = await db
+      .insert(schema.erpCompanies)
+      .values({ tenantId: scanTenant.id, displayName: 'Scan Cust Co', adapterType: 'standard_books' })
+      .returning()
+    const [otherCompany] = await db
+      .insert(schema.erpCompanies)
+      .values({ tenantId: scanTenant.id, displayName: 'Other Co', adapterType: 'standard_books' })
+      .returning()
+
+    const [active] = await db
+      .insert(schema.customers)
+      .values({ tenantId: scanTenant.id, erpCompanyId: scanCompany.id, erpRef: 'SCAN-CUST-1', name: 'Active Customer', changeSeq: BigInt(0) })
+      .returning()
+    const [deleted] = await db
+      .insert(schema.customers)
+      .values({
+        tenantId: scanTenant.id,
+        erpCompanyId: scanCompany.id,
+        erpRef: 'SCAN-CUST-2',
+        name: 'Deleted Customer',
+        changeSeq: BigInt(0),
+        deletedAt: new Date(),
+      })
+      .returning()
+    await db
+      .insert(schema.customers)
+      .values({ tenantId: scanTenant.id, erpCompanyId: otherCompany.id, erpRef: 'SCAN-CUST-3', name: 'Other Company Customer', changeSeq: BigInt(0) })
+
+    const rows = await scanCustomersForCompany(db, scanTenant.id, scanCompany.id)
+    expect(rows.map((r) => r.id)).toEqual([active.id])
+    expect(rows.map((r) => r.id)).not.toContain(deleted.id)
+  })
+
+  it('returns [] for a tenant that does not own the erp company', async () => {
+    const [otherTenant] = await db.insert(schema.tenants).values({ slug: 'scan-cust-t2', name: 'Scan Cust T2' }).returning()
+    const rows = await scanCustomersForCompany(db, otherTenant.id, erpCompanyId)
+    expect(rows).toEqual([])
   })
 })

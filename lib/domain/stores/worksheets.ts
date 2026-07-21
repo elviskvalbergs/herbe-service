@@ -123,3 +123,59 @@ export async function setWorksheetStatus(
     .set({ status })
     .where(and(eq(schema.worksheets.id, id), eq(schema.worksheets.tenantId, tenantId)))
 }
+
+// Task 3 (docs/superpowers/sdd/task-3-brief.md): the technician-scoped
+// "my worksheets" read for the execution route (Task 5), same
+// tenant+deletedAt idiom as getWorksheetsForOrder.
+export async function getWorksheetsForTechnician(
+  db: Db,
+  tenantId: string,
+  technicianUserId: string,
+): Promise<WorksheetRow[]> {
+  return db
+    .select()
+    .from(schema.worksheets)
+    .where(
+      and(
+        eq(schema.worksheets.tenantId, tenantId),
+        eq(schema.worksheets.technicianUserId, technicianUserId),
+        isNull(schema.worksheets.deletedAt),
+      ),
+    )
+}
+
+// Task 3: thin setter, same contract as setWorksheetStatus — no validation,
+// the execution route (Task 5) writes the technician's notes directly.
+export async function updateWorksheetWorkDescription(
+  db: Db,
+  tenantId: string,
+  id: string,
+  workDescription: string,
+): Promise<void> {
+  await db
+    .update(schema.worksheets)
+    .set({ workDescription })
+    .where(and(eq(schema.worksheets.id, id), eq(schema.worksheets.tenantId, tenantId)))
+}
+
+// Task 3: company-wide, status-filtered scan for the approval route (Task
+// 6) — worksheets carry erpCompanyId directly, so no join to service_orders
+// is needed.
+export async function scanWorksheetsForCompanyByStatus(
+  db: Db,
+  tenantId: string,
+  erpCompanyId: string,
+  status: WorksheetStatus,
+): Promise<WorksheetRow[]> {
+  return db
+    .select()
+    .from(schema.worksheets)
+    .where(
+      and(
+        eq(schema.worksheets.tenantId, tenantId),
+        eq(schema.worksheets.erpCompanyId, erpCompanyId),
+        eq(schema.worksheets.status, status),
+        isNull(schema.worksheets.deletedAt),
+      ),
+    )
+}
