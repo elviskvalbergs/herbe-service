@@ -10,6 +10,17 @@
     "submit_label": "Skapa bokning",
     "error_generic": "Kunde inte skapa bokningen. Försök igen."
   },
+  "worksheet_approval": {
+    "title": "Arbetsorder som väntar på godkännande",
+    "empty_state": "Inga arbetsorder väntar på godkännande.",
+    "column_order": "Order",
+    "column_customer": "Kund",
+    "column_technician": "Tekniker",
+    "column_work_description": "Arbetsbeskrivning",
+    "approve_label": "Godkänn",
+    "approving_label": "Godkänner…",
+    "error_generic": "Det gick inte att godkänna arbetsordern. Försök igen."
+  },
   "worksheet_execution": {
     "jobs_title": "Mina jobb",
     "jobs_empty": "Inga jobb tilldelade ännu.",

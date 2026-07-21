@@ -10,6 +10,17 @@
     "submit_label": "Izveidot pasūtījumu",
     "error_generic": "Neizdevās izveidot pasūtījumu. Mēģiniet vēlreiz."
   },
+  "worksheet_approval": {
+    "title": "Apstiprināšanu gaidošās darba lapas",
+    "empty_state": "Neviena darba lapa negaida apstiprinājumu.",
+    "column_order": "Pasūtījums",
+    "column_customer": "Klients",
+    "column_technician": "Tehniķis",
+    "column_work_description": "Darba apraksts",
+    "approve_label": "Apstiprināt",
+    "approving_label": "Apstiprina…",
+    "error_generic": "Neizdevās apstiprināt darba lapu. Mēģiniet vēlreiz."
+  },
   "worksheet_execution": {
     "jobs_title": "Mani darbi",
     "jobs_empty": "Pagaidām nav piešķirtu darbu.",

@@ -10,6 +10,17 @@
     "submit_label": "Loo tellimus",
     "error_generic": "Tellimuse loomine ebaõnnestus. Proovi uuesti."
   },
+  "worksheet_approval": {
+    "title": "Kinnitamist ootavad töölehed",
+    "empty_state": "Ühtegi töölehte ei oota kinnitamist.",
+    "column_order": "Tellimus",
+    "column_customer": "Klient",
+    "column_technician": "Tehnik",
+    "column_work_description": "Töö kirjeldus",
+    "approve_label": "Kinnita",
+    "approving_label": "Kinnitamine…",
+    "error_generic": "Töölehe kinnitamine ebaõnnestus. Proovi uuesti."
+  },
   "worksheet_execution": {
     "jobs_title": "Minu tööd",
     "jobs_empty": "Veel pole ühtegi tööd määratud.",

@@ -10,6 +10,17 @@
     "submit_label": "Opprett bestilling",
     "error_generic": "Kunne ikke opprette bestillingen. Prøv igjen."
   },
+  "worksheet_approval": {
+    "title": "Arbeidsskjemaer som venter på godkjenning",
+    "empty_state": "Ingen arbeidsskjemaer venter på godkjenning.",
+    "column_order": "Bestilling",
+    "column_customer": "Kunde",
+    "column_technician": "Tekniker",
+    "column_work_description": "Arbeidsbeskrivelse",
+    "approve_label": "Godkjenn",
+    "approving_label": "Godkjenner…",
+    "error_generic": "Kunne ikke godkjenne arbeidsskjemaet. Prøv igjen."
+  },
   "worksheet_execution": {
     "jobs_title": "Mine jobber",
     "jobs_empty": "Ingen jobber tildelt ennå.",

@@ -10,6 +10,17 @@
     "submit_label": "Luo varaus",
     "error_generic": "Varauksen luonti epäonnistui. Yritä uudelleen."
   },
+  "worksheet_approval": {
+    "title": "Hyväksyntää odottavat työlehdet",
+    "empty_state": "Yksikään työlehti ei odota hyväksyntää.",
+    "column_order": "Tilaus",
+    "column_customer": "Asiakas",
+    "column_technician": "Asentaja",
+    "column_work_description": "Työn kuvaus",
+    "approve_label": "Hyväksy",
+    "approving_label": "Hyväksytään…",
+    "error_generic": "Työlehden hyväksyntä epäonnistui. Yritä uudelleen."
+  },
   "worksheet_execution": {
     "jobs_title": "Omat työt",
     "jobs_empty": "Ei vielä osoitettuja töitä.",

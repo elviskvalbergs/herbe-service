@@ -10,6 +10,17 @@
     "submit_label": "Create booking",
     "error_generic": "Could not create the booking. Try again."
   },
+  "worksheet_approval": {
+    "title": "Worksheets awaiting approval",
+    "empty_state": "No worksheets are waiting for approval.",
+    "column_order": "Order",
+    "column_customer": "Customer",
+    "column_technician": "Technician",
+    "column_work_description": "Work description",
+    "approve_label": "Approve",
+    "approving_label": "Approving…",
+    "error_generic": "Could not approve the worksheet. Try again."
+  },
   "worksheet_execution": {
     "jobs_title": "My jobs",
     "jobs_empty": "No jobs assigned yet.",
